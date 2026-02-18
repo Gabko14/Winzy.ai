@@ -237,15 +237,28 @@ Nicht alle Services sind gleich kritisch. Bei (Teil-)Ausfall eines Gruppenmitgli
 - P2-Services werden reduziert (z.B. nur Notifications, kein Feed)
 - Betroffene Person fokussiert auf die kritischsten Teile ihrer Services
 
-### 4.3 Meilensteine
+### 4.3 IPA-Abwesenheiten
 
-| Phase | Zeitraum | Ziel | Lieferobjekt |
+Alle Gruppenmitglieder absolvieren in den kommenden Wochen ihre Individuelle Praktische Arbeit (IPA). Während dieser Zeiträume ist die Produktivität am Projekt stark eingeschränkt.
+
+| Person | IPA-Zeitraum |
+|--------|-------------|
+| **Gabriel Listiak** | 09.03. – 28.03.2026 |
+| **Ayan Qazi** | 16.03. – 31.03.2026 |
+| **Raphael Hof** | 16.04. – 30.04.2026 |
+
+Diese Abwesenheiten sind in den Meilensteinen berücksichtigt.
+
+### 4.4 Meilensteine
+
+| Phase | Deadline | Ziel | Lieferobjekt |
 |-------|----------|------|--------------|
-| **Phase 1: Setup** | Woche 1 | Projektstruktur, Docker Compose, CI/CD, leere Service-Projekte, NATS-Verbindung | Alle Services starten in Docker, Gateway routet an leere Endpoints |
-| **Phase 2: Core** | Woche 2–3 | Auth Service (Register/Login/JWT), Habit Service (CRUD + Completions), Gateway-Routing | Nutzer kann sich registrieren, einloggen und Habits verwalten |
-| **Phase 3: Social** | Woche 4–5 | Social Service (Freunde), Challenge Service (Erstellen + Tracking), NATS Events | Nutzer können Freunde hinzufügen und Challenges erstellen |
-| **Phase 4: Events** | Woche 6 | Notification Service, Activity Service, Event-Verarbeitung | Benachrichtigungen und Activity Feed funktionieren |
-| **Phase 5: Polish** | Woche 7 | Frontend-Anbindung, Testing, Bug Fixes, Dokumentation | Fertige, lauffähige Applikation |
+| **Phase 0: Foundation** | 15.02.2026 | Projektstruktur, Tooling, Infrastruktur | Repo-Setup, CI/CD, Docker Compose, leere Service-Projekte |
+| **Phase 1: Habit Tracker** | 08.03.2026 | Core Habit Tracking — standalone, einwandfreie Experience | Auth Service, Habit Service, Gateway, Frontend-Anbindung. App funktioniert als eigenständiger Tracker. |
+| **Phase 2: Social** | 19.04.2026 | Auth, Sync, Freunde, Sichtbarkeit | Social Service, Freundschaftssystem, Sichtbarkeitseinstellungen, NATS Events. *Hinweis: Gabriel und Ayan in IPA, Raphael treibt voran.* |
+| **Phase 3: Challenges & Rewards** | 10.05.2026 | Challenges mit erlebnisbasierten Belohnungen | Challenge Service, Challenge-Erstellung, Fortschritt-Tracking, Abschluss-Flow. *Hinweis: Raphael in IPA, Gabriel und Ayan treiben voran.* |
+| **Phase 4: Enhancements** | 03.06.2026 | Notifications, Statistiken, Templates | Notification Service, Activity Service, Polish, Testing, Dokumentation |
+| **Phase 5: AI** | TBD | KI-basierte Features | Noch zu definieren |
 
 ---
 
