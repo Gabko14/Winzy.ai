@@ -181,7 +181,7 @@ Verwaltet Freundschaftsbeziehungen und Sichtbarkeitsregeln. Wenn ein User die Ha
 | DELETE | `/friends/{id}` | Freund entfernen |
 | GET | `/friends` | Freundesliste abrufen |
 | GET | `/friends/{id}/profile` | Freundesprofil + sichtbare Habits |
-| PUT | `/habits/{id}/visibility` | Sichtbarkeit eines Habits einstellen |
+| PUT | `/friends/visibility/{habitId}` | Sichtbarkeit eines Habits einstellen |
 
 > **Cross-Service Kommunikation:** `GET /friends/{id}/profile` prüft zuerst die Freundschaft und Sichtbarkeitsregeln in der eigenen DB, ruft dann intern `GET /habits/user/{userId}` auf dem Habit Service auf und filtert die Ergebnisse nach den Sichtbarkeitseinstellungen.
 
