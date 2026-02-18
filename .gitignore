@@ -1,0 +1,9 @@
+# bv (beads viewer) local config and caches
+.bv/
+
+# beads local state
+.beads/.bv.lock
+.beads/.jsonl.lock
+.beads/dolt-access.lock
+.beads/dolt/
+.beads/export-state/
