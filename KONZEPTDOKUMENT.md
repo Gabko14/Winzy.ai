@@ -8,6 +8,8 @@
 
 ## 1. Projektbeschreibung
 
+![Winzy.ai Produktphoto](docs/images/produktphoto.png)
+
 Winzy.ai ist ein Habit Tracker mit optionalem sozialem Layer. Die App ermöglicht es Nutzern, tägliche Gewohnheiten zu verfolgen, und bietet eine soziale Schicht, über die Freunde den Fortschritt sehen und sich gegenseitig mit erlebnisbasierten Challenges motivieren können.
 
 **Kernprinzipien:**
@@ -32,6 +34,8 @@ Das Projekt eignet sich hervorragend für eine Microservices-Architektur, da es 
 ### 2.1 Übersicht
 
 Die Applikation besteht aus 7 Services (6 Domain-Services + 1 Gateway). Das Frontend kommuniziert ausschliesslich über das API Gateway mit den Backend-Services. Intern kommunizieren die Services auf zwei Wegen: synchron via REST für direkte Abfragen und asynchron via NATS Pub/Sub für Events.
+
+![Architektur-Übersicht](docs/images/architektur-top.png)
 
 ```mermaid
 graph TB
