@@ -59,10 +59,12 @@ bv
 bd ready              # Show issues ready to work (no blockers)
 bd list --status=open # All open issues
 bd show <id>          # Full issue details with dependencies
-bd create --title="..." --type=task --priority=2
+bd create --title="..." --description="..." --type=task --priority=2
 bd update <id> --status=in_progress
 bd close <id> --reason="Completed"
 bd close <id1> <id2>  # Close multiple issues at once
+bd comments <id>                    # View comments on an issue
+bd comments add <id> "message"      # Add a progress note
 bd sync               # Commit and push changes
 ```
 
@@ -120,12 +122,24 @@ bv --robot-insights
 
 Use these when making prioritization or planning decisions — not every session.
 
+### Comments vs New Issues
+
+Use `bd comments add <id> "message"` for:
+- Progress updates on existing work
+- Decisions made, approaches tried
+- Blockers encountered
+- Notes for the next session
+
+Only create a new bead when it's a **genuinely separate piece of work**.
+
 ### Best Practices
 
 - Check `bd ready` at session start to find available work
 - Update status as you work (in_progress → closed)
-- Create new issues with `bd create` when you discover tasks
+- Create new issues with `bd create` when you discover tasks (description is required)
 - Use descriptive titles and set appropriate priority/type
+- Use `bd comments` to track progress on issues instead of creating unnecessary new beads
 - Always `bd sync` before ending session
+- `bv` reads from JSONL — run `bd sync` before checking `bv` to see latest changes
 
 <!-- end-bv-agent-instructions -->
