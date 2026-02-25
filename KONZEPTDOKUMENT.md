@@ -138,11 +138,14 @@ Verwaltet Benutzerkonten und Authentifizierung. Stellt JWT-Tokens aus, die vom G
 | GET | `/auth/profile` | Eigenes Profil abrufen |
 | PUT | `/auth/profile` | Profil bearbeiten (Name, Avatar) |
 | PUT | `/auth/password` | Passwort ändern |
+| DELETE | `/auth/account` | Konto löschen (publiziert `user.deleted`) |
+| GET | `/auth/users/search?q={query}` | User suchen (für Freunde-Entdeckung) |
 
 **Publizierte Events:**
 | Event | Payload | Beschreibung |
 |-------|---------|-------------|
 | `user.registered` | `{ userId, username }` | Neuer User registriert |
+| `user.deleted` | `{ userId }` | User-Konto gelöscht (Kaskaden-Cleanup) |
 
 ---
 
@@ -160,6 +163,7 @@ Kernservice der Applikation. Verwaltet Habits und deren Completions. Berechnet d
 | POST | `/habits/{id}/complete` | Habit als erledigt markieren |
 | GET | `/habits/{id}/stats` | Detaillierte Statistiken (Konsistenz, Kalender) |
 | GET | `/habits/user/{userId}` | Habits eines Users abrufen (intern, für Social Service) |
+| GET | `/habits/public/{username}` | Öffentliche Habits + Flames eines Users (unauthentifiziert, für Public Flame Page) |
 
 **Publizierte Events:**
 | Event | Payload | Beschreibung |
@@ -182,6 +186,8 @@ Verwaltet Freundschaftsbeziehungen und Sichtbarkeitsregeln. Wenn ein User die Ha
 | GET | `/friends` | Freundesliste abrufen |
 | GET | `/friends/{id}/profile` | Freundesprofil + sichtbare Habits |
 | PUT | `/friends/visibility/{habitId}` | Sichtbarkeit eines Habits einstellen |
+
+> **Sichtbarkeitsstufen:** `private` (nur du), `friends` (nur Freunde), `public` (jeder — für die Public Flame Page). Default: private.
 
 > **Cross-Service Kommunikation:** `GET /friends/{id}/profile` prüft zuerst die Freundschaft und Sichtbarkeitsregeln in der eigenen DB, ruft dann intern `GET /habits/user/{userId}` auf dem Habit Service auf und filtert die Ergebnisse nach den Sichtbarkeitseinstellungen.
 
@@ -275,6 +281,7 @@ Für Event-basierte Kommunikation. Publisher und Subscriber sind vollständig en
 | Event | Publisher | Subscriber |
 |-------|-----------|------------|
 | `user.registered` | Auth Service | Activity |
+| `user.deleted` | Auth Service | Habit, Social, Challenge, Notification, Activity |
 | `habit.created` | Habit Service | Activity |
 | `habit.completed` | Habit Service | Challenge, Notification, Activity |
 | `friend.request.sent` | Social Service | Notification |
@@ -323,6 +330,7 @@ Das API Gateway aggregiert die Health-Checks aller Services unter `GET /health` 
 | **Containerisierung** | Docker + Docker Compose | Jeder Service als isolierter Container. Docker Compose orchestriert die gesamte Entwicklungsumgebung (7 Services + 6 DBs + NATS) mit einem einzigen `docker compose up`. Garantiert identische Umgebungen für alle Teammitglieder. |
 | **CI/CD** | GitHub Actions | Automatisierte Builds, Linting und Tests bei jedem Push. Pro Service ein eigener Workflow, sodass nur betroffene Services gebaut und getestet werden. |
 | **Versionskontrolle** | Git + GitHub | Mono-Repo mit klarer Ordnerstruktur pro Service. Feature Branches, Pull Requests mit Code Reviews, geschützter `main`-Branch. |
+| **Testing** | xUnit + Testcontainers (Backend), Jest (Frontend), Playwright (E2E) | Kein Code wird ohne Tests gemerged. Integration-Tests mit echten PostgreSQL-Containern via Testcontainers. Coverage-Ziel: 80%+ pro Service. |
 
 ---
 
