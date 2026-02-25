@@ -2,7 +2,7 @@
 
 This project uses **[beads](https://github.com/steveyegge/beads)** for issue tracking — a git-backed CLI issue tracker. Issues live in `.beads/` and are committed alongside code.
 
-**Setup:** `brew install beads && bd onboard`
+**Setup:** `brew install beads && bd onboard` (macOS/Linux) or `winget install beads` (Windows)
 
 ## Quick Reference
 
