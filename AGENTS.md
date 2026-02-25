@@ -1,6 +1,8 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **[beads](https://github.com/steveyegge/beads)** for issue tracking — a git-backed CLI issue tracker. Issues live in `.beads/` and are committed alongside code.
+
+**Setup:** `brew install beads && bd onboard`
 
 ## Quick Reference
 
