@@ -72,11 +72,16 @@ bd sync               # Commit and push changes
 4. **Complete**: Use `bd close <id>`
 5. **Sync**: Always run `bd sync` at session end
 
+### Core Rule
+
+**Every work item is an issue.** Including meta-work (reviews, refactoring, planning). If no matching issue exists, create one before you start.
+
 ### Key Concepts
 
 - **Dependencies**: Issues can block other issues. `bd ready` shows only unblocked work.
+- **Epics**: Group related issues with `--parent`. Use `bd epic status` to see progress.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
-- **Types**: task, bug, feature, epic, question, docs
+- **Types**: task, bug, feature, epic, chore, decision
 - **Blocking**: `bd dep add <issue> <depends-on>` to add dependencies
 
 ### Session Protocol
@@ -91,6 +96,26 @@ git commit -m "..."     # Commit code
 bd sync                 # Commit any new beads changes
 git push                # Push to remote
 ```
+
+### Analysis with bv (beads viewer)
+
+Use `bv --robot-*` commands for data-driven decisions. All output is JSON.
+
+```bash
+# Before picking work — what has the highest impact?
+bv --robot-priority
+
+# Planning — what can run in parallel?
+bv --robot-plan
+
+# After structural changes — catch missing deps, duplicates
+bv --robot-suggest
+
+# Health check — bottleneck scores, graph metrics
+bv --robot-insights
+```
+
+Use these when making prioritization or planning decisions — not every session.
 
 ### Best Practices
 

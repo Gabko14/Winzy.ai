@@ -160,7 +160,8 @@ Kernservice der Applikation. Verwaltet Habits und deren Completions. Berechnet d
 | GET | `/habits/{id}` | Habit-Details inkl. Statistiken |
 | PUT | `/habits/{id}` | Habit bearbeiten |
 | DELETE | `/habits/{id}` | Habit löschen |
-| POST | `/habits/{id}/complete` | Habit als erledigt markieren |
+| POST | `/habits/{id}/complete` | Habit als erledigt markieren (optionales Datum im Body, default: heute) |
+| DELETE | `/habits/{id}/completions/{date}` | Completion entfernen (Korrektur via Kalenderansicht) |
 | GET | `/habits/{id}/stats` | Detaillierte Statistiken (Konsistenz, Kalender) |
 | GET | `/habits/user/{userId}` | Habits eines Users abrufen (intern, für Social Service) |
 | GET | `/habits/public/{username}` | Öffentliche Habits + Flames eines Users (unauthentifiziert, für Public Flame Page) |
