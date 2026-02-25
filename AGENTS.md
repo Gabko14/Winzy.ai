@@ -95,6 +95,7 @@ bd sync                 # Commit beads changes
 git commit -m "..."     # Commit code
 bd sync                 # Commit any new beads changes
 git push                # Push to remote
+bd doctor --fix --yes   # Fix any beads issues (locks, sync drift, etc.)
 ```
 
 ### Analysis with bv (beads viewer)
