@@ -1,0 +1,39 @@
+# Local development overrides
+# This file is automatically loaded by `docker compose up`.
+# Add dev-specific config here (debug ports, volume mounts, etc.)
+
+services:
+  api-gateway:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  auth-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  habit-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  social-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  challenge-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  notification-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  activity-service:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+  # To mount source code for hot reload (requires `dotnet watch` in entrypoint):
+  # auth-service:
+  #   volumes:
+  #     - ./services/auth-service/src:/src/services/auth-service/src
+  #     - ./shared:/src/shared
+  #   entrypoint: ["dotnet", "watch", "run", "--project", "services/auth-service/src"]
