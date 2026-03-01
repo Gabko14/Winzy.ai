@@ -25,6 +25,9 @@
   <Folder Name="/services/gateway/src/">
     <Project Path="services/gateway/src/Winzy.Gateway.csproj" />
   </Folder>
+  <Folder Name="/services/gateway/tests/">
+    <Project Path="services/gateway/tests/Winzy.Gateway.Tests.csproj" />
+  </Folder>
   <Folder Name="/services/habit-service/" />
   <Folder Name="/services/habit-service/src/">
     <Project Path="services/habit-service/src/Winzy.HabitService.csproj" />
