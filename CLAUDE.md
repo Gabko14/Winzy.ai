@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Keep this file concise. Focus on project-specific decisions and non-obvious patterns.
+> Keep this file concise. Focus on project-specific decisions and non-obvious patterns. Update as the project evolves.
 
 ## Project Overview
 
@@ -29,52 +29,6 @@ Winzy.ai is a habit tracker with an optional social layer. Users track daily hab
 | Containers | Docker + Docker Compose |
 | Testing | xUnit + Testcontainers (backend), Jest (frontend), Playwright (E2E) |
 | CI/CD | GitHub Actions (per-service workflows) |
-
-## Architecture
-
-7 services in a Docker Compose network. Frontend talks only to the Gateway. Services communicate via REST (sync) or NATS (async events).
-
-| Service | Port | DB | Responsibility |
-|---------|------|-----|---------------|
-| API Gateway (YARP) | 5000 | — | Routing, JWT validation, rate limiting, health aggregation |
-| Auth Service | 5001 | auth_db | Registration, login, JWT, profile management |
-| Habit Service | 5002 | habit_db | Habit CRUD, completions, consistency calculation |
-| Social Service | 5003 | social_db | Friendships, visibility rules |
-| Challenge Service | 5004 | challenge_db | Challenges, milestones, progress tracking |
-| Notification Service | 5005 | notification_db | Push notifications, reminders |
-| Activity Service | 5006 | activity_db | Activity feed, event aggregation |
-
-### Mono-repo Structure
-
-```
-frontend/                      # React + Expo app
-services/
-  gateway/                     # YARP API Gateway
-  auth-service/                # Each service contains:
-  habit-service/               #   src/   → .NET Minimal API project
-  social-service/              #   tests/ → xUnit + Testcontainers
-  challenge-service/           #   Dockerfile
-  notification-service/
-  activity-service/
-shared/
-  Winzy.Contracts/             # NATS event types, shared DTOs
-  Winzy.Common/                # NATS helpers, health check base, common middleware
-Winzy.sln
-docker-compose.yml
-```
-
-### NATS Events
-
-| Event | Publisher | Subscribers |
-|-------|----------|------------|
-| `user.registered` | Auth | Activity |
-| `user.deleted` | Auth | Habit, Social, Challenge, Notification, Activity |
-| `habit.created` | Habit | Activity |
-| `habit.completed` | Habit | Challenge, Notification, Activity |
-| `friend.request.sent` | Social | Notification |
-| `friend.request.accepted` | Social | Notification, Activity |
-| `challenge.created` | Challenge | Notification, Activity |
-| `challenge.completed` | Challenge | Notification, Activity |
 
 ## Non-Negotiables
 
@@ -105,15 +59,6 @@ docker compose build             # Rebuild after Dockerfile changes
 br ready                         # Find available work (beads)
 gh pr create                     # Create PR
 ```
-
-## Naming Conventions
-
-- **C#:** PascalCase (types, methods, properties), camelCase (locals, parameters)
-- **TypeScript:** camelCase (variables, functions), PascalCase (components, types)
-- **C# files:** PascalCase (`HabitService.cs`, `HabitEndpoints.cs`)
-- **TypeScript files:** kebab-case (`flame-visualization.tsx`, `use-habits.ts`)
-- **Directories:** kebab-case (`auth-service/`, `habit-service/`), except .NET project names under `shared/` which use PascalCase (`Winzy.Contracts/`, `Winzy.Common/`)
-- **NATS subjects:** dot-separated lowercase (`habit.completed`, `user.registered`)
 
 ## Git Workflow
 
