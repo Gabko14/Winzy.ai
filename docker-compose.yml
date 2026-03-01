@@ -1,0 +1,272 @@
+networks:
+  winzy-network:
+    driver: bridge
+
+volumes:
+  auth-db-data:
+  habit-db-data:
+  social-db-data:
+  challenge-db-data:
+  notification-db-data:
+  activity-db-data:
+
+services:
+  # --- Infrastructure ---
+
+  nats:
+    image: nats:2-alpine
+    command: --jetstream
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- Databases ---
+
+  auth-db:
+    image: postgres:17-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d auth_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  habit-db:
+    image: postgres:17-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: habit_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - habit-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d habit_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  social-db:
+    image: postgres:17-alpine
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: social_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - social-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d social_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  challenge-db:
+    image: postgres:17-alpine
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_DB: challenge_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - challenge-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d challenge_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  notification-db:
+    image: postgres:17-alpine
+    ports:
+      - "5437:5432"
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d notification_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  activity-db:
+    image: postgres:17-alpine
+    ports:
+      - "5438:5432"
+    environment:
+      POSTGRES_DB: activity_db
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - activity-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d activity_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- Application Services ---
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      ASPNETCORE_URLS: http://+:5000
+    depends_on:
+      auth-service:
+        condition: service_started
+      habit-service:
+        condition: service_started
+      social-service:
+        condition: service_started
+      challenge-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      activity-service:
+        condition: service_started
+    networks:
+      - winzy-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5001
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
+
+  habit-service:
+    build:
+      context: .
+      dockerfile: services/habit-service/Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=habit-db;Port=5432;Database=habit_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5002
+    depends_on:
+      habit-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
+
+  social-service:
+    build:
+      context: .
+      dockerfile: services/social-service/Dockerfile
+    ports:
+      - "5003:5003"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=social-db;Port=5432;Database=social_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5003
+    depends_on:
+      social-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
+
+  challenge-service:
+    build:
+      context: .
+      dockerfile: services/challenge-service/Dockerfile
+    ports:
+      - "5004:5004"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=challenge-db;Port=5432;Database=challenge_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5004
+    depends_on:
+      challenge-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "5005:5005"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=notification-db;Port=5432;Database=notification_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5005
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
+
+  activity-service:
+    build:
+      context: .
+      dockerfile: services/activity-service/Dockerfile
+    ports:
+      - "5006:5006"
+    environment:
+      ConnectionStrings__DefaultConnection: Host=activity-db;Port=5432;Database=activity_db;Username=winzy;Password=winzy
+      Nats__Url: nats://nats:4222
+      ASPNETCORE_URLS: http://+:5006
+    depends_on:
+      activity-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - winzy-network
