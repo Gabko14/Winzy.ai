@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-> Keep this file concise. Focus on project-specific decisions and non-obvious patterns.
+> Keep this file concise. Only non-obvious decisions and rules belong here.
+> Don't add conventions, naming patterns, or project structure — those are discoverable from the code in seconds.
 
 ## Project Overview
 
@@ -30,52 +31,6 @@ Winzy.ai is a habit tracker with an optional social layer. Users track daily hab
 | Testing | xUnit + Testcontainers (backend), Jest (frontend), Playwright (E2E) |
 | CI/CD | GitHub Actions (per-service workflows) |
 
-## Architecture
-
-7 services in a Docker Compose network. Frontend talks only to the Gateway. Services communicate via REST (sync) or NATS (async events).
-
-| Service | Port | DB | Responsibility |
-|---------|------|-----|---------------|
-| API Gateway (YARP) | 5000 | — | Routing, JWT validation, rate limiting, health aggregation |
-| Auth Service | 5001 | auth_db | Registration, login, JWT, profile management |
-| Habit Service | 5002 | habit_db | Habit CRUD, completions, consistency calculation |
-| Social Service | 5003 | social_db | Friendships, visibility rules |
-| Challenge Service | 5004 | challenge_db | Challenges, milestones, progress tracking |
-| Notification Service | 5005 | notification_db | Push notifications, reminders |
-| Activity Service | 5006 | activity_db | Activity feed, event aggregation |
-
-### Mono-repo Structure
-
-```
-frontend/                      # React + Expo app
-services/
-  gateway/                     # YARP API Gateway
-  auth-service/                # Each service contains:
-  habit-service/               #   src/   → .NET Minimal API project
-  social-service/              #   tests/ → xUnit + Testcontainers
-  challenge-service/           #   Dockerfile
-  notification-service/
-  activity-service/
-shared/
-  Winzy.Contracts/             # NATS event types, shared DTOs
-  Winzy.Common/                # NATS helpers, health check base, common middleware
-Winzy.sln
-docker-compose.yml
-```
-
-### NATS Events
-
-| Event | Publisher | Subscribers |
-|-------|----------|------------|
-| `user.registered` | Auth | Activity |
-| `user.deleted` | Auth | Habit, Social, Challenge, Notification, Activity |
-| `habit.created` | Habit | Activity |
-| `habit.completed` | Habit | Challenge, Notification, Activity |
-| `friend.request.sent` | Social | Notification |
-| `friend.request.accepted` | Social | Notification, Activity |
-| `challenge.created` | Challenge | Notification, Activity |
-| `challenge.completed` | Challenge | Notification, Activity |
-
 ## Non-Negotiables
 
 - **No code without tests.** Unit tests for business logic, integration tests for endpoints. 80%+ coverage per service.
@@ -84,28 +39,6 @@ docker-compose.yml
 - **Public endpoints are explicit.** Only these work without auth: `/auth/register`, `/auth/login`, `/auth/refresh`, `/habits/public/{username}`.
 - **Every service implements `GET /health`.** Returns service status, DB connectivity, and NATS connection status. Gateway aggregates all health checks.
 - **Services return results, UI shows feedback.** Backend services never format user-facing messages. They return structured data; the frontend decides how to present it.
-
-## Backend Conventions
-
-**Project structure per service:**
-```
-services/{name}/src/
-  Program.cs          — DI + endpoint mapping
-  Endpoints/          — Static classes with MapGroup
-  Entities/           — EF Core entity classes
-  Services/           — Business logic interfaces + implementations
-  Data/               — DbContext + migrations
-```
-
-**Key patterns:**
-- Minimal API endpoint groups — static classes returning `RouteGroupBuilder` via `MapGroup`
-- Result pattern for error handling — no exceptions for business logic flow
-- `user_id` from `X-User-Id` header (set by Gateway after JWT validation, never parsed from JWT in downstream services)
-- Standard response shape: `{ data: T }` on success, `{ error: string, details?: string[] }` on failure
-- File-scoped namespaces, primary constructors, `var` everywhere
-- Private fields: `_camelCase`, constants: `PascalCase`
-- Test naming: `MethodName_Scenario_ExpectedResult`
-- Async methods end with `Async` suffix (except middleware `InvokeAsync` and endpoint lambdas)
 
 ## Commands
 
@@ -127,15 +60,6 @@ docker compose build             # Rebuild after Dockerfile changes
 br ready                         # Find available work (beads)
 gh pr create                     # Create PR
 ```
-
-## Naming Conventions
-
-- **C#:** PascalCase (types, methods, properties), camelCase (locals, parameters)
-- **TypeScript:** camelCase (variables, functions), PascalCase (components, types)
-- **C# files:** PascalCase (`HabitService.cs`, `HabitEndpoints.cs`)
-- **TypeScript files:** kebab-case (`flame-visualization.tsx`, `use-habits.ts`)
-- **Directories:** kebab-case (`auth-service/`, `habit-service/`), except .NET project names under `shared/` which use PascalCase (`Winzy.Contracts/`, `Winzy.Common/`)
-- **NATS subjects:** dot-separated lowercase (`habit.completed`, `user.registered`)
 
 ## Git Workflow
 
