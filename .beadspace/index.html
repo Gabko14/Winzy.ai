@@ -640,7 +640,7 @@ function triageSuggestions() {
 function renderDashboard() {
   const open = ISSUES.filter(i => i.status !== 'closed');
   const openReady = open.filter(i => !blockedSet.has(i.id) && i.status === 'open');
-  const blocked = ISSUES.filter(i => blockedSet.has(i.id));
+  const blocked = ISSUES.filter(i => blockedSet.has(i.id) && i.status !== 'in_progress');
   const wip = ISSUES.filter(i => i.status === 'in_progress');
   const closed = ISSUES.filter(i => i.status === 'closed');
   const total = ISSUES.length;
