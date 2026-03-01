@@ -102,7 +102,7 @@ docker compose up -d             # Start all services
 docker compose build             # Rebuild after Dockerfile changes
 
 # Tools
-bd ready                         # Find available work (beads)
+br ready                         # Find available work (beads)
 gh pr create                     # Create PR
 ```
 
@@ -143,72 +143,50 @@ gh pr create                     # Create PR
 
 ## Agent Instructions
 
-This project uses **[beads](https://github.com/steveyegge/beads)** for issue tracking — a git-backed CLI issue tracker. Issues live in `.beads/` and are committed alongside code.
+This project uses **[br (beads_rust)](https://github.com/Dicklesworthstone/beads_rust)** for issue tracking — a local-first SQLite + JSONL issue tracker. Issues live in `.beads/` and are committed alongside code.
 
-**Setup:** `brew install beads && bd onboard` (macOS/Linux) or `winget install beads` (Windows)
+**Note:** `br` is non-invasive and never executes git commands automatically. After `br sync --flush-only`, you must manually run `git add .beads/ && git commit`.
 
-### Quick Reference
+**Install:** `curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh?$(date +%s)" | bash`
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
-
-### Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed):
-   - Frontend: `npm run lint && npx tsc --noEmit && npm test`
-   - Backend (each changed service): `dotnet format --verify-no-changes && dotnet build && dotnet test`
-   - If Dockerfiles changed: `docker compose build`
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-
-### Essential Commands
+### Commands
 
 ```bash
-bd ready              # Show issues ready to work (no blockers)
-bd list --status=open # All open issues
-bd show <id>          # Full issue details with dependencies
-bd create --title="..." --description="..." --type=task --priority=2
-bd update <id> --status=in_progress
-bd close <id> --reason="Completed"
-bd close <id1> <id2>  # Close multiple issues at once
-bd comments <id>                    # View comments on an issue
-bd comments add <id> "message"      # Add a progress note
-bd sync               # Commit and push changes
+br ready                                          # Find available work (no blockers)
+br list --status open --limit 0                   # All open issues
+br show <id>                                      # Full issue details with dependencies
+br create --title="..." --description="..." --type=task --priority=2
+br update <id> --claim                            # Claim work (sets in_progress)
+br close <id>                                     # Complete work
+br close <id> --reason "explanation"              # Close with reason
+br comments list <id>                             # View comments
+br comments add <id> "message"                    # Add progress note
+br dep add <issue> <depends-on>                   # Add dependency
+br sync --flush-only                              # Export to JSONL (then git add/commit manually)
 ```
 
-### Workflow Pattern
+### Workflow
 
-1. **Start**: Run `bd ready` to find actionable work
-2. **Claim**: Use `bd update <id> --status=in_progress`
+1. **Find work**: `br ready`
+2. **Claim**: `br update <id> --claim`
 3. **Work**: Implement the task
-4. **Complete**: Use `bd close <id>`
-5. **Sync**: Always run `bd sync` at session end
+4. **Complete**: `br close <id>`
+5. **End session** — MANDATORY before saying "done":
+   - File issues for remaining work
+   - Run quality gates (if code changed):
+     - Frontend: `npm run lint && npx tsc --noEmit && npm test`
+     - Backend: `dotnet format --verify-no-changes && dotnet build && dotnet test`
+     - If Dockerfiles changed: `docker compose build`
+   - Close finished issues, update in-progress items
+   - Push:
+     ```bash
+     br sync --flush-only
+     git add <code files> .beads/
+     git pull --rebase
+     git commit -m "..." && git push
+     ```
+
+Work is NOT complete until `git push` succeeds. NEVER say "ready to push when you are" — YOU must push.
 
 ### Core Rule
 
@@ -216,41 +194,8 @@ bd sync               # Commit and push changes
 
 ### Key Concepts
 
-- **Dependencies**: Issues can block other issues. `bd ready` shows only unblocked work.
-- **Epics**: Group related issues with `--parent`. Use `bd epic status` to see progress.
+- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
+- **Epics**: Group related issues with `--parent`. Use `br epic status` to see progress.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
 - **Types**: task, bug, feature, epic, chore, decision
-- **Blocking**: `bd dep add <issue> <depends-on>` to add dependencies
-
-### Session Protocol
-
-**Before ending any session, run this checklist:**
-
-```bash
-git status              # Check what changed
-git add <files>         # Stage code changes
-bd sync                 # Commit beads changes
-git commit -m "..."     # Commit code
-bd sync                 # Commit any new beads changes
-git push                # Push to remote
-bd doctor --fix --yes   # Fix any beads issues (locks, sync drift, etc.)
-```
-
-### Comments vs New Issues
-
-Use `bd comments add <id> "message"` for:
-- Progress updates on existing work
-- Decisions made, approaches tried
-- Blockers encountered
-- Notes for the next session
-
-Only create a new bead when it's a **genuinely separate piece of work**.
-
-### Best Practices
-
-- Check `bd ready` at session start to find available work
-- Update status as you work (in_progress → closed)
-- Create new issues with `bd create` when you discover tasks (description is required)
-- Use descriptive titles and set appropriate priority/type
-- Use `bd comments` to track progress on issues instead of creating unnecessary new beads
-- Always `bd sync` before ending session
+- **Comments vs new issues**: Use `br comments add <id> "message"` for progress updates, decisions, blockers, and notes. Only create a new issue for genuinely separate work.

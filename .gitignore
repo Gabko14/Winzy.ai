@@ -3,13 +3,12 @@
 # bv (beads viewer) local config and caches
 .bv/
 
-# beads local state
-.beads/.bv.lock
-.beads/.jsonl.lock
-.beads/dolt-access.lock
-.beads/dolt/
-.beads/export-state/
+# br (beads_rust) - SQLite database (JSONL is tracked, DB is not)
+.beads/*.db
+.beads/*.db-shm
+.beads/*.db-wal
+.beads/*.lock
 
-# Dolt database files (added by bd init)
-.dolt/
-*.db
+# Migration artifacts
+.beads-go-backup/
+.beads/backup/backup/
