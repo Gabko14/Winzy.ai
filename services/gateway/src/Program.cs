@@ -1,6 +1,7 @@
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Winzy.Gateway.Middleware;
 
@@ -87,8 +88,16 @@ builder.Services.AddHealthChecks()
     .AddUrlGroup(new Uri($"{notificationUrl}/health"), "notification-service", tags: ["downstream"])
     .AddUrlGroup(new Uri($"{activityUrl}/health"), "activity-service", tags: ["downstream"]);
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseCors();
 app.UseRateLimiter();
 app.UseMiddleware<InternalRouteBlockMiddleware>();

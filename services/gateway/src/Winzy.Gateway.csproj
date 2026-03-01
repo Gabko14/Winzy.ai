@@ -6,8 +6,4 @@
     <PackageReference Include="Yarp.ReverseProxy" Version="2.*" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../../../shared/Winzy.Common/Winzy.Common.csproj" />
-  </ItemGroup>
-
 </Project>
