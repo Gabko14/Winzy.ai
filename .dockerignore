@@ -1,0 +1,14 @@
+.git
+**/bin/
+**/obj/
+**/node_modules/
+.beads/*.db
+.beads/*.db-shm
+.beads/*.db-wal
+frontend/
+docs/
+**/*.md
+.DS_Store
+.vs/
+*.user
+*.suo
