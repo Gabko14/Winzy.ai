@@ -13,7 +13,7 @@ namespace Winzy.Common.Messaging;
 public sealed class JetStreamSetup(INatsConnection connection, ILogger<JetStreamSetup> logger)
     : IHostedService
 {
-    private static readonly StreamConfig[] Streams =
+    private static readonly StreamConfig[] _streams =
     [
         new() { Name = "USERS", Subjects = ["user.>"] },
         new() { Name = "HABITS", Subjects = ["habit.>"] },
@@ -25,7 +25,7 @@ public sealed class JetStreamSetup(INatsConnection connection, ILogger<JetStream
     {
         var js = new NatsJSContext(connection);
 
-        foreach (var config in Streams)
+        foreach (var config in _streams)
         {
             await js.CreateOrUpdateStreamAsync(config, cancellationToken);
             logger.LogInformation("JetStream stream {Stream} ready", config.Name);
