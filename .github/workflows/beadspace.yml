@@ -35,18 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate issues.json
+      - name: Generate data files
         run: |
           if [ ! -f .beads/issues.jsonl ]; then
             echo "No .beads/issues.jsonl found"
             exit 1
           fi
-          # Convert JSONL to JSON array — reads only from checked-in repo files
+          # Convert JSONL files to JSON arrays — reads only from checked-in repo files
           python3 -c "
-          import json
-          issues = [json.loads(l) for l in open('.beads/issues.jsonl') if l.strip()]
-          json.dump(issues, open('.beadspace/issues.json', 'w'))
-          print(f'{len(issues)} issues exported')
+          import json, os
+
+          def convert(src, dst):
+              if not os.path.exists(src):
+                  json.dump([], open(dst, 'w'))
+                  print(f'{src} not found, wrote empty array to {dst}')
+                  return
+              data = [json.loads(l) for l in open(src) if l.strip()]
+              json.dump(data, open(dst, 'w'))
+              print(f'{len(data)} records: {src} -> {dst}')
+
+          convert('.beads/issues.jsonl', '.beadspace/issues.json')
+          convert('.beads/backup/dependencies.jsonl', '.beadspace/deps.json')
+          convert('.beads/backup/events.jsonl', '.beadspace/events.json')
           "
 
       - name: Setup Pages
