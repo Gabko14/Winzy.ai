@@ -234,7 +234,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .no-cycles{color:var(--status-closed);font-size:0.75rem;padding:0.3rem 0}
 
 /* ═══ Drawer ═══ */
-.drawer{pointer-events:none;z-index:200}
+.drawer{position:fixed;inset:0;pointer-events:none;z-index:200}
 .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(3px);opacity:0;transition:opacity 0.3s;pointer-events:none}
 .drawer-panel{position:fixed;top:0;right:0;bottom:0;width:var(--drawer-w);max-width:90vw;background:var(--bg-surface);border-left:1px solid var(--border);transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);overflow-y:auto;pointer-events:auto}
 .drawer.open{pointer-events:auto}
@@ -441,9 +441,8 @@ function computeMetrics() {
     ids.forEach(id => {
       let sum = 0;
       (adjIn[id] || []).forEach(e => {
-        const srcOut = (adjIn[e.from] || []).length || 1; // out-degree of source in reverse
-        // Actually: the nodes that point TO id via blocking. e.from depends on id (adjIn stores {from: dependent})
-        // For PageRank: importance flows from dependents to their dependencies
+        // e.from depends on id (adjIn stores {from: dependent})
+        // PageRank: importance flows from dependents to their dependencies
         const src = e.from;
         const srcOutDeg = (adjOut[src] || []).length || 1;
         sum += pr[src] / srcOutDeg;
@@ -515,13 +514,15 @@ function computeMetrics() {
 
   // Impact score
   const maxInDeg = Math.max(...Object.values(inDeg), 1);
+  const maxOutDeg = Math.max(...Object.values(outDeg), 1);
   const maxPr = Math.max(...Object.values(pr), 0.001);
   const impact = {};
   ids.forEach(id => {
     const issue = issueMap[id];
     const staleness = clamp(daysAgo(issue.updated_at || issue.created_at) / 30, 0, 1);
     const prioBoost = clamp(1 - (issue.priority ?? 2) / 4, 0, 1);
-    impact[id] = 0.30 * (pr[id] / maxPr) + 0.30 * (inDeg[id] / maxInDeg) + 0.20 * (inDeg[id] / maxInDeg) + 0.10 * staleness + 0.10 * prioBoost;
+    // 0.30 PageRank + 0.30 blocker-ratio (things this blocks) + 0.20 dep-complexity (things blocking this) + 0.10 staleness + 0.10 priority
+    impact[id] = 0.30 * (pr[id] / maxPr) + 0.30 * (outDeg[id] / maxOutDeg) + 0.20 * (inDeg[id] / maxInDeg) + 0.10 * staleness + 0.10 * prioBoost;
   });
 
   const edgeCount = DEPS.filter(d => d.type === 'blocks').length;
@@ -833,6 +834,7 @@ class ForceGraph {
       n.singleton = true;
     });
     this.components = components;
+    this.activeNodes = nodes.filter(n => !n.singleton); // Cache for tick()
     this.alpha = 1; this.running = true; this.showLabels = true;
     this.ox = 0; this.oy = 0; this.scale = 1;
     this.drag = null; this.hover = null; this.pan = null;
@@ -864,7 +866,7 @@ class ForceGraph {
 
   tick() {
     if (this.alpha < 0.005) return;
-    const active = this.nodes.filter(n => !n.singleton); // Only simulate non-singletons
+    const active = this.activeNodes;
     const k = Math.sqrt((this.w * 0.82) * this.h / Math.max(active.length, 1)) * 0.7;
     const cx = this.w * 0.41, cy = this.h / 2; // Center of main area
 
@@ -1157,8 +1159,8 @@ function renderEpicsView() {
 // ─── Render: Insights ────────────────────────────────────────────────────────
 function renderInsightsView() {
   const m = metrics;
-  // Top bottlenecks (highest in-degree among non-closed)
-  const bottlenecks = ISSUES.filter(i => i.status !== 'closed').map(i => ({ id: i.id, title: i.title, val: m.inDeg[i.id] || 0 })).sort((a, b) => b.val - a.val).slice(0, 6);
+  // Top bottlenecks (issues that block the most other issues)
+  const bottlenecks = ISSUES.filter(i => i.status !== 'closed').map(i => ({ id: i.id, title: i.title, val: m.outDeg[i.id] || 0 })).sort((a, b) => b.val - a.val).filter(b => b.val > 0).slice(0, 6);
 
   // Impact ranking (top non-closed)
   const impactList = ISSUES.filter(i => i.status !== 'closed').map(i => ({ id: i.id, title: i.title, val: m.impact[i.id] || 0 })).sort((a, b) => b.val - a.val).slice(0, 8);
@@ -1269,8 +1271,8 @@ function openDrawer(issueId) {
   body += `<div class="drawer-section"><div class="drawer-section-title">Metrics</div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">Impact Score</span><span class="drawer-metric-val">${((m.impact[i.id] || 0) * 100).toFixed(0)}%</span></div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">PageRank</span><span class="drawer-metric-val">${(m.pr[i.id] || 0).toFixed(4)}</span></div>
-    <div class="drawer-metric-row"><span class="drawer-metric-label">In-degree (blocks)</span><span class="drawer-metric-val">${m.inDeg[i.id] || 0}</span></div>
-    <div class="drawer-metric-row"><span class="drawer-metric-label">Out-degree (deps)</span><span class="drawer-metric-val">${m.outDeg[i.id] || 0}</span></div>
+    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocked by</span><span class="drawer-metric-val">${m.inDeg[i.id] || 0}</span></div>
+    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocks</span><span class="drawer-metric-val">${m.outDeg[i.id] || 0}</span></div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">On critical path</span><span class="drawer-metric-val">${m.cpSet?.has(i.id) ? 'Yes' : 'No'}</span></div>
   </div>`;
 
