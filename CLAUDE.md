@@ -85,6 +85,28 @@ docker-compose.yml
 - **Every service implements `GET /health`.** Returns service status, DB connectivity, and NATS connection status. Gateway aggregates all health checks.
 - **Services return results, UI shows feedback.** Backend services never format user-facing messages. They return structured data; the frontend decides how to present it.
 
+## Backend Conventions
+
+**Project structure per service:**
+```
+services/{name}/src/
+  Program.cs          — DI + endpoint mapping
+  Endpoints/          — Static classes with MapGroup
+  Entities/           — EF Core entity classes
+  Services/           — Business logic interfaces + implementations
+  Data/               — DbContext + migrations
+```
+
+**Key patterns:**
+- Minimal API endpoint groups — static classes returning `RouteGroupBuilder` via `MapGroup`
+- Result pattern for error handling — no exceptions for business logic flow
+- `user_id` from `X-User-Id` header (set by Gateway after JWT validation, never parsed from JWT in downstream services)
+- Standard response shape: `{ data: T }` on success, `{ error: string, details?: string[] }` on failure
+- File-scoped namespaces, primary constructors, `var` everywhere
+- Private fields: `_camelCase`, constants: `PascalCase`
+- Test naming: `MethodName_Scenario_ExpectedResult`
+- Async methods end with `Async` suffix (except middleware `InvokeAsync` and endpoint lambdas)
+
 ## Commands
 
 ```bash
