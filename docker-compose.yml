@@ -15,7 +15,7 @@ services:
 
   nats:
     image: nats:2-alpine
-    command: --jetstream
+    command: --jetstream -m 8222
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -144,9 +144,15 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     ports:
-      - "5000:5000"
+      - "5050:5000"
     environment:
       ASPNETCORE_URLS: http://+:5000
+      ReverseProxy__Clusters__auth-cluster__Destinations__destination1__Address: http://auth-service:5001
+      ReverseProxy__Clusters__habit-cluster__Destinations__destination1__Address: http://habit-service:5002
+      ReverseProxy__Clusters__social-cluster__Destinations__destination1__Address: http://social-service:5003
+      ReverseProxy__Clusters__challenge-cluster__Destinations__destination1__Address: http://challenge-service:5004
+      ReverseProxy__Clusters__notification-cluster__Destinations__destination1__Address: http://notification-service:5005
+      ReverseProxy__Clusters__activity-cluster__Destinations__destination1__Address: http://activity-service:5006
     depends_on:
       auth-service:
         condition: service_started

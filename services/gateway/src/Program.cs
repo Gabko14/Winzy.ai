@@ -36,7 +36,7 @@ builder.Services.AddAuthorization(options =>
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddPolicy("default", context =>
+    options.AddPolicy("standard", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
