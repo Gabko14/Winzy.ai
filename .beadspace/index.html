@@ -266,6 +266,45 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .kbd-key{font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--bg-elevated);border:1px solid var(--border);padding:0.1rem 0.35rem;border-radius:3px;color:var(--text-secondary)}
 .kbd-desc{color:var(--text-muted)}
 
+/* ═══ Selected Row ═══ */
+.issues-table tr.selected td{background:var(--accent-dim);outline:1px solid var(--accent);outline-offset:-1px}
+
+/* ═══ Cmd+K Palette ═══ */
+.palette{position:fixed;inset:0;z-index:350;display:none;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px)}
+.palette.open{display:flex}
+.palette-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px)}
+.palette-box{position:relative;width:480px;max-width:90vw;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,0.4);overflow:hidden}
+.palette-input{width:100%;padding:0.75rem 1rem;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none}
+.palette-input::placeholder{color:var(--text-muted)}
+.palette-results{max-height:320px;overflow-y:auto;padding:0.25rem 0}
+.palette-item{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 1rem;cursor:pointer;transition:background 0.1s;font-size:0.8rem}
+.palette-item:hover,.palette-item.active{background:var(--bg-hover)}
+.palette-item.active{background:var(--accent-dim)}
+.palette-item-id{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--text-muted);flex-shrink:0;width:90px}
+.palette-item-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item-type{font-size:0.62rem;color:var(--text-muted);flex-shrink:0}
+.palette-empty{padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.78rem}
+
+/* ═══ Graph Search & Filters ═══ */
+.graph-search{background:var(--bg-surface);border:1px solid var(--border);border-radius:5px;padding:0.25rem 0.5rem;color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:0.68rem;outline:none;width:130px;transition:border-color 0.15s;backdrop-filter:blur(8px)}
+.graph-search:focus{border-color:var(--accent);width:180px}
+.graph-search::placeholder{color:var(--text-muted)}
+.graph-status-filters{position:absolute;top:12px;right:12px;display:flex;gap:3px;z-index:10}
+.graph-status-btn{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-muted);font-size:0.6rem;padding:0.2rem 0.4rem;border-radius:4px;cursor:pointer;transition:all 0.15s;backdrop-filter:blur(8px);display:flex;align-items:center;gap:0.25rem}
+.graph-status-btn:hover{border-color:var(--border-bright);color:var(--text-secondary)}
+.graph-status-btn.active{opacity:1}
+.graph-status-btn:not(.active){opacity:0.4}
+.graph-status-dot{width:6px;height:6px;border-radius:50%}
+
+/* ═══ Drawer Comments ═══ */
+.drawer-comment{padding:0.5rem 0;border-bottom:1px solid var(--border)}
+.drawer-comment:last-child{border-bottom:none}
+.drawer-comment-meta{font-size:0.65rem;color:var(--text-muted);margin-bottom:0.2rem;font-family:'JetBrains Mono',monospace}
+.drawer-comment-body{font-size:0.78rem;color:var(--text-secondary);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+
+/* ═══ Cascade Badge ═══ */
+.cascade-badge{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.65rem;color:var(--status-closed);background:rgba(34,197,94,0.08);padding:0.1rem 0.4rem;border-radius:3px;margin-left:0.25rem}
+
 /* ═══ Empty & Loading ═══ */
 .empty-state{padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.78rem}
 .loading{display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:0.75rem;position:relative;z-index:1}
@@ -313,6 +352,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <h3>Keyboard Shortcuts</h3>
     <div class="kbd-row"><span class="kbd-key">1-5</span><span class="kbd-desc">Switch views</span></div>
     <div class="kbd-row"><span class="kbd-key">/</span><span class="kbd-desc">Focus search</span></div>
+    <div class="kbd-row"><span class="kbd-key">&#8984;K</span><span class="kbd-desc">Quick jump to issue</span></div>
     <div class="kbd-row"><span class="kbd-key">j / k</span><span class="kbd-desc">Next / previous issue</span></div>
     <div class="kbd-row"><span class="kbd-key">Enter</span><span class="kbd-desc">Open selected issue</span></div>
     <div class="kbd-row"><span class="kbd-key">Esc</span><span class="kbd-desc">Close drawer / overlay</span></div>
@@ -320,6 +360,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <div class="kbd-row"><span class="kbd-key">f</span><span class="kbd-desc">Fit graph to view</span></div>
     <div class="kbd-row"><span class="kbd-key">l</span><span class="kbd-desc">Toggle graph labels</span></div>
     <div class="kbd-row"><span class="kbd-key">?</span><span class="kbd-desc">Show / hide this help</span></div>
+  </div>
+</div>
+
+<div class="palette" id="palette">
+  <div class="palette-backdrop" id="palette-backdrop"></div>
+  <div class="palette-box">
+    <input type="text" class="palette-input" id="palette-input" placeholder="Jump to issue... (type to search)" autocomplete="off">
+    <div class="palette-results" id="palette-results"></div>
   </div>
 </div>
 
@@ -530,7 +578,40 @@ function computeMetrics() {
   const density = nodeCount > 1 ? edgeCount / (nodeCount * (nodeCount - 1)) : 0;
   const avgDeg = nodeCount > 0 ? (Object.values(inDeg).reduce((a, b) => a + b, 0) + Object.values(outDeg).reduce((a, b) => a + b, 0)) / nodeCount : 0;
 
-  metrics = { pr, inDeg, outDeg, impact, criticalPath, cpSet, hasCycle, components, density, avgDeg, edgeCount, nodeCount };
+  // Cascade unblock: for each open issue, if closed how many new issues become unblocked?
+  const cascadeUnblock = {};
+  ids.forEach(id => {
+    const issue = issueMap[id];
+    if (issue.status === 'closed') { cascadeUnblock[id] = 0; return; }
+    let count = 0;
+    // For each issue that depends on this (adjIn = things that have this as a blocker)
+    (adjIn[id] || []).forEach(e => {
+      const dependent = issueMap[e.from];
+      if (!dependent || dependent.status === 'closed') return;
+      // Check if ALL other blockers of this dependent are already closed
+      const otherBlockers = (adjOut[e.from] || []).filter(d => d.to !== id);
+      const allOthersClosed = otherBlockers.every(d => { const b = issueMap[d.to]; return b && b.status === 'closed'; });
+      if (allOthersClosed) count++;
+    });
+    cascadeUnblock[id] = count;
+  });
+
+  // Blocked chain depth: longest chain of open blockers leading to each issue
+  const chainDepth = {};
+  function getChainDepth(id, visited = new Set()) {
+    if (chainDepth[id] !== undefined) return chainDepth[id];
+    if (visited.has(id)) return 0;
+    visited.add(id);
+    const blockers = (adjOut[id] || []).map(d => issueMap[d.to]).filter(b => b && b.status !== 'closed');
+    if (!blockers.length) { chainDepth[id] = 0; return 0; }
+    let max = 0;
+    blockers.forEach(b => { max = Math.max(max, 1 + getChainDepth(b.id, new Set(visited))); });
+    chainDepth[id] = max;
+    return max;
+  }
+  ids.forEach(id => getChainDepth(id));
+
+  metrics = { pr, inDeg, outDeg, impact, criticalPath, cpSet, hasCycle, components, density, avgDeg, edgeCount, nodeCount, cascadeUnblock, chainDepth };
 }
 
 // ─── Triage Engine ───────────────────────────────────────────────────────────
@@ -541,9 +622,11 @@ function triageSuggestions() {
     const age = daysAgo(i.created_at);
     const p = i.priority ?? 2;
     const imp = metrics.impact[i.id] || 0;
+    const cascade = metrics.cascadeUnblock[i.id] || 0;
+    if (cascade >= 2) sug.push({ id: i.id, title: i.title, reason: `Close → ${cascade} issues unblock`, severity: 'alert', score: imp + 0.2 });
     if (i.issue_type === 'bug' && p >= 3) sug.push({ id: i.id, title: i.title, reason: `Bug at ${pShort(p)} — promote?`, severity: 'warning', score: imp });
     if (p <= 1 && age > 3) sug.push({ id: i.id, title: i.title, reason: `${pShort(p)} open ${age}d — needs attention`, severity: 'alert', score: imp });
-    if ((metrics.inDeg[i.id] || 0) >= 3 && i.status !== 'closed') sug.push({ id: i.id, title: i.title, reason: `Blocks ${metrics.inDeg[i.id]} tasks — high impact`, severity: 'alert', score: imp });
+    if ((metrics.outDeg[i.id] || 0) >= 3 && i.status !== 'closed') sug.push({ id: i.id, title: i.title, reason: `Blocks ${metrics.outDeg[i.id]} tasks — high impact`, severity: 'alert', score: imp });
     if (age > 7 && p < 4 && i.issue_type !== 'epic') sug.push({ id: i.id, title: i.title, reason: `Open ${age}d at ${pShort(p)} — stale?`, severity: 'info', score: imp });
   });
   // Dedupe by ID, keep highest severity
@@ -749,6 +832,7 @@ function refreshIssuesTable() {
     return (va - vb) * STATE.sort.dir;
   });
 
+  STATE.selectedIdx = -1; // Reset selection on re-render
   const tbody = document.getElementById('issues-tbody');
   if (!tbody) return;
   tbody.innerHTML = '';
@@ -924,11 +1008,27 @@ class ForceGraph {
       });
     }
 
+    // Search matching
+    const q = this.searchQuery || '';
+    const searchSet = new Set();
+    if (q) {
+      this.nodes.forEach(n => {
+        const issue = issueMap[n.id];
+        if (n.id.includes(q) || (issue?.title || '').toLowerCase().includes(q)) searchSet.add(n.id);
+      });
+    }
+
+    // Status filter
+    const hidden = this.hiddenStatuses || new Set();
+    const visibleNodes = new Set();
+    this.nodes.forEach(n => { if (!hidden.has(n.status)) visibleNodes.add(n.id); });
+
     // Edges
     this.edges.forEach(e => {
       const s = this.nodeMap[e.from], t = this.nodeMap[e.to];
       if (!s || !t) return;
-      const dimmed = this.hover && !hoverSet.has(e.from) && !hoverSet.has(e.to);
+      if (!visibleNodes.has(s.id) || !visibleNodes.has(t.id)) return;
+      const dimmed = (this.hover && !hoverSet.has(e.from) && !hoverSet.has(e.to)) || (q && !searchSet.has(e.from) && !searchSet.has(e.to));
       ctx.beginPath();
       ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y);
       if (e.type === 'parent-child') { ctx.setLineDash([3, 3]); ctx.strokeStyle = dimmed ? 'rgba(99,102,241,0.05)' : 'rgba(99,102,241,0.25)'; ctx.lineWidth = 1; }
@@ -950,11 +1050,21 @@ class ForceGraph {
 
     // Nodes
     this.nodes.forEach(n => {
-      const dimmed = this.hover && !hoverSet.has(n.id);
-      ctx.globalAlpha = dimmed ? 0.12 : 1;
+      if (!visibleNodes.has(n.id)) return;
+      const dimmedHover = this.hover && !hoverSet.has(n.id);
+      const dimmedSearch = q && !searchSet.has(n.id);
+      const dimmed = dimmedHover || dimmedSearch;
+      const highlighted = q && searchSet.has(n.id);
+      ctx.globalAlpha = dimmed ? 0.1 : 1;
+
+      // Glow for search matches
+      if (highlighted && !dimmed) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(99,102,241,0.25)'; ctx.fill();
+      }
 
       // Glow for critical path nodes
-      if (n.critical && !dimmed) {
+      if (n.critical && !dimmed && !highlighted) {
         ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 4, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(239,68,68,0.15)'; ctx.fill();
       }
@@ -963,16 +1073,17 @@ class ForceGraph {
       ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fillStyle = n.color; ctx.fill();
 
-      // Always draw outline for visibility
-      if (n === this.hover) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; }
+      // Outline
+      if (highlighted) { ctx.strokeStyle = '#818cf8'; ctx.lineWidth = 2.5; }
+      else if (n === this.hover) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; }
       else if (n.critical) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; }
       else { ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; }
       ctx.stroke();
 
       // Label
       if (this.showLabels && this.scale > 0.4) {
-        ctx.font = '9px "DM Sans"';
-        ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.75)';
+        ctx.font = highlighted ? 'bold 10px "DM Sans"' : '9px "DM Sans"';
+        ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.06)' : highlighted ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.75)';
         ctx.textAlign = 'center';
         ctx.fillText(n.shortTitle, n.x, n.y + n.r + 12);
       }
@@ -1066,9 +1177,16 @@ function renderGraphView() {
     <div class="graph-wrap">
       <canvas class="graph-canvas" id="graph-canvas"></canvas>
       <div class="graph-controls">
+        <input type="text" class="graph-search" id="graph-search" placeholder="Search nodes..." autocomplete="off">
         <button class="graph-btn" id="graph-fit" title="Fit to view (F)">Fit</button>
         <button class="graph-btn active" id="graph-labels" title="Toggle labels (L)">Labels</button>
         <button class="graph-btn" id="graph-reheat" title="Reheat simulation">Reheat</button>
+      </div>
+      <div class="graph-status-filters" id="graph-status-filters">
+        <button class="graph-status-btn active" data-status="open"><span class="graph-status-dot" style="background:var(--status-open)"></span>Open</button>
+        <button class="graph-status-btn active" data-status="blocked"><span class="graph-status-dot" style="background:var(--status-blocked)"></span>Blocked</button>
+        <button class="graph-status-btn active" data-status="in_progress"><span class="graph-status-dot" style="background:var(--status-wip)"></span>WIP</button>
+        <button class="graph-status-btn active" data-status="closed"><span class="graph-status-dot" style="background:var(--status-closed)"></span>Closed</button>
       </div>
       <div class="graph-legend">
         <div class="graph-legend-item"><div class="graph-legend-dot" style="background:var(--status-open)"></div>Open</div>
@@ -1116,6 +1234,27 @@ function initForceGraph() {
     if (!forceGraph.running) forceGraph.draw();
   });
   document.getElementById('graph-reheat')?.addEventListener('click', () => { forceGraph.alpha = 1; if (!forceGraph.running) forceGraph.resume(); });
+
+  // Graph search
+  const graphSearchEl = document.getElementById('graph-search');
+  graphSearchEl?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    forceGraph.searchQuery = q;
+    if (!forceGraph.running) forceGraph.draw();
+  });
+
+  // Graph status filters
+  const hiddenStatuses = new Set();
+  document.querySelectorAll('.graph-status-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const s = this.dataset.status;
+      this.classList.toggle('active');
+      if (hiddenStatuses.has(s)) hiddenStatuses.delete(s); else hiddenStatuses.add(s);
+      forceGraph.hiddenStatuses = hiddenStatuses;
+      if (!forceGraph.running) forceGraph.draw();
+    });
+  });
+  forceGraph.hiddenStatuses = hiddenStatuses;
 }
 
 // ─── Render: Epics ───────────────────────────────────────────────────────────
@@ -1198,6 +1337,18 @@ function renderInsightsView() {
   if (!bottlenecks.length) html += '<div class="empty-state">No bottlenecks</div>';
   html += '</div></div>';
 
+  // Cascade Unblock Analysis
+  const cascadeList = ISSUES.filter(i => i.status !== 'closed' && (m.cascadeUnblock[i.id] || 0) > 0)
+    .map(i => ({ id: i.id, title: i.title, val: m.cascadeUnblock[i.id] }))
+    .sort((a, b) => b.val - a.val).slice(0, 8);
+  html += `<div class="insight-card"><div class="insight-hd">Cascade Unblock</div><div class="insight-body">`;
+  if (cascadeList.length) {
+    cascadeList.forEach((b, i) => {
+      html += `<div class="insight-row"><span class="insight-rank">${i + 1}.</span><span class="insight-label" title="${esc(b.title)}">${esc(b.title)}</span><span class="insight-val">close → ${b.val} unblock</span></div>`;
+    });
+  } else html += '<div class="empty-state">No cascade unblocks available</div>';
+  html += '</div></div>';
+
   // Impact Ranking
   html += `<div class="insight-card"><div class="insight-hd">Impact Ranking</div><div class="insight-body">`;
   impactList.forEach((b, i) => {
@@ -1241,7 +1392,7 @@ function openDrawer(issueId) {
     body += `<div class="drawer-section"><div class="drawer-section-title">Blocked By (${blockers.length})</div>`;
     blockers.forEach(b => {
       const bs = effectiveStatus(b);
-      const dotColor = bs === 'closed' ? 'var(--status-closed)' : bs === 'blocked' ? 'var(--status-blocked)' : 'var(--status-open)';
+      const dotColor = bs === 'closed' ? 'var(--status-closed)' : bs === 'in_progress' ? 'var(--status-wip)' : bs === 'blocked' ? 'var(--status-blocked)' : 'var(--status-open)';
       body += `<div class="drawer-dep-item"><div class="drawer-dep-status" style="background:${dotColor}"></div><span class="drawer-dep-id">${esc(b.id)}</span><span class="drawer-dep-title">${esc(b.title)}</span></div>`;
     });
     body += '</div>';
@@ -1253,7 +1404,7 @@ function openDrawer(issueId) {
     body += `<div class="drawer-section"><div class="drawer-section-title">Blocks (${blocking.length})</div>`;
     blocking.forEach(b => {
       const bs = effectiveStatus(b);
-      const dotColor = bs === 'closed' ? 'var(--status-closed)' : bs === 'blocked' ? 'var(--status-blocked)' : 'var(--status-open)';
+      const dotColor = bs === 'closed' ? 'var(--status-closed)' : bs === 'in_progress' ? 'var(--status-wip)' : bs === 'blocked' ? 'var(--status-blocked)' : 'var(--status-open)';
       body += `<div class="drawer-dep-item"><div class="drawer-dep-status" style="background:${dotColor}"></div><span class="drawer-dep-id">${esc(b.id)}</span><span class="drawer-dep-title">${esc(b.title)}</span></div>`;
     });
     body += '</div>';
@@ -1267,12 +1418,29 @@ function openDrawer(issueId) {
     }
   }
 
+  // Comments
+  const comments = i.comments || [];
+  if (comments.length) {
+    body += `<div class="drawer-section"><div class="drawer-section-title">Comments (${comments.length})</div>`;
+    comments.forEach(c => {
+      const cDate = c.created_at ? new Date(c.created_at).toLocaleDateString() : '';
+      const cAuthor = c.author || c.created_by || '';
+      body += `<div class="drawer-comment">
+        <div class="drawer-comment-meta">${esc(cAuthor)}${cAuthor && cDate ? ' · ' : ''}${esc(cDate)}</div>
+        <div class="drawer-comment-body">${esc(c.body || c.text || c.content || '')}</div>
+      </div>`;
+    });
+    body += '</div>';
+  }
+
   // Metrics
+  const cascade = m.cascadeUnblock[i.id] || 0;
+  const chain = m.chainDepth[i.id] || 0;
   body += `<div class="drawer-section"><div class="drawer-section-title">Metrics</div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">Impact Score</span><span class="drawer-metric-val">${((m.impact[i.id] || 0) * 100).toFixed(0)}%</span></div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">PageRank</span><span class="drawer-metric-val">${(m.pr[i.id] || 0).toFixed(4)}</span></div>
-    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocked by</span><span class="drawer-metric-val">${m.inDeg[i.id] || 0}</span></div>
-    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocks</span><span class="drawer-metric-val">${m.outDeg[i.id] || 0}</span></div>
+    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocked by</span><span class="drawer-metric-val">${m.inDeg[i.id] || 0}${chain > 0 ? ` (chain depth: ${chain})` : ''}</span></div>
+    <div class="drawer-metric-row"><span class="drawer-metric-label">Blocks</span><span class="drawer-metric-val">${m.outDeg[i.id] || 0}${cascade > 0 ? ` (close → ${cascade} unblock)` : ''}</span></div>
     <div class="drawer-metric-row"><span class="drawer-metric-label">On critical path</span><span class="drawer-metric-val">${m.cpSet?.has(i.id) ? 'Yes' : 'No'}</span></div>
   </div>`;
 
@@ -1280,9 +1448,23 @@ function openDrawer(issueId) {
   document.getElementById('drawer-body').innerHTML = body;
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-close-btn')?.addEventListener('click', closeDrawer);
+  // Deep-link
+  history.replaceState(null, '', '#issue/' + issueId);
+
+  // Bind clickable dep items in drawer to open their issues
+  document.querySelectorAll('.drawer-dep-item').forEach(el => {
+    const depId = el.querySelector('.drawer-dep-id')?.textContent;
+    if (depId && issueMap[norm(depId)]) {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => openDrawer(norm(depId)));
+    }
+  });
 }
 
-function closeDrawer() { document.getElementById('drawer').classList.remove('open'); }
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  history.replaceState(null, '', '#' + STATE.view);
+}
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
 function navigateTo(view) {
@@ -1299,6 +1481,15 @@ function navigateTo(view) {
 
 function parseHash() {
   const h = window.location.hash.slice(1) || 'dashboard';
+  // Deep-link: #issue/winzy.ai-xxx opens the issue drawer
+  if (h.startsWith('issue/')) {
+    const id = norm(h.slice(6));
+    if (issueMap[id]) {
+      navigateTo('issues');
+      setTimeout(() => openDrawer(id), 100);
+      return;
+    }
+  }
   const valid = ['dashboard', 'issues', 'graph', 'epics', 'insights'];
   navigateTo(valid.includes(h) ? h : 'dashboard');
 }
@@ -1319,16 +1510,67 @@ function initTheme() {
 }
 
 // ─── Keyboard Shortcuts ──────────────────────────────────────────────────────
+function getVisibleRows() {
+  return Array.from(document.querySelectorAll('#issues-tbody tr'));
+}
+
+function selectRow(idx) {
+  const rows = getVisibleRows();
+  rows.forEach(r => r.classList.remove('selected'));
+  if (idx >= 0 && idx < rows.length) {
+    STATE.selectedIdx = idx;
+    rows[idx].classList.add('selected');
+    rows[idx].scrollIntoView({ block: 'nearest' });
+  }
+}
+
 function initKeyboard() {
   document.addEventListener('keydown', e => {
+    // Cmd+K / Ctrl+K — quick jump palette (works even in inputs)
+    if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      openPalette();
+      return;
+    }
+
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
       if (e.key === 'Escape') e.target.blur();
       return;
     }
+
     const views = ['dashboard', 'issues', 'graph', 'epics', 'insights'];
     if (e.key >= '1' && e.key <= '5') { navigateTo(views[+e.key - 1]); return; }
     if (e.key === '/') { e.preventDefault(); navigateTo('issues'); setTimeout(() => document.getElementById('search')?.focus(), 50); return; }
-    if (e.key === 'Escape') { closeDrawer(); document.getElementById('kbd-overlay').classList.remove('open'); return; }
+    if (e.key === 'Escape') {
+      closePalette();
+      closeDrawer();
+      document.getElementById('kbd-overlay').classList.remove('open');
+      return;
+    }
+    // j/k navigation (issues table view)
+    if (e.key === 'j' && STATE.view === 'issues') {
+      const rows = getVisibleRows();
+      if (!rows.length) return;
+      const next = STATE.selectedIdx < rows.length - 1 ? STATE.selectedIdx + 1 : 0;
+      selectRow(next);
+      return;
+    }
+    if (e.key === 'k' && STATE.view === 'issues') {
+      const rows = getVisibleRows();
+      if (!rows.length) return;
+      const prev = STATE.selectedIdx <= 0 ? rows.length - 1 : STATE.selectedIdx - 1;
+      selectRow(prev);
+      return;
+    }
+    // Enter — open selected issue
+    if (e.key === 'Enter' && STATE.view === 'issues') {
+      const rows = getVisibleRows();
+      if (STATE.selectedIdx >= 0 && STATE.selectedIdx < rows.length) {
+        const id = rows[STATE.selectedIdx].dataset.id;
+        if (id) openDrawer(id);
+      }
+      return;
+    }
     if (e.key === 't') {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
@@ -1344,6 +1586,92 @@ function initKeyboard() {
       if (!forceGraph.running) forceGraph.draw();
     }
   });
+}
+
+// ─── Cmd+K Palette ───────────────────────────────────────────────────────────
+let paletteIdx = 0;
+let paletteFiltered = [];
+
+function openPalette() {
+  const palette = document.getElementById('palette');
+  const input = document.getElementById('palette-input');
+  palette.classList.add('open');
+  input.value = '';
+  paletteIdx = 0;
+  paletteFiltered = ISSUES.slice().sort((a, b) => (metrics.impact[b.id] || 0) - (metrics.impact[a.id] || 0));
+  renderPaletteResults();
+  setTimeout(() => input.focus(), 50);
+}
+
+function closePalette() {
+  document.getElementById('palette').classList.remove('open');
+}
+
+function renderPaletteResults() {
+  const container = document.getElementById('palette-results');
+  if (!paletteFiltered.length) {
+    container.innerHTML = '<div class="palette-empty">No matching issues</div>';
+    return;
+  }
+  const shown = paletteFiltered.slice(0, 20);
+  container.innerHTML = shown.map((i, idx) => {
+    const es = effectiveStatus(i);
+    return `<div class="palette-item${idx === paletteIdx ? ' active' : ''}" data-id="${esc(i.id)}">
+      <span class="palette-item-id">${esc(i.id)}</span>
+      <span class="palette-item-title">${esc(i.title)}</span>
+      <span class="palette-item-type">${esc(i.issue_type || 'task')} · ${statusLabel(es)}</span>
+    </div>`;
+  }).join('');
+  // Bind clicks
+  container.querySelectorAll('.palette-item').forEach(el => {
+    el.addEventListener('click', () => { closePalette(); openDrawer(el.dataset.id); });
+  });
+}
+
+function initPalette() {
+  const input = document.getElementById('palette-input');
+  const backdrop = document.getElementById('palette-backdrop');
+
+  input?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    paletteIdx = 0;
+    if (!q) {
+      paletteFiltered = ISSUES.slice().sort((a, b) => (metrics.impact[b.id] || 0) - (metrics.impact[a.id] || 0));
+    } else {
+      paletteFiltered = ISSUES.filter(i =>
+        i.id.includes(q) || (i.title || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q)
+      ).sort((a, b) => {
+        // Prioritize ID matches, then title matches
+        const aId = a.id.includes(q) ? 0 : 1;
+        const bId = b.id.includes(q) ? 0 : 1;
+        if (aId !== bId) return aId - bId;
+        return (metrics.impact[b.id] || 0) - (metrics.impact[a.id] || 0);
+      });
+    }
+    renderPaletteResults();
+  });
+
+  input?.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      paletteIdx = Math.min(paletteIdx + 1, Math.min(paletteFiltered.length - 1, 19));
+      renderPaletteResults();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      paletteIdx = Math.max(paletteIdx - 1, 0);
+      renderPaletteResults();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (paletteFiltered[paletteIdx]) {
+        closePalette();
+        openDrawer(paletteFiltered[paletteIdx].id);
+      }
+    } else if (e.key === 'Escape') {
+      closePalette();
+    }
+  });
+
+  backdrop?.addEventListener('click', closePalette);
 }
 
 // ─── Animate In ──────────────────────────────────────────────────────────────
@@ -1462,6 +1790,8 @@ async function init() {
     // ForceGraph is initialized lazily on first graph tab visit (needs visible canvas for sizing)
     initTheme();
     initKeyboard();
+    initPalette();
+    window.addEventListener('hashchange', parseHash);
     parseHash();
     animateIn();
 
