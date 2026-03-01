@@ -12,3 +12,10 @@
 # Migration artifacts
 .beads-go-backup/
 .beads/backup/backup/
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/

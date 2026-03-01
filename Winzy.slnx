@@ -1,0 +1,53 @@
+<Solution>
+  <Folder Name="/services/" />
+  <Folder Name="/services/activity-service/" />
+  <Folder Name="/services/activity-service/src/">
+    <Project Path="services/activity-service/src/Winzy.ActivityService.csproj" />
+  </Folder>
+  <Folder Name="/services/activity-service/tests/">
+    <Project Path="services/activity-service/tests/Winzy.ActivityService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/auth-service/" />
+  <Folder Name="/services/auth-service/src/">
+    <Project Path="services/auth-service/src/Winzy.AuthService.csproj" />
+  </Folder>
+  <Folder Name="/services/auth-service/tests/">
+    <Project Path="services/auth-service/tests/Winzy.AuthService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/challenge-service/" />
+  <Folder Name="/services/challenge-service/src/">
+    <Project Path="services/challenge-service/src/Winzy.ChallengeService.csproj" />
+  </Folder>
+  <Folder Name="/services/challenge-service/tests/">
+    <Project Path="services/challenge-service/tests/Winzy.ChallengeService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/gateway/" />
+  <Folder Name="/services/gateway/src/">
+    <Project Path="services/gateway/src/Winzy.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/services/habit-service/" />
+  <Folder Name="/services/habit-service/src/">
+    <Project Path="services/habit-service/src/Winzy.HabitService.csproj" />
+  </Folder>
+  <Folder Name="/services/habit-service/tests/">
+    <Project Path="services/habit-service/tests/Winzy.HabitService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/notification-service/" />
+  <Folder Name="/services/notification-service/src/">
+    <Project Path="services/notification-service/src/Winzy.NotificationService.csproj" />
+  </Folder>
+  <Folder Name="/services/notification-service/tests/">
+    <Project Path="services/notification-service/tests/Winzy.NotificationService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/social-service/" />
+  <Folder Name="/services/social-service/src/">
+    <Project Path="services/social-service/src/Winzy.SocialService.csproj" />
+  </Folder>
+  <Folder Name="/services/social-service/tests/">
+    <Project Path="services/social-service/tests/Winzy.SocialService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/Winzy.Common/Winzy.Common.csproj" />
+    <Project Path="shared/Winzy.Contracts/Winzy.Contracts.csproj" />
+  </Folder>
+</Solution>
