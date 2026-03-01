@@ -167,11 +167,16 @@ br sync --flush-only                              # Export to JSONL (then git ad
 
 ### Workflow
 
-1. **Find work**: `br ready`
+1. **Start session** (After pulling from remote or starting new work):
+   ```bash
+   br doctor                 # Check health
+   br sync --import-only     # Import latest changes from git
+   br ready                  # Find available work
+   ```
 2. **Claim**: `br update <id> --claim`
-3. **Work**: Implement the task
+3. **Work**: Implement the task (create beads issue BEFORE writing code)
 4. **Complete**: `br close <id>`
-5. **End session** — MANDATORY before saying "done":
+5. **End session** — 🚨 MANDATORY before saying "done":
    - File issues for remaining work
    - Run quality gates (if code changed):
      - Frontend: `npm run lint && npx tsc --noEmit && npm test`
@@ -186,7 +191,7 @@ br sync --flush-only                              # Export to JSONL (then git ad
      git commit -m "..." && git push
      ```
 
-Work is NOT complete until `git push` succeeds. NEVER say "ready to push when you are" — YOU must push.
+**CRITICAL:** Work is NOT complete until `git push` succeeds. NEVER say "ready to push when you are" — YOU must push. Do NOT use markdown TODOs for task tracking.
 
 ### Core Rule
 
