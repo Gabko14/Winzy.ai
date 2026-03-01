@@ -9,3 +9,7 @@
 .beads/dolt-access.lock
 .beads/dolt/
 .beads/export-state/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
