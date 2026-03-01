@@ -4,7 +4,7 @@ WORKDIR /src
 COPY shared/Winzy.Contracts/Winzy.Contracts.csproj shared/Winzy.Contracts/
 COPY shared/Winzy.Common/Winzy.Common.csproj shared/Winzy.Common/
 COPY services/challenge-service/src/Winzy.ChallengeService.csproj services/challenge-service/src/
-COPY Directory.Build.props .
+COPY Directory.Build.props global.json ./
 RUN dotnet restore services/challenge-service/src/Winzy.ChallengeService.csproj
 
 COPY shared/ shared/

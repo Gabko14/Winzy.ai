@@ -4,7 +4,7 @@ WORKDIR /src
 COPY shared/Winzy.Contracts/Winzy.Contracts.csproj shared/Winzy.Contracts/
 COPY shared/Winzy.Common/Winzy.Common.csproj shared/Winzy.Common/
 COPY services/habit-service/src/Winzy.HabitService.csproj services/habit-service/src/
-COPY Directory.Build.props .
+COPY Directory.Build.props global.json ./
 RUN dotnet restore services/habit-service/src/Winzy.HabitService.csproj
 
 COPY shared/ shared/
