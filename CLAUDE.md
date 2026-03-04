@@ -68,6 +68,7 @@ gh pr create                     # Create PR
 - New task = new branch from main
 - Branch naming: `feature/description` or `fix/description`
 - Conventional commits referencing beads issues
+- Prefer commit messages that include the relevant beads issue ID when the commit maps cleanly to a specific issue
 - Delete branches after merge (local and remote)
 
 ### PR Workflow
@@ -79,8 +80,9 @@ gh pr create                     # Create PR
 3. Read review: `gh pr view <number> --comments` — **NEVER skip this, even for non-code PRs**
 4. Evaluate feedback critically — fix legit issues (bugs, security, logic), ignore noise (style nitpicks, "optional" suggestions)
 5. Push fixes, wait for re-review if needed. Repeat 2-4 until approved.
-6. **Ask the user for merge approval** — they may want to test or review the diff first
-7. Merge and cleanup:
+6. Before merge, review the commit stack: squash commits that belong together, keep unrelated changes separate, and make sure the remaining commits tell a clean, sensible story
+7. **Ask the user for merge approval** — they may want to test or review the diff first
+8. Merge and cleanup:
    ```bash
    gh pr merge <number> --squash --delete-branch
    git checkout main && git pull
