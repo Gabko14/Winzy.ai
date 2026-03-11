@@ -16,9 +16,18 @@
 # Beadspace generated data (pipeline regenerates from .beads/issues.jsonl)
 .beadspace/*.json
 
+# IDE / editor
+.idea/
+.vs/
+
+# Claude Code (local settings, not .mcp.json)
+.claude/
+
+# br history snapshots
+.beads/.br_history/
+
 # .NET
 **/bin/
 **/obj/
 *.user
 *.suo
-.vs/
