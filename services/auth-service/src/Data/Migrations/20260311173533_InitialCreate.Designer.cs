@@ -12,7 +12,7 @@ using Winzy.AuthService.Data;
 namespace Winzy.AuthService.Data.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20260311154733_InitialCreate")]
+    [Migration("20260311173533_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -33,17 +33,17 @@ namespace Winzy.AuthService.Data.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<DateTime>("ExpiresAt")
+                    b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("expires_at");
 
-                    b.Property<DateTime?>("RevokedAt")
+                    b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("revoked_at");
 
@@ -53,7 +53,7 @@ namespace Winzy.AuthService.Data.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("token");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at")
@@ -84,7 +84,7 @@ namespace Winzy.AuthService.Data.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at")
@@ -101,7 +101,7 @@ namespace Winzy.AuthService.Data.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("email");
 
-                    b.Property<DateTime?>("LastLoginAt")
+                    b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("last_login_at");
 
@@ -111,7 +111,7 @@ namespace Winzy.AuthService.Data.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("password_hash");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at")

@@ -1,26 +1,29 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 
 namespace Winzy.Gateway.Tests;
 
-public class HealthCheckTests
+[Collection("Gateway")]
+public class HealthCheckTests : IDisposable
 {
+    private const string TestSecret = "test-secret-key-that-is-long-enough-for-hmac-sha256-validation";
+
+    public HealthCheckTests()
+    {
+        // Must set via env var because minimal API reads config inline
+        // before WebApplicationFactory's ConfigureAppConfiguration runs.
+        Environment.SetEnvironmentVariable("Jwt__Secret", TestSecret);
+    }
+
+    public void Dispose()
+    {
+        Environment.SetEnvironmentVariable("Jwt__Secret", null);
+    }
+
     [Fact]
     public async Task HealthEndpoint_ReturnsResponse()
     {
-        await using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.ConfigureAppConfiguration((_, config) =>
-                {
-                    config.AddInMemoryCollection(new Dictionary<string, string?>
-                    {
-                        ["Jwt:Secret"] = "test-secret-key-that-is-long-enough-for-hmac-sha256-validation"
-                    });
-                });
-            });
-
+        await using var factory = new WebApplicationFactory<Program>();
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);

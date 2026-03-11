@@ -17,9 +17,15 @@ public abstract class NatsEventSubscriber<T>(
 {
     private readonly NatsJSContext _js = new(connection);
 
+    private const int MaxDeliveryAttempts = 5;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var config = new ConsumerConfig(consumer) { FilterSubject = filterSubject };
+        var config = new ConsumerConfig(consumer)
+        {
+            FilterSubject = filterSubject,
+            MaxDeliver = MaxDeliveryAttempts
+        };
 
         var consumerObj = await _js.CreateOrUpdateConsumerAsync(
             stream,
@@ -30,15 +36,6 @@ public abstract class NatsEventSubscriber<T>(
             serializer: NatsJsonSerializer<T>.Default,
             cancellationToken: stoppingToken))
         {
-            if (msg.Subject != filterSubject)
-            {
-                logger.LogWarning(
-                    "Received message on unexpected subject {Subject} (expected {Expected}) on {Stream}/{Consumer}, skipping",
-                    msg.Subject, filterSubject, stream, consumer);
-                await msg.AckAsync(cancellationToken: stoppingToken);
-                continue;
-            }
-
             if (msg.Data is null)
             {
                 logger.LogWarning("Received NATS message with null payload on {Stream}/{Consumer}, skipping",
@@ -54,9 +51,9 @@ public abstract class NatsEventSubscriber<T>(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Error processing message on {Stream}/{Consumer}",
-                    stream, consumer);
-                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                logger.LogError(ex, "Error processing message on {Stream}/{Consumer} (delivery attempt {Attempt}/{Max})",
+                    stream, consumer, msg.Metadata?.NumDelivered ?? 0, MaxDeliveryAttempts);
+                await msg.NakAsync(delay: TimeSpan.FromSeconds(5), cancellationToken: stoppingToken);
             }
         }
     }
