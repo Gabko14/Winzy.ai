@@ -131,11 +131,11 @@ gh pr create                     # Create PR
 3. Read review: `gh pr view <number> --comments` — **NEVER skip this, even for non-code PRs**
 4. Evaluate feedback critically — fix legit issues (bugs, security, logic), ignore noise (style nitpicks, "optional" suggestions)
 5. Push fixes, wait for re-review if needed. Repeat 2-4 until approved.
-6. Before merge, review the commit stack: squash commits that belong together, keep unrelated changes separate, and make sure the remaining commits tell a clean, sensible story
+6. Before merge, review the commit stack: rebase to clean up fixups, drop noise (beads syncs, WIP), and make sure the remaining commits tell a clean, sensible story
 7. **Ask the user for merge approval** — they may want to test or review the diff first
 8. Merge and cleanup:
    ```bash
-   gh pr merge <number> --squash --delete-branch
+   gh pr merge <number> --rebase --delete-branch
    git checkout main && git pull
    git branch -d <branch>
    ```
