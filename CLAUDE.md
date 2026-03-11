@@ -198,6 +198,8 @@ br sync --flush-only                              # Export to JSONL (then git ad
 
 **Every work item is an issue.** Including meta-work (reviews, refactoring, planning). If no matching issue exists, create one before you start.
 
+**File issues immediately when you spot problems.** When you discover a bug, gap, or technical debt while doing other work — create a bead right away. Don't wait to be asked, don't leave it as a mental note.
+
 ### Key Concepts
 
 - **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
