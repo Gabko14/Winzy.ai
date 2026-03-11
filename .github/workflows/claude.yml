@@ -52,6 +52,9 @@ jobs:
             frontend/package-lock.json
             e2e/package-lock.json
 
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
       - name: Install E2E dependencies and Playwright
         run: cd e2e && npm ci && npx playwright install chromium
 
