@@ -8,7 +8,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", ".expo/**", "babel.config.js"],
+    ignores: ["dist/**", "node_modules/**", ".expo/**", "babel.config.js", "public/**"],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

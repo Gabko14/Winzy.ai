@@ -1,0 +1,204 @@
+import React from "react";
+import { Text } from "react-native";
+import { render, waitFor, act } from "@testing-library/react-native";
+import { AuthProvider, useAuth } from "../useAuth";
+
+// Mock the API module
+jest.mock("../../api", () => {
+  const mockBootstrap = jest.fn();
+  const mockApi = {
+    post: jest.fn(),
+  };
+  const mockTokenStore = {
+    setAccessToken: jest.fn().mockResolvedValue(undefined),
+    setRefreshToken: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+  };
+
+  return {
+    bootstrapSession: mockBootstrap,
+    api: mockApi,
+    tokenStore: mockTokenStore,
+  };
+});
+
+const { bootstrapSession, api, tokenStore } = jest.requireMock("../../api");
+
+function TestConsumer() {
+  const auth = useAuth();
+  return <Text testID="status">{auth.status}</Text>;
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe("AuthProvider", () => {
+  it("starts in loading state and transitions to unauthenticated when no session", async () => {
+    bootstrapSession.mockResolvedValue(null);
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    // Initially loading
+    expect(getByTestId("status").props.children).toBe("loading");
+
+    // After bootstrap resolves
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("unauthenticated");
+    });
+  });
+
+  it("transitions to authenticated when session exists", async () => {
+    bootstrapSession.mockResolvedValue({
+      accessToken: "token",
+      refreshToken: "refresh",
+      user: { id: "1", email: "a@b.com", username: "test" },
+    });
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("authenticated");
+    });
+  });
+
+  it("login stores tokens and sets authenticated", async () => {
+    bootstrapSession.mockResolvedValue(null);
+
+    const loginResponse = {
+      accessToken: "new-access",
+      refreshToken: "new-refresh",
+      user: { id: "1", email: "a@b.com", username: "test" },
+    };
+    api.post.mockResolvedValue(loginResponse);
+
+    function LoginConsumer() {
+      const auth = useAuth();
+      return (
+        <>
+          <Text testID="status">{auth.status}</Text>
+          <Text
+            testID="login"
+            onPress={() => auth.login("test", "password")}
+          />
+        </>
+      );
+    }
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <LoginConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("unauthenticated");
+    });
+
+    await act(async () => {
+      getByTestId("login").props.onPress();
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("authenticated");
+    });
+    expect(tokenStore.setAccessToken).toHaveBeenCalledWith("new-access");
+    expect(tokenStore.setRefreshToken).toHaveBeenCalledWith("new-refresh");
+  });
+
+  it("logout clears tokens and sets unauthenticated", async () => {
+    bootstrapSession.mockResolvedValue({
+      accessToken: "token",
+      refreshToken: "refresh",
+      user: { id: "1", email: "a@b.com", username: "test" },
+    });
+    api.post.mockResolvedValue(undefined);
+
+    function LogoutConsumer() {
+      const auth = useAuth();
+      return (
+        <>
+          <Text testID="status">{auth.status}</Text>
+          <Text testID="logout" onPress={() => auth.logout()} />
+        </>
+      );
+    }
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <LogoutConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("authenticated");
+    });
+
+    await act(async () => {
+      getByTestId("logout").props.onPress();
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("unauthenticated");
+    });
+    expect(tokenStore.clear).toHaveBeenCalled();
+  });
+
+  it("logout succeeds even if server call fails", async () => {
+    bootstrapSession.mockResolvedValue({
+      accessToken: "token",
+      refreshToken: "refresh",
+      user: { id: "1", email: "a@b.com", username: "test" },
+    });
+    api.post.mockRejectedValue(new Error("Network error"));
+
+    function LogoutConsumer() {
+      const auth = useAuth();
+      return (
+        <>
+          <Text testID="status">{auth.status}</Text>
+          <Text testID="logout" onPress={() => auth.logout()} />
+        </>
+      );
+    }
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <LogoutConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("authenticated");
+    });
+
+    await act(async () => {
+      getByTestId("logout").props.onPress();
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("unauthenticated");
+    });
+  });
+});
+
+describe("useAuth outside provider", () => {
+  it("throws when used without AuthProvider", () => {
+    // Suppress console.error from React for this test
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => {
+      render(<TestConsumer />);
+    }).toThrow("useAuth must be used within an AuthProvider");
+
+    spy.mockRestore();
+  });
+});
