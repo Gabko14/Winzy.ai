@@ -93,6 +93,17 @@ public class JwtSecretValidationTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void LegacyDefaultSecret_ThrowsAsPlaceholder()
+    {
+        const string legacy = "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long";
+        Assert.True(legacy.Length >= 32); // Would pass length check without placeholder list
+
+        var ex = Assert.Throws<InvalidOperationException>(() => JwtSecretValidator.Validate(legacy));
+
+        Assert.Contains("placeholder", ex.Message);
+    }
+
     [Theory]
     [InlineData("your-secret-key-your-secret-key!")]
     [InlineData("CHANGE-ME-CHANGE-ME-CHANGE-ME-!!")]
