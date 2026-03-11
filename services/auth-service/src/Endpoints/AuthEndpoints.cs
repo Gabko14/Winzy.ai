@@ -209,9 +209,27 @@ public static class AuthEndpoints
             return Results.NotFound();
 
         if (request.DisplayName is not null)
-            user.DisplayName = request.DisplayName.Trim();
+            user.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim();
         if (request.AvatarUrl is not null)
-            user.AvatarUrl = request.AvatarUrl.Trim();
+        {
+            var trimmedUrl = request.AvatarUrl.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedUrl))
+            {
+                user.AvatarUrl = null;
+            }
+            else if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var uri)
+                     && (uri.Scheme == "https" || uri.Scheme == "http"))
+            {
+                user.AvatarUrl = trimmedUrl;
+            }
+            else
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["avatarUrl"] = ["AvatarUrl must be a valid HTTP(S) URL."]
+                });
+            }
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -273,13 +291,14 @@ public static class AuthEndpoints
         if (user is null)
             return Results.NotFound();
 
-        db.Users.Remove(user);
-        await db.SaveChangesAsync(ct);
-
-        // user.deleted is a GDPR cascade event — must not be silently swallowed.
-        // If NATS is down, the delete fails visibly so the caller can retry.
+        // Publish FIRST — if NATS is down, nothing is deleted and caller can retry.
+        // Safe failure direction: downstream services may delete data that auth
+        // will also delete on retry, but no data is silently orphaned.
         await nats.PublishAsync(Subjects.UserDeleted,
             new UserDeletedEvent(userId.Value), ct);
+
+        db.Users.Remove(user);
+        await db.SaveChangesAsync(ct);
 
         ClearRefreshCookie(httpContext);
 

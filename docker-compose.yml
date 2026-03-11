@@ -186,6 +186,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Jwt__Secret: winzy-dev-jwt-secret-minimum-32-characters-long!!
       ASPNETCORE_URLS: http://+:5001
     depends_on:
       auth-db:
