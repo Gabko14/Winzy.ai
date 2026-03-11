@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { forwardRef, useState } from "react";
 import {
   View,
   TextInput as RNTextInput,
@@ -27,13 +27,10 @@ function getBorderColor(state: ValidationState, focused: boolean) {
   return colors.border;
 }
 
-export function TextInput({
-  label,
-  hint,
-  errorMessage,
-  validationState = "default",
-  ...inputProps
-}: TextInputProps) {
+export const TextInput = forwardRef<RNTextInput, TextInputProps>(function TextInput(
+  { label, hint, errorMessage, validationState = "default", ...inputProps },
+  ref,
+) {
   const [focused, setFocused] = useState(false);
   const colors = lightTheme;
   const showError = validationState === "error" && errorMessage;
@@ -46,6 +43,7 @@ export function TextInput({
         </Text>
       )}
       <RNTextInput
+        ref={ref}
         {...inputProps}
         style={[
           styles.input,
@@ -77,7 +75,7 @@ export function TextInput({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
