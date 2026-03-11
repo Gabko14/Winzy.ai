@@ -31,30 +31,67 @@ Winzy.ai is a habit tracker with an optional social layer. Users track daily hab
 | Testing | xUnit + Testcontainers (backend), Jest (frontend), Playwright (E2E) |
 | CI/CD | GitHub Actions (per-service workflows) |
 
+## Key Design Decisions
+
+These are the non-obvious choices that agents get wrong without being told:
+
+- **JetStream, not core NATS.** `user.deleted` cascades to 5 services that must all process it (data cleanup, GDPR). Core NATS is fire-and-forget — a restarting service silently misses the event.
+- **Gateway validates JWT, services trust X-User-Id.** Services never re-validate tokens. The gateway strips any client-supplied `X-User-Id` and sets it from JWT claims. This means services depend on being behind the gateway — never expose service ports directly.
+- **Gateway must NOT reference Winzy.Common.** The gateway has no NATS dependency. If it needs shared types, reference `Winzy.Contracts` directly.
+- **NATS subjects have no prefix.** `user.registered`, not `events.user.registered`. Matches `Subjects.cs` constants.
+- **Result pattern for business logic errors.** Return result types, don't throw exceptions for expected failures (validation, not-found, conflict).
+- **Gateway is exposed on port 5050, not 5000.** Port 5000 conflicts with macOS AirPlay Receiver. The gateway listens on 5000 internally, docker-compose maps `5050:5000`.
+
 ## Non-Negotiables
 
-- **No code without tests.** Unit tests for business logic, integration tests for endpoints. 80%+ coverage per service.
 - **No direct DB access across services.** Each service owns its data. Cross-service data via REST or NATS only.
 - **Internal endpoints stay internal.** Endpoints like `GET /habits/user/{userId}` are service-to-service only — never exposed through the Gateway.
 - **Public endpoints are explicit.** Only these work without auth: `/auth/register`, `/auth/login`, `/auth/refresh`, `/habits/public/{username}`.
 - **Every service implements `GET /health`.** Returns service status, DB connectivity, and NATS connection status. Gateway aggregates all health checks.
 - **Services return results, UI shows feedback.** Backend services never format user-facing messages. They return structured data; the frontend decides how to present it.
 
+## Code Editing Discipline
+
+- **No script-based mass changes.** Never run regex-based scripts to transform code files. Make changes manually or use parallel subagents for many simple changes.
+- **No file proliferation.** Never create `V2`, `_improved`, `_new`, `_enhanced` variants of existing files. Edit in place. New files are only for genuinely new functionality that doesn't belong in any existing file.
+- **Verify library APIs before implementing.** Use Context7 or search online to check current docs. Don't guess at API signatures or assume remembered usage is correct.
+
+## Testing
+
+Every test module must cover three areas:
+
+1. **Happy path** — the expected workflow works correctly
+2. **Edge cases** — empty input, boundary values, max limits, zero/null, concurrent access
+3. **Error conditions** — invalid input, missing resources, network failures, unauthorized access
+
+### Backend (C# / xUnit + Testcontainers)
+
+- **Unit tests** for business logic, validators, and domain rules — no DB or network needed
+- **Integration tests** with Testcontainers for endpoint behavior, DB queries, and NATS event handling
+
+### Frontend (TypeScript / Jest)
+
+- **Component tests** for UI logic and rendering behavior
+- **Hook tests** for state management and side effects
+
+### E2E (Playwright)
+
+- Critical user journeys: registration, login, habit CRUD, flame visibility
+- Run before PRs, not after every change
+
 ## Commands
 
 ```bash
-# Frontend
-cd frontend && npm start         # Expo dev server
-npm run lint && npx tsc --noEmit # Lint + typecheck
-npm test                         # Jest
-
 # Backend (per service)
 cd services/<service>/src && dotnet build && dotnet test
 dotnet format --verify-no-changes  # Format check
 
-# Infrastructure
-docker compose up -d             # Start all services
-docker compose build             # Rebuild after Dockerfile changes
+# Docker
+open -a Docker                               # Start Docker Desktop (macOS)
+Start-Process "Docker Desktop"               # Start Docker Desktop (Windows PowerShell)
+docker compose up -d                         # Start all services
+docker compose down                          # Stop all services
+docker compose build                         # Rebuild after Dockerfile changes
 
 # Tools
 br ready                         # Find available work (beads)
@@ -152,3 +189,25 @@ br sync --flush-only                              # Export to JSONL (then git ad
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers, not words)
 - **Types**: task, bug, feature, epic, chore, decision
 - **Comments vs new issues**: Use `br comments add <id> "message"` for progress updates, decisions, blockers, and notes. Only create a new issue for genuinely separate work.
+
+### bv — Graph-Aware Triage
+
+`bv` is a triage engine that reads `.beads/` and computes priority scores, critical paths, and parallel work plans.
+
+**CRITICAL: Use ONLY `--robot-*` flags. Bare `bv` launches an interactive TUI that blocks your session.**
+
+```bash
+bv --robot-triage                        # Full triage: top picks, quick wins, blockers, health
+bv --robot-next                          # Single highest-impact next action
+bv --robot-plan --agents N               # Parallel execution tracks for N agents
+bv --robot-priority                      # Top 10 by impact score with what-if analysis
+bv --robot-capacity --agents N           # Parallelizable %, estimated days, bottlenecks
+bv --export-graph file.html              # Interactive dependency graph in browser
+```
+
+**jq quick reference:**
+```bash
+bv --robot-triage | jq '.quick_ref'          # At-a-glance summary
+bv --robot-triage | jq '.recommendations[0]' # Top recommendation
+bv --robot-plan | jq '.plan.summary'         # Plan overview
+```
