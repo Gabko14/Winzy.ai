@@ -1,8 +1,9 @@
-import React from "react";
-import { Pressable, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from "react-native";
-import { spacing, radii } from "../tokens/spacing";
+import React, { useRef, useCallback } from "react";
+import { Pressable, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator, Animated } from "react-native";
+import { spacing, radii, motion } from "../tokens/spacing";
 import { typography } from "../tokens/typography";
 import { lightTheme } from "../tokens/colors";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
 type ButtonSize = "sm" | "md" | "lg";
@@ -84,10 +85,26 @@ export function Button({
   accessibilityLabel,
 }: ButtonProps) {
   const sizeStyle = sizeStyles[size];
+  const reducedMotion = useReducedMotion();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animateScale = useCallback(
+    (toValue: number) => {
+      if (reducedMotion || disabled || loading) return;
+      Animated.timing(scale, {
+        toValue,
+        duration: motion.fast,
+        useNativeDriver: true,
+      }).start();
+    },
+    [scale, reducedMotion, disabled, loading],
+  );
 
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={() => animateScale(0.97)}
+      onPressOut={() => animateScale(1)}
       disabled={disabled || loading}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
@@ -104,15 +121,19 @@ export function Button({
     >
       {({ pressed }) => {
         const variantStyle = getVariantStyles(variant, pressed);
-        return loading ? (
-          <ActivityIndicator
-            size="small"
-            color={variant === "primary" ? lightTheme.textInverse : lightTheme.brandPrimary}
-          />
-        ) : (
-          <Text style={[sizeStyle.text, variantStyle.text, disabled && styles.disabledText]}>
-            {title}
-          </Text>
+        return (
+          <Animated.View style={{ transform: [{ scale }] }}>
+            {loading ? (
+              <ActivityIndicator
+                size="small"
+                color={variant === "primary" ? lightTheme.textInverse : lightTheme.brandPrimary}
+              />
+            ) : (
+              <Text style={[sizeStyle.text, variantStyle.text, disabled && styles.disabledText]}>
+                {title}
+              </Text>
+            )}
+          </Animated.View>
         );
       }}
     </Pressable>

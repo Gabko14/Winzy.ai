@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Easing } from "react-native";
 import { flameColors, getFlameGlow } from "../tokens/flame";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 /**
  * Flame levels matching the backend FlameLevel enum.
@@ -23,6 +24,8 @@ export type FlameProps = {
   consistency?: number;
   /** Accessible label override. */
   accessibilityLabel?: string;
+  /** Whether to animate a grow effect when the flame level increases. */
+  animateGrow?: boolean;
 };
 
 // --- Visual configuration per flame level ---
@@ -115,17 +118,22 @@ export function Flame({
   size = "md",
   consistency,
   accessibilityLabel,
+  animateGrow = false,
 }: FlameProps) {
   const config = flameLevelConfig[flameLevel];
   const dims = sizeConfig[size];
   const effectiveConsistency = consistency ?? config.defaultConsistency;
   const glowOpacity = getFlameGlow(effectiveConsistency);
+  const reducedMotion = useReducedMotion();
 
   // Breathing/pulse animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Grow animation for level-up effect
+  const growAnim = useRef(new Animated.Value(1)).current;
+  const prevLevelRef = useRef(flameLevel);
 
   useEffect(() => {
-    if (config.pulseIntensity <= 0) {
+    if (reducedMotion || config.pulseIntensity <= 0) {
       pulseAnim.setValue(1);
       return;
     }
@@ -148,7 +156,31 @@ export function Flame({
     );
     animation.start();
     return () => animation.stop();
-  }, [flameLevel, config.pulseIntensity, pulseAnim]);
+  }, [flameLevel, config.pulseIntensity, pulseAnim, reducedMotion]);
+
+  // Grow animation when flame level increases
+  useEffect(() => {
+    if (!animateGrow || reducedMotion) {
+      prevLevelRef.current = flameLevel;
+      return;
+    }
+
+    const levels: FlameLevel[] = ["none", "ember", "steady", "strong", "blazing"];
+    const prevIndex = levels.indexOf(prevLevelRef.current);
+    const currIndex = levels.indexOf(flameLevel);
+
+    if (currIndex > prevIndex) {
+      growAnim.setValue(0.8);
+      Animated.spring(growAnim, {
+        toValue: 1,
+        friction: 4,
+        tension: 80,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    prevLevelRef.current = flameLevel;
+  }, [flameLevel, animateGrow, reducedMotion, growAnim]);
 
   const label =
     accessibilityLabel ?? `Flame: ${flameLevel}, consistency ${Math.round(effectiveConsistency)}%`;
@@ -162,8 +194,12 @@ export function Flame({
   const innerHeight = bodyHeight * config.innerScale;
 
   return (
-    <View
-      style={[styles.container, { width: dims.width, height: dims.height }]}
+    <Animated.View
+      style={[
+        styles.container,
+        { width: dims.width, height: dims.height },
+        animateGrow && { transform: [{ scale: growAnim }] },
+      ]}
       accessibilityRole="image"
       accessibilityLabel={label}
       testID="flame-container"
@@ -242,7 +278,7 @@ export function Flame({
         ]}
         testID="flame-core"
       />
-    </View>
+    </Animated.View>
   );
 }
 

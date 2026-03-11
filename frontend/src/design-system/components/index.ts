@@ -7,3 +7,8 @@ export { LoadingState, type LoadingStateProps } from "./LoadingState";
 export { ErrorState, type ErrorStateProps } from "./ErrorState";
 export { Modal, type ModalProps } from "./Modal";
 export { Flame, type FlameProps, type FlameLevel, type FlameSize } from "./Flame";
+export { FadeIn, type FadeInProps } from "./FadeIn";
+export { PressableScale, type PressableScaleProps } from "./PressableScale";
+export { ShakeView, type ShakeViewProps } from "./ShakeView";
+export { AnimatedCheckmark, type AnimatedCheckmarkProps } from "./AnimatedCheckmark";
+export { SkeletonLoader, type SkeletonLoaderProps } from "./SkeletonLoader";

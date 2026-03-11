@@ -43,4 +43,17 @@ export {
   type FlameProps,
   type FlameLevel,
   type FlameSize,
+  FadeIn,
+  type FadeInProps,
+  PressableScale,
+  type PressableScaleProps,
+  ShakeView,
+  type ShakeViewProps,
+  AnimatedCheckmark,
+  type AnimatedCheckmarkProps,
+  SkeletonLoader,
+  type SkeletonLoaderProps,
 } from "./components";
+
+// Hooks
+export { useReducedMotion } from "./hooks";
