@@ -4,6 +4,8 @@ import { spacing, radii } from "../tokens/spacing";
 import { typography } from "../tokens/typography";
 import { lightTheme } from "../tokens/colors";
 import { Button } from "./Button";
+import { ShakeView } from "./ShakeView";
+import { FadeIn } from "./FadeIn";
 
 export type ErrorStateProps = {
   title?: string;
@@ -15,18 +17,22 @@ export function ErrorState({ title = "Something went wrong", message, onRetry }:
   const colors = lightTheme;
 
   return (
-    <View
-      style={[styles.container, { backgroundColor: colors.errorBackground }]}
-      accessibilityRole="alert"
-    >
-      <Text style={[styles.title, { color: colors.error }]}>{title}</Text>
-      <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
-      {onRetry && (
-        <View style={styles.action}>
-          <Button title="Try again" onPress={onRetry} variant="secondary" size="sm" />
+    <FadeIn>
+      <ShakeView shake={true} intensity={4}>
+        <View
+          style={[styles.container, { backgroundColor: colors.errorBackground }]}
+          accessibilityRole="alert"
+        >
+          <Text style={[styles.title, { color: colors.error }]}>{title}</Text>
+          <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
+          {onRetry && (
+            <View style={styles.action}>
+              <Button title="Try again" onPress={onRetry} variant="secondary" size="sm" />
+            </View>
+          )}
         </View>
-      )}
-    </View>
+      </ShakeView>
+    </FadeIn>
   );
 }
 
