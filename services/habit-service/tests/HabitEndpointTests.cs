@@ -10,6 +10,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 {
     private readonly HabitServiceFixture _fixture;
     private readonly Guid _userId = Guid.NewGuid();
+    private static readonly string _today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
 
     private CancellationToken CT => TestContext.Current.CancellationToken;
 
@@ -276,13 +277,13 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15",
+            date = _today,
             timezone = "America/New_York"
         }, CT);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("2025-02-15", body.GetProperty("localDate").GetString());
+        Assert.Equal(_today, body.GetProperty("localDate").GetString());
     }
 
     [Fact]
@@ -296,13 +297,13 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15",
+            date = _today,
             timezone = "America/New_York"
         }, CT);
 
         var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15",
+            date = _today,
             timezone = "America/New_York"
         }, CT);
 
@@ -320,7 +321,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15"
+            date = _today
         }, CT);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -369,11 +370,11 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15",
+            date = _today,
             timezone = "UTC"
         }, CT);
 
-        var response = await client.DeleteAsync($"/habits/{habitId}/completions/2025-02-15", CT);
+        var response = await client.DeleteAsync($"/habits/{habitId}/completions/{_today}", CT);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
@@ -457,7 +458,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
         {
-            date = "2025-02-15",
+            date = _today,
             timezone = "UTC"
         }, CT);
 

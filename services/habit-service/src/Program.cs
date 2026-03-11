@@ -39,6 +39,8 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     var request = await ctx.Request.ReadFromJsonAsync<CreateHabitRequest>(jsonOptions);
     if (request is null || string.IsNullOrWhiteSpace(request.Name))
         return Results.BadRequest(new { error = "Name is required" });
+    if (request.Name.Trim().Length > 256)
+        return Results.BadRequest(new { error = "Name must not exceed 256 characters" });
 
     if (request.Frequency == FrequencyType.Custom && (request.CustomDays is null || request.CustomDays.Count == 0))
         return Results.BadRequest(new { error = "CustomDays required for Custom frequency" });
@@ -107,6 +109,8 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
         habit.Color = request.Color.Trim();
     if (request.Frequency.HasValue)
     {
+        if (request.Frequency.Value == FrequencyType.Custom && (request.CustomDays is null || request.CustomDays.Count == 0))
+            return Results.BadRequest(new { error = "CustomDays required for Custom frequency" });
         habit.Frequency = request.Frequency.Value;
         habit.CustomDays = request.Frequency.Value == FrequencyType.Custom ? request.CustomDays : null;
     }
@@ -167,6 +171,13 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
         var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
         localDate = DateOnly.FromDateTime(userNow);
     }
+
+    // Validate date range: not in the future, not more than 60 days in the past
+    var userToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+    if (localDate > userToday)
+        return Results.BadRequest(new { error = "Cannot log completions in the future" });
+    if (localDate < userToday.AddDays(-ConsistencyCalculator.WindowDays))
+        return Results.BadRequest(new { error = $"Cannot log completions more than {ConsistencyCalculator.WindowDays} days in the past" });
 
     // Check for duplicate completion
     var exists = await db.Completions.AnyAsync(c => c.HabitId == id && c.LocalDate == localDate);
