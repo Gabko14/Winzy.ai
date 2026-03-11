@@ -1,0 +1,64 @@
+name: CI - E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'e2e/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'e2e/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm ci
+
+      - name: Install Playwright chromium
+        run: cd e2e && npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: cd e2e && npx playwright test --config=playwright.config.ts
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 14
+
+      - name: Upload test traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: e2e/test-results/
+          retention-days: 7

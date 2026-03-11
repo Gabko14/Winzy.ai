@@ -1,4 +1,4 @@
-.PHONY: lint lint-frontend lint-backend format format-frontend format-backend check test test-frontend test-backend
+.PHONY: lint lint-frontend lint-backend format format-frontend format-backend check test test-frontend test-backend test-e2e e2e-install e2e-report
 
 # Run all linting
 lint: lint-frontend lint-backend
@@ -37,3 +37,13 @@ test-frontend:
 
 test-backend:
 	./test-backend.sh
+
+# E2E (Playwright)
+e2e-install:
+	cd e2e && npm install && npx playwright install chromium
+
+test-e2e:
+	cd e2e && npx playwright test
+
+e2e-report:
+	cd e2e && npx playwright show-report

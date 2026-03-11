@@ -3,30 +3,13 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "src/*"
-      ]
-    }
+    "noEmit": true
   },
-  "include": [
-    "src/**/*",
-    "App.tsx",
-    "index.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    ".expo"
-  ],
-  "extends": "expo/tsconfig.base"
+  "include": ["tests/**/*.ts", "fixtures/**/*.ts", "playwright.config.ts"]
 }
