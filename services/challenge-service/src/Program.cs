@@ -59,6 +59,8 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
         return Results.BadRequest(new { error = "RewardDescription is required" });
     if (request.RewardDescription.Trim().Length > 512)
         return Results.BadRequest(new { error = "RewardDescription must not exceed 512 characters" });
+    if (System.Text.RegularExpressions.Regex.IsMatch(request.RewardDescription, @"<[^>]+>"))
+        return Results.BadRequest(new { error = "RewardDescription must not contain HTML tags" });
     if (request.TargetValue <= 0 || request.TargetValue > 100)
         return Results.BadRequest(new { error = "TargetValue must be between 1 and 100" });
     if (request.PeriodDays <= 0 || request.PeriodDays > 365)
@@ -82,6 +84,16 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
 
     if (!areFriends)
         return Results.BadRequest(new { error = "You can only challenge friends" });
+
+    // Prevent duplicate active challenges for the same habit+recipient
+    var existingActive = await db.Challenges.AnyAsync(c =>
+        c.CreatorId == userId &&
+        c.RecipientId == request.RecipientId &&
+        c.HabitId == request.HabitId &&
+        c.Status == ChallengeStatus.Active &&
+        c.EndsAt > DateTimeOffset.UtcNow);
+    if (existingActive)
+        return Results.Conflict(new { error = "An active challenge already exists for this habit and recipient" });
 
     var challenge = new Challenge
     {
@@ -115,17 +127,25 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
 
 // --- GET /challenges ---
 
-app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db) =>
+app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int page = 1, int pageSize = 20) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var challenges = await db.Challenges
-        .Where(c => c.CreatorId == userId || c.RecipientId == userId)
+    page = Math.Max(1, page);
+    pageSize = Math.Clamp(pageSize, 1, 100);
+
+    var query = db.Challenges
+        .Where(c => c.CreatorId == userId || c.RecipientId == userId);
+
+    var total = await query.CountAsync();
+    var challenges = await query
         .OrderByDescending(c => c.CreatedAt)
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
         .ToListAsync();
 
-    return Results.Ok(challenges.Select(MapToResponse));
+    return Results.Ok(new { items = challenges.Select(MapToResponse), page, pageSize, total });
 });
 
 // --- GET /challenges/{id} ---
@@ -200,6 +220,11 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
     return header is not null && Guid.TryParse(header, out userId);
 }
 
+static string EffectiveStatus(Challenge c) =>
+    c.Status == ChallengeStatus.Active && c.EndsAt <= DateTimeOffset.UtcNow
+        ? "expired"
+        : c.Status.ToString().ToLowerInvariant();
+
 static object MapToResponse(Challenge c) => new
 {
     id = c.Id,
@@ -210,7 +235,7 @@ static object MapToResponse(Challenge c) => new
     targetValue = c.TargetValue,
     periodDays = c.PeriodDays,
     rewardDescription = c.RewardDescription,
-    status = c.Status.ToString().ToLowerInvariant(),
+    status = EffectiveStatus(c),
     createdAt = c.CreatedAt,
     endsAt = c.EndsAt,
     completedAt = c.CompletedAt,
@@ -227,7 +252,7 @@ static object MapToDetailResponse(Challenge c) => new
     targetValue = c.TargetValue,
     periodDays = c.PeriodDays,
     rewardDescription = c.RewardDescription,
-    status = c.Status.ToString().ToLowerInvariant(),
+    status = EffectiveStatus(c),
     progress = c.CurrentProgress,
     createdAt = c.CreatedAt,
     endsAt = c.EndsAt,

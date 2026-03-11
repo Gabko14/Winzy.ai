@@ -98,8 +98,6 @@ const flameLevelConfig: Record<FlameLevel, FlameVisualConfig> = {
 type SizeDimensions = {
   width: number;
   height: number;
-  /** Border radius for the teardrop/flame body */
-  bodyRadius: number;
   /** Size of the core glow dot */
   coreSize: number;
   /** Glow spread radius */
@@ -107,9 +105,9 @@ type SizeDimensions = {
 };
 
 const sizeConfig: Record<FlameSize, SizeDimensions> = {
-  sm: { width: 24, height: 32, bodyRadius: 8, coreSize: 4, glowSize: 32 },
-  md: { width: 36, height: 48, bodyRadius: 12, coreSize: 6, glowSize: 48 },
-  lg: { width: 56, height: 72, bodyRadius: 18, coreSize: 10, glowSize: 72 },
+  sm: { width: 24, height: 32, coreSize: 4, glowSize: 32 },
+  md: { width: 36, height: 48, coreSize: 6, glowSize: 48 },
+  lg: { width: 56, height: 72, coreSize: 10, glowSize: 72 },
 };
 
 export function Flame({
