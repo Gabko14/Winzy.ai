@@ -6,11 +6,15 @@ on:
     paths:
       - 'frontend/**'
       - 'e2e/**'
+      - 'services/**'
+      - 'docker-compose.yml'
   pull_request:
     branches: [main]
     paths:
       - 'frontend/**'
       - 'e2e/**'
+      - 'services/**'
+      - 'docker-compose.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
