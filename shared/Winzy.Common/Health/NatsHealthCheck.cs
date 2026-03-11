@@ -3,12 +3,18 @@ using NATS.Client.Core;
 
 namespace Winzy.Common.Health;
 
-public sealed class NatsHealthCheck(INatsConnection connection) : IHealthCheck
+public sealed class NatsHealthCheck(INatsConnection? connection = null) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        if (connection is null)
+        {
+            return HealthCheckResult.Unhealthy(
+                "NATS not configured: INatsConnection is not registered. Call AddNatsMessaging() before AddNatsHealthCheck().");
+        }
+
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
