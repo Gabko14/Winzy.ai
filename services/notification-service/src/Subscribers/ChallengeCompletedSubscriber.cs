@@ -42,6 +42,13 @@ public sealed class ChallengeCompletedSubscriber(
             return;
         }
 
+        var idempotencyKey = $"challenge_completed:{data.UserId}:{data.ChallengeId}";
+        if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
+        {
+            logger.LogInformation("Duplicate challenge.completed notification skipped (key={Key})", idempotencyKey);
+            return;
+        }
+
         var notification = new Notification
         {
             UserId = data.UserId,
@@ -50,7 +57,8 @@ public sealed class ChallengeCompletedSubscriber(
             {
                 challengeId = data.ChallengeId,
                 reward = data.Reward
-            })
+            }),
+            IdempotencyKey = idempotencyKey
         };
 
         db.Notifications.Add(notification);

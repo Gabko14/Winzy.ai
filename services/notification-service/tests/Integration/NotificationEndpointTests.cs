@@ -99,8 +99,8 @@ public class NotificationEndpointTests : IClassFixture<NotificationServiceFixtur
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         var items = body.GetProperty("items");
         Assert.Equal(2, items.GetArrayLength());
-        Assert.Equal("ChallengeCreated", items[0].GetProperty("type").GetString());
-        Assert.Equal("FriendRequestSent", items[1].GetProperty("type").GetString());
+        Assert.Equal("challengecreated", items[0].GetProperty("type").GetString());
+        Assert.Equal("friendrequestsent", items[1].GetProperty("type").GetString());
     }
 
     [Fact]

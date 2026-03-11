@@ -42,11 +42,19 @@ public sealed class FriendRequestSentSubscriber(
             return;
         }
 
+        var idempotencyKey = $"friend_request_sent:{data.ToUserId}:{data.FromUserId}";
+        if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
+        {
+            logger.LogInformation("Duplicate friend.request.sent notification skipped (key={Key})", idempotencyKey);
+            return;
+        }
+
         var notification = new Notification
         {
             UserId = data.ToUserId,
             Type = NotificationType.FriendRequestSent,
-            Data = JsonSerializer.Serialize(new { fromUserId = data.FromUserId })
+            Data = JsonSerializer.Serialize(new { fromUserId = data.FromUserId }),
+            IdempotencyKey = idempotencyKey
         };
 
         db.Notifications.Add(notification);
