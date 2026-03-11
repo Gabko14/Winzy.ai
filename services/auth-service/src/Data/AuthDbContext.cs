@@ -20,6 +20,7 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options) : Bas
             b.Property(u => u.Username).HasMaxLength(64);
             b.Property(u => u.PasswordHash).HasMaxLength(512);
             b.Property(u => u.DisplayName).HasMaxLength(128);
+            b.Property(u => u.AvatarUrl).HasMaxLength(512);
 
             b.Property(u => u.LastLoginAt).HasColumnType("timestamptz");
         });

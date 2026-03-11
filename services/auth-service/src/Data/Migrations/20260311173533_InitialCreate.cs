@@ -20,6 +20,7 @@ namespace Winzy.AuthService.Data.Migrations
                     username = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     password_hash = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
                     display_name = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    avatar_url = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
                     last_login_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false, defaultValueSql: "now()"),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamptz", nullable: false, defaultValueSql: "now()")
