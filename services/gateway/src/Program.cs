@@ -128,6 +128,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseCors();
 app.UseRateLimiter();
 app.UseMiddleware<InternalRouteBlockMiddleware>();
