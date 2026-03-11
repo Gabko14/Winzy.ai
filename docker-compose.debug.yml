@@ -1,4 +1,5 @@
-# Debug override — publishes service and database ports on the host for direct access.
+# Debug override — publishes application service and NATS ports on the host for direct access.
+# Database ports are already exposed in docker-compose.yml (required for local dev).
 # Usage: docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
 
 services:
@@ -8,32 +9,6 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
-
-  # --- Databases ---
-
-  auth-db:
-    ports:
-      - "5433:5432"
-
-  habit-db:
-    ports:
-      - "5434:5432"
-
-  social-db:
-    ports:
-      - "5435:5432"
-
-  challenge-db:
-    ports:
-      - "5436:5432"
-
-  notification-db:
-    ports:
-      - "5437:5432"
-
-  activity-db:
-    ports:
-      - "5438:5432"
 
   # --- Application Services ---
 
