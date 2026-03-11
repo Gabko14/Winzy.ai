@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+# Commit-msg: warn when bead ID traceability is missing
+# This is advisory only — the commit will proceed regardless.
+#
+# Commits should reference a bead ID (e.g., winzy.ai-abc) or use an
+# exempt prefix (chore:, docs:, ci:, style:, merge, Merge).
+
+MSG_FILE="$1"
+MSG=$(head -1 "$MSG_FILE")
+
+# Allow merge commits
+case "$MSG" in
+  Merge*|merge*) exit 0 ;;
+esac
+
+# Allow exempt prefixes that typically don't map to a single bead
+case "$MSG" in
+  chore:*|chore\(*|docs:*|docs\(*|ci:*|ci\(*|style:*|style\(*) exit 0 ;;
+esac
+
+# Check for bead ID pattern: winzy.ai-<id>
+if echo "$MSG" | grep -qiE 'winzy\.ai-[a-z0-9]+'; then
+  exit 0
+fi
+
+echo ""
+echo "WARNING: Commit message has no bead ID reference."
+echo "  Expected: winzy.ai-<id> somewhere in the subject line"
+echo "  Example:  feat(auth): add login endpoint (winzy.ai-dhq)"
+echo ""
+echo "  Exempt prefixes: chore:, docs:, ci:, style:, merge"
+echo ""
+echo "  Your message: $MSG"
+echo ""
+# Warn but don't block — not every commit maps cleanly to a single bead
+exit 0
