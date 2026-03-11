@@ -16,15 +16,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
     "expo": "~55.0.6",
     "expo-status-bar": "~55.0.4",
     "react": "19.2.0",
-    "react-native": "0.83.2"
+    "react-dom": "19.2.0",
+    "react-native": "0.83.2",
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@testing-library/react-native": "^13.3.3",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.37.0",

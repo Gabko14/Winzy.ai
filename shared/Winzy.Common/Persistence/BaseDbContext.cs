@@ -6,7 +6,7 @@ namespace Winzy.Common.Persistence;
 /// Base DbContext that enforces Winzy PostgreSQL conventions:
 /// - snake_case table and column names
 /// - UUID primary keys (auto-generated)
-/// - timestamptz for all DateTime properties
+/// - timestamptz for all DateTimeOffset properties
 /// - Automatic CreatedAt/UpdatedAt on BaseEntity derivatives
 /// </summary>
 public abstract class BaseDbContext(DbContextOptions options) : DbContext(options)
@@ -52,21 +52,21 @@ public abstract class BaseDbContext(DbContextOptions options) : DbContext(option
     /// </summary>
     protected abstract void ConfigureModel(ModelBuilder modelBuilder);
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SetTimestamps();
-        return base.SaveChangesAsync(cancellationToken);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
-    public override int SaveChanges()
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         SetTimestamps();
-        return base.SaveChanges();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
     private void SetTimestamps()
     {
-        var now = DateTime.UtcNow;
+        var now = DateTimeOffset.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {

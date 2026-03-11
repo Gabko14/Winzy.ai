@@ -7,8 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServiceDatabase<AuthDbContext>(builder.Configuration);
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<AuthDbContext>()
-    .AddNatsHealthCheck();
+    .AddDbContextCheck<AuthDbContext>();
 
 var app = builder.Build();
 

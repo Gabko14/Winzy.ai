@@ -101,6 +101,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 
+    // Clear defaults (loopback) so only explicitly configured proxies are trusted
+    options.KnownProxies.Clear();
+    options.KnownIPNetworks.Clear();
+
     var trustedProxies = builder.Configuration.GetSection("ReverseProxy:TrustedProxies").Get<string[]>();
     if (trustedProxies is { Length: > 0 })
     {

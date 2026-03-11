@@ -50,6 +50,20 @@ These are the non-obvious choices that agents get wrong without being told:
 - **Every service implements `GET /health`.** Returns service status, DB connectivity, and NATS connection status. Gateway aggregates all health checks.
 - **Services return results, UI shows feedback.** Backend services never format user-facing messages. They return structured data; the frontend decides how to present it.
 
+## Agent Teams (Claude Code-specific)
+
+These rules apply only to Claude Code's experimental agent teams feature. Other tools can ignore this section.
+
+- **All teammates share one working directory and git index.** `git add` from one agent picks up every other agent's files. `isolation: "worktree"` does NOT override this for team agents.
+- **Only the lead (or a dedicated committer agent) runs git operations.** Teammates report their changed files; the lead stages and commits per-issue. Never let teammates `git add`/`git commit` themselves.
+- **`br update --claim` and `br comments add` are safe per-teammate.** `br close` and `br sync` go through the lead only.
+- **Don't duplicate issue content in teammate prompts.** Teammates can run `br show <id>` themselves. Keep spawn prompts to: team name, issue ID, commit message format, and "do NOT git commit."
+
+
+## Review Discipline
+
+- **Always read the relevant bead before reviewing or verifying work.** The beads contain well-written acceptance criteria that define "done" — code review without checking the bead misses spec gaps.
+
 ## Code Editing Discipline
 
 - **No script-based mass changes.** Never run regex-based scripts to transform code files. Make changes manually or use parallel subagents for many simple changes.
