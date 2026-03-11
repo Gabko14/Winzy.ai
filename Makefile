@@ -1,4 +1,4 @@
-.PHONY: lint lint-frontend lint-backend format format-frontend format-backend check
+.PHONY: lint lint-frontend lint-backend format format-frontend format-backend check test test-frontend test-backend
 
 # Run all linting
 lint: lint-frontend lint-backend
@@ -28,3 +28,12 @@ format-backend:
 
 check-backend:
 	dotnet format --verify-no-changes
+
+# Testing
+test: test-frontend test-backend
+
+test-frontend:
+	cd frontend && npm test
+
+test-backend:
+	./test-backend.sh

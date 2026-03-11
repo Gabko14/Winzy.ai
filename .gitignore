@@ -34,3 +34,6 @@ node_modules/
 **/obj/
 *.user
 *.suo
+
+# Test results
+test-results/

@@ -51,6 +51,8 @@
   </Folder>
   <Folder Name="/shared/">
     <Project Path="shared/Winzy.Common/Winzy.Common.csproj" />
+    <Project Path="shared/Winzy.Common.Tests/Winzy.Common.Tests.csproj" />
     <Project Path="shared/Winzy.Contracts/Winzy.Contracts.csproj" />
+    <Project Path="shared/Winzy.Testing.Common/Winzy.Testing.Common.csproj" />
   </Folder>
 </Solution>
