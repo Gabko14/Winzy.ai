@@ -49,7 +49,23 @@ jobs:
         run: dotnet build Winzy.slnx --no-restore
 
       - name: Test
-        run: dotnet test Winzy.slnx --no-build
+        run: dotnet test Winzy.slnx --no-build --logger "trx;LogFileName=results.trx" --results-directory ./test-results
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: ./test-results/
+          retention-days: 14
 
       - name: Format Check
-        run: dotnet format Winzy.slnx --verify-no-changes --no-restore
+        run: dotnet format Winzy.slnx --verify-no-changes --no-restore 2>&1 | tee format-output.txt
+
+      - name: Upload format output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-format-output
+          path: ./format-output.txt
+          retention-days: 7
