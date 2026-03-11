@@ -11,6 +11,7 @@ public abstract class NatsEventSubscriber<T>(
     INatsConnection connection,
     string stream,
     string consumer,
+    string filterSubject,
     ILogger logger)
     : BackgroundService
 {
@@ -18,15 +19,26 @@ public abstract class NatsEventSubscriber<T>(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var config = new ConsumerConfig(consumer) { FilterSubject = filterSubject };
+
         var consumerObj = await _js.CreateOrUpdateConsumerAsync(
             stream,
-            new ConsumerConfig(consumer),
+            config,
             stoppingToken);
 
         await foreach (var msg in consumerObj.ConsumeAsync<T>(
             serializer: NatsJsonSerializer<T>.Default,
             cancellationToken: stoppingToken))
         {
+            if (msg.Subject != filterSubject)
+            {
+                logger.LogWarning(
+                    "Received message on unexpected subject {Subject} (expected {Expected}) on {Stream}/{Consumer}, skipping",
+                    msg.Subject, filterSubject, stream, consumer);
+                await msg.AckAsync(cancellationToken: stoppingToken);
+                continue;
+            }
+
             if (msg.Data is null)
             {
                 logger.LogWarning("Received NATS message with null payload on {Stream}/{Consumer}, skipping",
