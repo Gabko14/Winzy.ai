@@ -52,12 +52,15 @@ These are the non-obvious choices that agents get wrong without being told:
 
 ## Agent Teams (Claude Code-specific)
 
-These rules apply only to Claude Code's experimental agent teams feature. Other tools can ignore this section.
-
-- **All teammates share one working directory and git index.** `git add` from one agent picks up every other agent's files. `isolation: "worktree"` does NOT override this for team agents.
-- **Only the lead (or a dedicated committer agent) runs git operations.** Teammates report their changed files; the lead stages and commits per-issue. Never let teammates `git add`/`git commit` themselves.
+- **All teammates share one working directory.** `isolation: "worktree"` does NOT work with team agents. Don't try to work around this — shared filesystem enables collaboration on overlapping files.
+- **Only the lead runs git operations.** Teammates never `git add`/`git commit`. They report changed files; lead commits.
+- **Workers report their file plan before implementing.** After exploring the codebase but before writing code, each worker messages the team with a concise list of files it will touch. This lets other agents know who to contact when they need the same file. The lead can spot conflicts before any code is written.
+- **Agent needs a file outside its plan → messages the team.** Other agents working on that file coordinate directly. One goes first, lead commits between handoffs.
+- **Commit per worker-reviewer pair, not batched.** Reviewer approves → worker/reviewer verify build and tests pass → lead commits → both shut down. Nothing is committed until the pair is done. Batching all commits at the end risks agents overwriting each other's work.
+- **Review inline, not after all work.** Each worker gets a paired reviewer. Keep the worker alive until review is done. Reviewer messages worker directly with issues → worker fixes → reviewer approves. Optimize for quality, not token cost.
+- **3-5 workers max**, each with a paired reviewer. Group related small tasks into one agent.
+- **Don't duplicate issue content in prompts.** Teammates run `br show <id>` themselves.
 - **`br update --claim` and `br comments add` are safe per-teammate.** `br close` and `br sync` go through the lead only.
-- **Don't duplicate issue content in teammate prompts.** Teammates can run `br show <id>` themselves. Keep spawn prompts to: team name, issue ID, commit message format, and "do NOT git commit."
 
 
 ## Review Discipline
