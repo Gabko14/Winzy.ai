@@ -12,7 +12,8 @@ public static class JwtSecretValidator
         "your-jwt-secret",
         "change-me",
         "secret",
-        "placeholder"
+        "placeholder",
+        "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long"
     ];
 
     public static void Validate(string? secret)
