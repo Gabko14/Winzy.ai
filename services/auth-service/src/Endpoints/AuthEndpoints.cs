@@ -62,7 +62,15 @@ public static class AuthEndpoints
         };
 
         db.Users.Add(user);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent registration with same email/username — unique index caught it
+            return Results.Conflict(new { error = "Email or username already taken." });
+        }
 
         try
         {
@@ -151,6 +159,7 @@ public static class AuthEndpoints
     }
 
     private static async Task<IResult> Logout(
+        RefreshRequest? request,
         AuthDbContext db,
         HttpContext httpContext,
         CancellationToken ct)
@@ -159,7 +168,9 @@ public static class AuthEndpoints
         if (userId is null)
             return Results.Unauthorized();
 
-        var tokenValue = httpContext.Request.Cookies[RefreshCookieName];
+        // Cookie for web clients, body for native clients
+        var tokenValue = httpContext.Request.Cookies[RefreshCookieName]
+            ?? request?.RefreshToken;
 
         if (!string.IsNullOrWhiteSpace(tokenValue))
         {
