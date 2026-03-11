@@ -25,6 +25,10 @@ indent_size = 2
 [*.md]
 trim_trailing_whitespace = false
 
+# TypeScript / JavaScript (matches Prettier tabWidth: 2)
+[*.{ts,tsx,js,jsx,mjs}]
+indent_size = 2
+
 # Shell scripts
 [*.sh]
 end_of_line = lf
