@@ -8,7 +8,7 @@
   },
   "lint-staged": {
     "frontend/**/*.{ts,tsx,js,jsx}": [
-      "frontend/node_modules/.bin/eslint --no-warn-ignored"
+      "frontend/node_modules/.bin/eslint --no-warn-ignored --config frontend/eslint.config.mjs"
     ]
   },
   "devDependencies": {
