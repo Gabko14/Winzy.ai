@@ -163,7 +163,7 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 static object MapToResponse(Notification n) => new
 {
     id = n.Id,
-    type = n.Type.ToString(),
+    type = n.Type.ToString().ToLowerInvariant(),
     data = TryParseJson(n.Data),
     readAt = n.ReadAt,
     createdAt = n.CreatedAt

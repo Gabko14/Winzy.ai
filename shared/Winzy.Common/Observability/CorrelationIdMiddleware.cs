@@ -18,17 +18,22 @@ public sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<Correl
             correlationId = Guid.NewGuid().ToString("N");
 
         CorrelationContext.CorrelationId = correlationId;
-        context.Response.OnStarting(() =>
+        try
         {
-            context.Response.Headers[CorrelationContext.HeaderName] = correlationId;
-            return Task.CompletedTask;
-        });
+            context.Response.OnStarting(() =>
+            {
+                context.Response.Headers[CorrelationContext.HeaderName] = correlationId;
+                return Task.CompletedTask;
+            });
 
-        using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
-        {
-            await next(context);
+            using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
+            {
+                await next(context);
+            }
         }
-
-        CorrelationContext.CorrelationId = null;
+        finally
+        {
+            CorrelationContext.CorrelationId = null;
+        }
     }
 }

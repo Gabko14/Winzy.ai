@@ -31,37 +31,81 @@ public sealed class FriendRequestAcceptedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
 
-        // Notify both users about the accepted friend request
-        await CreateIfAllowed(db, data.UserId1, data.UserId2, ct);
-        await CreateIfAllowed(db, data.UserId2, data.UserId1, ct);
+        // Batch both notifications in a single SaveChanges for atomicity (avoids duplicates on retry)
+        await CreateBothIfAllowed(db, data.UserId1, data.UserId2, ct);
     }
 
-    private async Task CreateIfAllowed(
-        NotificationDbContext db, Guid recipientId, Guid otherUserId, CancellationToken ct)
+    private async Task CreateBothIfAllowed(
+        NotificationDbContext db, Guid userId1, Guid userId2, CancellationToken ct)
     {
-        var settings = await db.NotificationSettings
-            .FirstOrDefaultAsync(s => s.UserId == recipientId, ct);
+        var settings1 = await db.NotificationSettings
+            .FirstOrDefaultAsync(s => s.UserId == userId1, ct);
+        var settings2 = await db.NotificationSettings
+            .FirstOrDefaultAsync(s => s.UserId == userId2, ct);
 
-        if (settings is not null && !settings.FriendActivity)
+        // Check idempotency — skip if already processed
+        var key1 = $"friend_request_accepted:{userId1}:{userId2}";
+        var key2 = $"friend_request_accepted:{userId2}:{userId1}";
+        var existingKeys = await db.Notifications
+            .Where(n => n.IdempotencyKey == key1 || n.IdempotencyKey == key2)
+            .Select(n => n.IdempotencyKey)
+            .ToListAsync(ct);
+
+        var created = new List<Notification>();
+
+        if (!existingKeys.Contains(key1) && (settings1 is null || settings1.FriendActivity))
+        {
+            var n = new Notification
+            {
+                UserId = userId1,
+                Type = NotificationType.FriendRequestAccepted,
+                Data = JsonSerializer.Serialize(new { otherUserId = userId2 }),
+                IdempotencyKey = key1
+            };
+            db.Notifications.Add(n);
+            created.Add(n);
+        }
+        else if (existingKeys.Contains(key1))
+        {
+            logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId1);
+        }
+        else
         {
             logger.LogInformation(
                 "Skipping friend.request.accepted notification for UserId={UserId} — FriendActivity disabled",
-                recipientId);
-            return;
+                userId1);
         }
 
-        var notification = new Notification
+        if (!existingKeys.Contains(key2) && (settings2 is null || settings2.FriendActivity))
         {
-            UserId = recipientId,
-            Type = NotificationType.FriendRequestAccepted,
-            Data = JsonSerializer.Serialize(new { otherUserId })
-        };
+            var n = new Notification
+            {
+                UserId = userId2,
+                Type = NotificationType.FriendRequestAccepted,
+                Data = JsonSerializer.Serialize(new { otherUserId = userId1 }),
+                IdempotencyKey = key2
+            };
+            db.Notifications.Add(n);
+            created.Add(n);
+        }
+        else if (existingKeys.Contains(key2))
+        {
+            logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId2);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Skipping friend.request.accepted notification for UserId={UserId} — FriendActivity disabled",
+                userId2);
+        }
 
-        db.Notifications.Add(notification);
-        await db.SaveChangesAsync(ct);
-
-        logger.LogInformation(
-            "Created FriendRequestAccepted notification {NotificationId} for UserId={UserId}",
-            notification.Id, recipientId);
+        if (created.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            foreach (var n in created)
+                logger.LogInformation(
+                    "Created FriendRequestAccepted notification {NotificationId} for UserId={UserId}",
+                    n.Id, n.UserId);
+        }
     }
 }

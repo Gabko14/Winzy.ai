@@ -45,32 +45,11 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
     // --- habit.completed ---
 
     [Fact]
-    public async Task HabitCompleted_CreatesNotification()
+    public async Task HabitCompleted_DeferredUntilFriendLookup_NoNotification()
     {
+        // HabitCompleted subscriber defers notification creation until friend fan-out is available.
+        // It should NOT create self-notifications.
         var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
-        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
-
-        await WaitForNotificationAsync(_userId, NotificationType.HabitCompleted);
-
-        using var db = _fixture.CreateDbContext();
-        var notification = await db.Notifications
-            .FirstAsync(n => n.UserId == _userId && n.Type == NotificationType.HabitCompleted, CT);
-        Assert.NotNull(notification);
-        Assert.Null(notification.ReadAt);
-
-        var data = JsonSerializer.Deserialize<JsonElement>(notification.Data);
-        Assert.Equal(evt.HabitId, data.GetProperty("habitId").GetGuid());
-        Assert.Equal(0.85, data.GetProperty("consistency").GetDouble(), 2);
-    }
-
-    [Fact]
-    public async Task HabitCompleted_HabitRemindersDisabled_NoNotification()
-    {
-        // HabitCompleted uses HabitReminders setting (not FriendActivity)
-        using var client = _fixture.CreateAuthenticatedClient(_userId);
-        await client.PutAsJsonAsync("/notifications/settings", new { habitReminders = false }, CT);
-
-        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.5);
         await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
 
         await AssertNoNotificationAsync(_userId, NotificationType.HabitCompleted);

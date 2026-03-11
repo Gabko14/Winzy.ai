@@ -8,4 +8,10 @@ public sealed class Notification : BaseEntity
     public NotificationType Type { get; set; }
     public string Data { get; set; } = "{}";
     public DateTimeOffset? ReadAt { get; set; }
+
+    /// <summary>
+    /// Unique key for idempotent notification creation. Prevents duplicates on NATS redelivery.
+    /// Format: "{type}:{userId}:{event-specific-key}"
+    /// </summary>
+    public string? IdempotencyKey { get; set; }
 }

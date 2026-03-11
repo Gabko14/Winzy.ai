@@ -25,6 +25,13 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
 
             b.Property(n => n.ReadAt)
                 .HasColumnType("timestamptz");
+
+            b.Property(n => n.IdempotencyKey)
+                .HasMaxLength(256);
+
+            b.HasIndex(n => n.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("idempotency_key IS NOT NULL");
         });
 
         modelBuilder.Entity<NotificationSettings>(b =>
