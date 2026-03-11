@@ -1,9 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { spacing } from '../tokens/spacing';
-import { typography } from '../tokens/typography';
-import { lightTheme } from '../tokens/colors';
-import { Button } from './Button';
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { spacing } from "../tokens/spacing";
+import { typography } from "../tokens/typography";
+import { lightTheme } from "../tokens/colors";
+import { Button } from "./Button";
 
 export type EmptyStateProps = {
   title: string;
@@ -18,9 +18,7 @@ export function EmptyState({ title, message, actionLabel, onAction }: EmptyState
   return (
     <View style={styles.container} accessibilityRole="text">
       <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
-      {message && (
-        <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
-      )}
+      {message && <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>}
       {actionLabel && onAction && (
         <View style={styles.action}>
           <Button title={actionLabel} onPress={onAction} variant="secondary" size="sm" />
@@ -32,18 +30,18 @@ export function EmptyState({ title, message, actionLabel, onAction }: EmptyState
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing['2xl'],
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing["2xl"],
     gap: spacing.sm,
   },
   title: {
     ...typography.h4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   message: {
     ...typography.body,
-    textAlign: 'center',
+    textAlign: "center",
   },
   action: {
     marginTop: spacing.base,

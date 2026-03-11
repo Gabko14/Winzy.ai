@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="NATS.Net" Version="2.*" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.*" />
   </ItemGroup>
 
   <ItemGroup>

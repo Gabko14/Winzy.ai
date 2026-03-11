@@ -1,10 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { spacing, radii } from '../tokens/spacing';
-import { typography } from '../tokens/typography';
-import { lightTheme, semantic } from '../tokens/colors';
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { spacing, radii } from "../tokens/spacing";
+import { typography } from "../tokens/typography";
+import { lightTheme, semantic } from "../tokens/colors";
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
+type BadgeVariant = "default" | "success" | "warning" | "error" | "info";
 
 export type BadgeProps = {
   label: string;
@@ -19,14 +19,11 @@ const variantColors: Record<BadgeVariant, { bg: string; text: string }> = {
   info: { bg: semantic.infoLight, text: semantic.info },
 };
 
-export function Badge({ label, variant = 'default' }: BadgeProps) {
+export function Badge({ label, variant = "default" }: BadgeProps) {
   const colors = variantColors[variant];
 
   return (
-    <View
-      style={[styles.badge, { backgroundColor: colors.bg }]}
-      accessibilityRole="text"
-    >
+    <View style={[styles.badge, { backgroundColor: colors.bg }]} accessibilityRole="text">
       <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
     </View>
   );
@@ -34,13 +31,13 @@ export function Badge({ label, variant = 'default' }: BadgeProps) {
 
 const styles = StyleSheet.create({
   badge: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radii.full,
   },
   label: {
     ...typography.caption,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

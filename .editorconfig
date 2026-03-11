@@ -206,6 +206,10 @@ csharp_preserve_single_line_blocks = true
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 
+# EF Core generated migration files — suppress all analyzers on auto-generated code
+[**/Migrations/*.cs]
+generated_code = true
+
 #### Analyzer Severities ####
 
 # Null check on parameters (handled by nullable reference types)

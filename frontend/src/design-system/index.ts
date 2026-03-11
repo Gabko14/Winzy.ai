@@ -19,7 +19,7 @@ export {
   getFlameColor,
   getFlameSize,
   getFlameGlow,
-} from './tokens';
+} from "./tokens";
 
 // Components
 export {
@@ -39,4 +39,4 @@ export {
   type ErrorStateProps,
   Modal,
   type ModalProps,
-} from './components';
+} from "./components";
