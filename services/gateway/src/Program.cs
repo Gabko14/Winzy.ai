@@ -38,7 +38,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("authenticated", policy => policy.RequireAuthenticatedUser());
 });
 
-// Rate limiting
+// Rate limiting (auth limit is configurable for E2E testing in Development)
+var authRateLimit = builder.Configuration.GetValue("RateLimiting:AuthPermitLimit", 10);
+
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("standard", context =>
@@ -56,7 +58,7 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 Window = TimeSpan.FromMinutes(1),
-                PermitLimit = 10,
+                PermitLimit = authRateLimit,
                 QueueLimit = 0
             }));
     options.RejectionStatusCode = 429;

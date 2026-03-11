@@ -3,9 +3,12 @@ import { tokenStore } from "./token";
 import type { ApiError, AuthResponse } from "./types";
 
 // Gateway is exposed on port 5050 in dev (macOS AirPlay conflict on 5000).
-// Web: same-origin (gateway proxied or same host). Native: explicit gateway URL.
+// Web production: same-origin (served behind gateway). Web dev: explicit gateway URL.
+// Native: always explicit gateway URL.
 const DEFAULT_BASE_URL =
-  Platform.OS === "web" ? "" : "http://localhost:5050";
+  Platform.OS === "web"
+    ? (process.env.EXPO_PUBLIC_API_URL ?? (__DEV__ ? "http://localhost:5050" : ""))
+    : (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:5050");
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
