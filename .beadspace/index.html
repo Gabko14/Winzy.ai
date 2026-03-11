@@ -326,6 +326,40 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .flow-legend{position:absolute;bottom:12px;left:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;display:flex;gap:0.75rem;font-size:0.65rem;color:var(--text-muted);backdrop-filter:blur(8px)}
 .flow-legend-item{display:flex;align-items:center;gap:0.3rem}
 .flow-legend-dot{width:8px;height:4px;border-radius:2px}
+/* ═══ Velocity Sparkline ═══ */
+.velocity-spark{display:flex;align-items:flex-end;gap:2px;height:40px;padding:0.5rem 0}
+.velocity-bar{flex:1;border-radius:2px 2px 0 0;min-height:2px;transition:height 0.6s cubic-bezier(0.22,1,0.36,1)}
+.velocity-labels{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:0.5rem;color:var(--text-muted)}
+/* ═══ Flow Mode Controls ═══ */
+.flow-mode-sep{width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center}
+.flow-info-badge{position:absolute;bottom:12px;right:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.85rem;font-size:0.7rem;color:var(--text-secondary);backdrop-filter:blur(8px);max-width:340px;box-shadow:0 4px 16px rgba(0,0,0,0.3);display:none;line-height:1.6}
+.flow-info-badge.visible{display:block}
+.flow-info-badge strong{color:var(--text-primary);font-weight:600}
+.flow-info-badge .epic-impact{font-size:0.62rem;color:var(--text-muted);margin-top:0.2rem}
+/* ═══ Forecast View ═══ */
+.forecast-container{position:relative;z-index:1}
+.forecast-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.forecast-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem}
+.forecast-meta{font-size:0.7rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+.forecast-epic-group{margin-bottom:1.25rem}
+.forecast-epic-hd{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border);margin-bottom:0.25rem}
+.forecast-epic-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.forecast-epic-name{font-family:'Syne',sans-serif;font-weight:600;font-size:0.82rem}
+.forecast-epic-pct{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--text-muted);margin-left:auto}
+.forecast-row{display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;border-bottom:1px solid var(--border)}
+.forecast-row:last-child{border-bottom:none}
+.forecast-row-label{width:200px;flex-shrink:0;display:flex;align-items:center;gap:0.35rem;overflow:hidden}
+.forecast-row-status{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.forecast-row-id{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--text-muted)}
+.forecast-row-title{font-size:0.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.forecast-row-track{flex:1;position:relative;height:20px;background:var(--bg-elevated);border-radius:3px;overflow:hidden}
+.forecast-bar{position:absolute;top:0;height:100%;border-radius:3px}
+.forecast-bar-range{opacity:0.15}
+.forecast-bar-est{opacity:0.6}
+.forecast-bar-lbl{position:absolute;right:4px;top:50%;transform:translateY(-50%);font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--text-primary)}
+.forecast-scale{display:flex;justify-content:space-between;padding:0.4rem 0 0;margin-left:200px}
+.forecast-scale span{font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--text-muted)}
+.forecast-note{text-align:center;font-size:0.68rem;color:var(--text-muted);margin-top:1rem;padding:0.5rem;border:1px dashed var(--border);border-radius:6px}
 </style>
 </head>
 <body>
@@ -339,6 +373,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <button class="nav-tab" data-view="epics">Epics<span class="tab-key">4</span></button>
     <button class="nav-tab" data-view="insights">Insights<span class="tab-key">5</span></button>
     <button class="nav-tab" data-view="flow">Flow<span class="tab-key">6</span></button>
+    <button class="nav-tab" data-view="forecast">Forecast<span class="tab-key">7</span></button>
   </div>
   <div class="topbar-right">
     <div class="topbar-meta" id="topbar-meta"></div>
@@ -361,7 +396,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <div class="kbd-overlay" id="kbd-overlay">
   <div class="kbd-card">
     <h3>Keyboard Shortcuts</h3>
-    <div class="kbd-row"><span class="kbd-key">1-6</span><span class="kbd-desc">Switch views</span></div>
+    <div class="kbd-row"><span class="kbd-key">1-7</span><span class="kbd-desc">Switch views</span></div>
     <div class="kbd-row"><span class="kbd-key">/</span><span class="kbd-desc">Focus search</span></div>
     <div class="kbd-row"><span class="kbd-key">&#8984;K</span><span class="kbd-desc">Quick jump to issue</span></div>
     <div class="kbd-row"><span class="kbd-key">j / k</span><span class="kbd-desc">Next / previous issue</span></div>
@@ -622,7 +657,64 @@ function computeMetrics() {
   }
   ids.forEach(id => getChainDepth(id));
 
-  metrics = { pr, inDeg, outDeg, impact, criticalPath, cpSet, hasCycle, components, density, avgDeg, edgeCount, nodeCount, cascadeUnblock, chainDepth };
+  // Slack computation (schedule flexibility): ES/EF forward pass, LS/LF backward pass
+  const es = {}, ef = {};
+  ids.forEach(id => { es[id] = 0; ef[id] = 1; });
+  order.forEach(id => {
+    blockRevAdj[id].forEach(prev => { es[id] = Math.max(es[id], ef[prev]); });
+    ef[id] = es[id] + 1;
+  });
+  const projectEnd = Math.max(...Object.values(ef), 1);
+  const ls = {}, lf = {};
+  ids.forEach(id => { lf[id] = projectEnd; ls[id] = projectEnd - 1; });
+  [...order].reverse().forEach(id => {
+    blockAdj[id].forEach(next => { lf[id] = Math.min(lf[id], ls[next]); });
+    ls[id] = lf[id] - 1;
+  });
+  const slack = {};
+  ids.forEach(id => { slack[id] = Math.max(0, ls[id] - es[id]); });
+  const maxSlack = Math.max(...Object.values(slack), 1);
+
+  // Articulation points (Tarjan's — undirected view of blocking graph)
+  const articulationPts = new Set();
+  const apDisc = {}, apLow = {}, apParent = {};
+  let apTimer = 0;
+  const apVisited = new Set();
+  function apDFS(u) {
+    apDisc[u] = apLow[u] = apTimer++;
+    apVisited.add(u);
+    let children = 0;
+    const nbrs = new Set([...(blockAdj[u] || []), ...(blockRevAdj[u] || [])]);
+    for (const v of nbrs) {
+      if (!ids.includes(v)) continue;
+      if (!apVisited.has(v)) {
+        children++;
+        apParent[v] = u;
+        apDFS(v);
+        apLow[u] = Math.min(apLow[u], apLow[v]);
+        if (apParent[u] === undefined && children > 1) articulationPts.add(u);
+        if (apParent[u] !== undefined && apLow[v] >= apDisc[u]) articulationPts.add(u);
+      } else if (v !== apParent[u]) {
+        apLow[u] = Math.min(apLow[u], apDisc[v]);
+      }
+    }
+  }
+  ids.forEach(id => { if (!apVisited.has(id)) apDFS(id); });
+
+  // Velocity: weekly closure counts (last 12 weeks, oldest first)
+  const velocity = [];
+  const nowMs = Date.now();
+  for (let w = 11; w >= 0; w--) {
+    const wkStart = nowMs - (w + 1) * 7 * 864e5;
+    const wkEnd = nowMs - w * 7 * 864e5;
+    velocity.push(ISSUES.filter(i => {
+      if (!i.closed_at) return false;
+      const t = new Date(i.closed_at).getTime();
+      return t >= wkStart && t < wkEnd;
+    }).length);
+  }
+
+  metrics = { pr, inDeg, outDeg, impact, criticalPath, cpSet, hasCycle, components, density, avgDeg, edgeCount, nodeCount, cascadeUnblock, chainDepth, slack, maxSlack, articulationPts, velocity };
 }
 
 // ─── Triage Engine ───────────────────────────────────────────────────────────
@@ -791,6 +883,20 @@ function renderDashboard() {
   Object.entries(typeMap).sort((a, b) => b[1] - a[1]).forEach(([t, c]) => {
     html += `<div class="bar-row"><span class="bar-label">${esc(t)}</span><div class="bar-track"><div class="bar-fill" style="width:0%;background:var(--type-${t},var(--accent))" data-w="${(c / Math.max(...Object.values(typeMap), 1) * 100).toFixed(0)}%"></div></div><span class="bar-ct">${c}</span></div>`;
   });
+  html += '</div></div>';
+
+  // Velocity sparkline (last 12 weeks)
+  const vel = metrics.velocity || [];
+  const maxVel = Math.max(...vel, 1);
+  const totalClosed12w = vel.reduce((a, b) => a + b, 0);
+  html += `<div class="panel"><div class="panel-hd"><span class="panel-title">Velocity</span><span class="panel-count">${totalClosed12w} / 12wk</span></div><div class="panel-body pad">`;
+  html += '<div class="velocity-spark">';
+  vel.forEach((v, i) => {
+    const h = Math.max(2, (v / maxVel) * 36);
+    const opacity = i >= vel.length - 4 ? 1 : 0.5;
+    html += `<div class="velocity-bar" style="height:${h}px;background:var(--accent);opacity:${opacity}" title="Week ${i + 1}: ${v} closed"></div>`;
+  });
+  html += '</div><div class="velocity-labels"><span>12w ago</span><span>now</span></div>';
   html += '</div></div>';
 
   html += '</div></div></div>';
@@ -1371,6 +1477,131 @@ function renderInsightsView() {
   return html;
 }
 
+// ─── Render: Forecast Timeline ────────────────────────────────────────────────
+function renderForecastView() {
+  const EPIC_HUES = ['#8b5cf6','#f59e0b','#06b6d4','#ec4899','#10b981','#f97316','#6366f1','#14b8a6','#e11d48','#84cc16'];
+  const epicList = ISSUES.filter(i => i.issue_type === 'epic').sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+  const epicColorMap = {};
+  epicList.forEach((e, i) => { epicColorMap[e.id] = EPIC_HUES[i % EPIC_HUES.length]; });
+
+  // Velocity: average closures per week over last 4 active weeks
+  const vel = metrics.velocity || [];
+  const activeWeeks = vel.filter(v => v > 0);
+  const avgVelocity = activeWeeks.length > 0 ? activeWeeks.reduce((a, b) => a + b, 0) / activeWeeks.length : 1;
+
+  // Estimate days for each open issue
+  const typeMultiplier = { bug: 0.5, feature: 2, task: 1, chore: 0.5, epic: 0, decision: 0.3 };
+  const prioMultiplier = [0.7, 0.85, 1, 1.2, 1.5]; // P0=fast, P4=slow
+  const estimates = [];
+  ISSUES.forEach(i => {
+    if (i.status === 'closed' || i.issue_type === 'epic') return;
+    const tMul = typeMultiplier[i.issue_type || 'task'] || 1;
+    const pMul = prioMultiplier[clamp(i.priority ?? 2, 0, 4)];
+    const depthFactor = 1 + (metrics.chainDepth[i.id] || 0) * 0.3;
+    const baseDays = 2 * tMul * pMul;
+    const estDays = baseDays * depthFactor / Math.max(avgVelocity / 5, 0.2);
+    const low = estDays * 0.6;
+    const high = estDays * 1.8;
+    estimates.push({
+      id: i.id, title: i.title, status: effectiveStatus(i),
+      epicId: parentOf[i.id] || null,
+      est: estDays, low, high,
+      priority: i.priority ?? 2,
+      wave: metrics.slack?.[i.id] ?? 0
+    });
+  });
+
+  // Group by epic
+  const grouped = {};
+  const noEpic = [];
+  estimates.forEach(e => {
+    if (e.epicId) {
+      if (!grouped[e.epicId]) grouped[e.epicId] = [];
+      grouped[e.epicId].push(e);
+    } else noEpic.push(e);
+  });
+
+  // Sort within groups by wave then priority
+  const sortFn = (a, b) => a.wave - b.wave || a.priority - b.priority;
+  Object.values(grouped).forEach(g => g.sort(sortFn));
+  noEpic.sort(sortFn);
+
+  const maxDays = Math.max(...estimates.map(e => e.high), 14);
+  const statusDotColors = { open: 'var(--status-open)', in_progress: 'var(--status-wip)', blocked: 'var(--status-blocked)' };
+
+  function renderRows(items, color) {
+    let html = '';
+    items.forEach(e => {
+      const leftPct = (e.low / maxDays * 100).toFixed(1);
+      const widthRangePct = ((e.high - e.low) / maxDays * 100).toFixed(1);
+      const widthEstPct = (e.est / maxDays * 100).toFixed(1);
+      html += `<div class="forecast-row">
+        <div class="forecast-row-label">
+          <div class="forecast-row-status" style="background:${statusDotColors[e.status] || 'var(--status-open)'}"></div>
+          <span class="forecast-row-id">${esc(e.id)}</span>
+          <span class="forecast-row-title" title="${esc(e.title)}">${esc(e.title)}</span>
+        </div>
+        <div class="forecast-row-track">
+          <div class="forecast-bar forecast-bar-range" style="left:${leftPct}%;width:${widthRangePct}%;background:${color}"></div>
+          <div class="forecast-bar forecast-bar-est" style="left:0;width:${widthEstPct}%;background:${color}">
+            <span class="forecast-bar-lbl">${e.est.toFixed(1)}d</span>
+          </div>
+        </div>
+      </div>`;
+    });
+    return html;
+  }
+
+  let html = `<div id="view-forecast" class="view"><div class="forecast-container">
+    <div class="forecast-header">
+      <span class="forecast-title">Forecast Timeline</span>
+      <span class="forecast-meta">${estimates.length} open issues · avg ${avgVelocity.toFixed(1)} closures/wk</span>
+    </div>`;
+
+  // Epic groups
+  epicList.forEach((epic, ei) => {
+    const items = grouped[epic.id];
+    if (!items || !items.length) return;
+    const color = epicColorMap[epic.id];
+    const kids = (childrenOf[epic.id] || []).map(id => issueMap[id]).filter(Boolean);
+    const done = kids.filter(k => k.status === 'closed').length;
+    const pct = kids.length > 0 ? Math.round(done / kids.length * 100) : 0;
+    const epicETA = Math.max(...items.map(e => e.high)).toFixed(0);
+    html += `<div class="forecast-epic-group">
+      <div class="forecast-epic-hd">
+        <div class="forecast-epic-dot" style="background:${color}"></div>
+        <span class="forecast-epic-name">${esc(epic.title)}</span>
+        <span class="forecast-epic-pct">${done}/${kids.length} (${pct}%) · ETA ~${epicETA}d</span>
+      </div>`;
+    html += renderRows(items, color);
+    html += '</div>';
+  });
+
+  // Ungrouped
+  if (noEpic.length) {
+    html += `<div class="forecast-epic-group">
+      <div class="forecast-epic-hd">
+        <div class="forecast-epic-dot" style="background:#71717a"></div>
+        <span class="forecast-epic-name">No Epic</span>
+        <span class="forecast-epic-pct">${noEpic.length} issues</span>
+      </div>`;
+    html += renderRows(noEpic, '#71717a');
+    html += '</div>';
+  }
+
+  // Scale
+  const scaleSteps = 5;
+  html += '<div class="forecast-scale">';
+  for (let s = 0; s <= scaleSteps; s++) {
+    html += `<span>${Math.round(maxDays / scaleSteps * s)}d</span>`;
+  }
+  html += '</div>';
+
+  html += `<div class="forecast-note">Estimates based on type, priority, dependency depth, and recent velocity (${avgVelocity.toFixed(1)} issues/week). Solid bar = estimate, faded bar = range (60%-180%).</div>`;
+  html += '</div></div>';
+  return html;
+}
+
 // ─── Render: Flow (Layered DAG) ───────────────────────────────────────────────
 function renderFlowView() {
   return `<div id="view-flow" class="view">
@@ -1380,14 +1611,22 @@ function renderFlowView() {
         <button class="graph-btn" id="flow-fit" title="Fit to view (F)">Fit</button>
         <button class="graph-btn active" id="flow-labels" title="Toggle labels">Labels</button>
         <button class="graph-btn" id="flow-closed" title="Show completed issues">Show Closed</button>
+        <div class="flow-mode-sep"></div>
+        <button class="graph-btn active" id="flow-mode-status" title="Color by status (default)">Status</button>
+        <button class="graph-btn" id="flow-mode-slack" title="Color by slack (schedule flexibility)">Slack</button>
+        <button class="graph-btn" id="flow-mode-epic" title="Color by parent epic">Epic</button>
+        <div class="flow-mode-sep"></div>
+        <button class="graph-btn" id="flow-whatif" title="What-If: click a node to simulate closing it">What-If</button>
       </div>
       <div class="flow-tooltip" id="flow-tooltip"></div>
-      <div class="flow-legend">
+      <div class="flow-info-badge" id="flow-info-badge"></div>
+      <div class="flow-legend" id="flow-legend">
         <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-open)"></div>Ready</div>
         <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-wip)"></div>In Progress</div>
         <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-blocked)"></div>Blocked</div>
         <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-closed)"></div>Closed</div>
         <div class="flow-legend-item"><span style="color:var(--status-blocked);font-weight:600;font-size:0.8rem">—</span> Critical Path</div>
+        <div class="flow-legend-item"><span style="font-size:0.8rem">⚠</span> Bridge Node</div>
       </div>
     </div>
   </div>`;
@@ -1415,7 +1654,15 @@ class FlowGraph {
     this.showClosed = false;
     this.running = true;
     this.animT = 0;
-    this.whatIf = null; // { id, unblocked: Set, transitive: Set, daysSaved: number, animStart: number }
+    this.colorMode = 'status'; // 'status' | 'slack' | 'epic'
+    this.whatIfMode = false;
+    this.whatIf = null; // { id, direct: Set, transitive: Set, epicImpact: [], animStart: number }
+
+    // Epic color palette
+    this.epicColors = {};
+    const EPIC_HUES = ['#8b5cf6','#f59e0b','#06b6d4','#ec4899','#10b981','#f97316','#6366f1','#14b8a6','#e11d48','#84cc16'];
+    const epics = ISSUES.filter(i => i.issue_type === 'epic').sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    epics.forEach((e, i) => { this.epicColors[e.id] = EPIC_HUES[i % EPIC_HUES.length]; });
 
     this.computeLayout();
     this.bindEvents();
@@ -1498,6 +1745,7 @@ class FlowGraph {
         const epic = parentOf[i.id] || (i.issue_type === 'epic' ? i.id : '');
         if (lastEpic !== null && epic !== lastEpic) y += this.epicGapY;
         lastEpic = epic;
+        const epicId = parentOf[i.id] || (i.issue_type === 'epic' ? i.id : null);
         const node = {
           id: i.id,
           x: this.padX + w * this.colW + (this.colW - this.nodeW) / 2,
@@ -1508,7 +1756,10 @@ class FlowGraph {
           status: effectiveStatus(i),
           issue: i,
           critical: metrics.cpSet?.has(i.id),
-          ready: effectiveStatus(i) === 'open' && !blockedSet.has(i.id) && i.status !== 'closed'
+          ready: effectiveStatus(i) === 'open' && !blockedSet.has(i.id) && i.status !== 'closed',
+          epicId,
+          isArticulation: metrics.articulationPts?.has(i.id),
+          slack: metrics.slack?.[i.id] ?? 0
         };
         this.nodes.push(node);
         this.nodeMap[i.id] = node;
@@ -1629,6 +1880,75 @@ class FlowGraph {
     ctx.closePath();
   }
 
+  simulateWhatIf(nodeId) {
+    if (this.whatIf?.id === nodeId) { this.clearWhatIf(); return; }
+    const direct = new Set(), transitive = new Set();
+    // Simulate closing this node: find all issues that would become unblocked
+    const simClosed = new Set([nodeId, ...ISSUES.filter(i => i.status === 'closed').map(i => i.id)]);
+    // BFS: expand from nodeId through dependency graph
+    const queue = [nodeId];
+    while (queue.length) {
+      const cur = queue.shift();
+      (adjIn[cur] || []).forEach(e => {
+        const dep = e.from;
+        if (simClosed.has(dep) || transitive.has(dep)) return;
+        const depIssue = issueMap[dep];
+        if (!depIssue || depIssue.status === 'closed') return;
+        // Check if ALL blockers of dep would be closed
+        const allClosed = (adjOut[dep] || []).every(d => simClosed.has(d.to) || transitive.has(d.to) || d.to === nodeId);
+        if (allClosed) {
+          if (cur === nodeId) direct.add(dep); else transitive.add(dep);
+          simClosed.add(dep);
+          queue.push(dep);
+        }
+      });
+    }
+    // Epic impact
+    const epicImpact = [];
+    const allUnblocked = new Set([...direct, ...transitive]);
+    const epicIds = [...new Set(ISSUES.filter(i => i.issue_type === 'epic').map(i => i.id))];
+    epicIds.forEach(eid => {
+      const kids = (childrenOf[eid] || []).map(id => issueMap[id]).filter(Boolean);
+      const nowDone = kids.filter(k => k.status === 'closed').length;
+      const wouldDone = kids.filter(k => k.status === 'closed' || allUnblocked.has(k.id) || k.id === nodeId).length;
+      if (wouldDone > nowDone) {
+        const epic = issueMap[eid];
+        epicImpact.push({ name: epic?.title || eid, from: Math.round(nowDone / kids.length * 100), to: Math.round(wouldDone / kids.length * 100), delta: wouldDone - nowDone });
+      }
+    });
+    this.whatIf = { id: nodeId, direct, transitive, epicImpact, animStart: performance.now() };
+    // Update info badge
+    const badge = document.getElementById('flow-info-badge');
+    if (badge) {
+      const total = direct.size + transitive.size;
+      let html = `<strong>What-If: Close ${esc(nodeId)}</strong><br>`;
+      html += total > 0 ? `Unblocks <strong>${direct.size}</strong> direct + <strong>${transitive.size}</strong> transitive` : 'No cascading unblocks';
+      if (epicImpact.length) {
+        html += '<div class="epic-impact">';
+        epicImpact.forEach(e => { html += `${esc(e.name)}: ${e.from}% → ${e.to}% (+${e.delta})<br>`; });
+        html += '</div>';
+      }
+      badge.innerHTML = html;
+      badge.classList.add('visible');
+    }
+  }
+
+  clearWhatIf() {
+    this.whatIf = null;
+    const badge = document.getElementById('flow-info-badge');
+    if (badge) badge.classList.remove('visible');
+  }
+
+  slackColor(slack) {
+    const maxS = metrics.maxSlack || 1;
+    const t = Math.min(slack / maxS, 1);
+    if (t < 0.01) return '#ef4444'; // red — critical path
+    if (t < 0.25) return '#f97316'; // orange
+    if (t < 0.5) return '#eab308'; // yellow
+    if (t < 0.75) return '#22c55e'; // green
+    return '#06b6d4'; // teal — max flexibility
+  }
+
   draw() {
     const ctx = this.ctx;
     ctx.save();
@@ -1741,6 +2061,13 @@ class FlowGraph {
       });
     }
 
+    // What-If highlight sets
+    const wiDirect = this.whatIf?.direct || new Set();
+    const wiTransitive = this.whatIf?.transitive || new Set();
+    const wiAll = new Set([...wiDirect, ...wiTransitive]);
+    const wiActive = !!this.whatIf;
+    const wiElapsed = wiActive ? (performance.now() - this.whatIf.animStart) / 1000 : 0;
+
     // Nodes
     const statusColors = { closed: '#22c55e', in_progress: '#f59e0b', blocked: '#ef4444', open: '#6366f1' };
     const priColors = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#52525b'];
@@ -1749,20 +2076,93 @@ class FlowGraph {
       : { closed: '#f0f9f0', in_progress: '#fef9ec', blocked: '#fef2f2', open: '#eef2ff' };
     const icons = { closed: '\u2713', in_progress: '\u25CF', blocked: '\u25C6', open: '\u25CB' };
 
+    // Epic group headers (drawn once per wave per epic group in epic mode)
+    if (this.colorMode === 'epic') {
+      const drawnEpicHeaders = new Set();
+      this.nodes.forEach(n => {
+        if (!this.showClosed && n.status === 'closed') return;
+        if (!n.epicId) return;
+        const key = n.wave + ':' + n.epicId;
+        if (drawnEpicHeaders.has(key)) return;
+        drawnEpicHeaders.add(key);
+        const color = this.epicColors[n.epicId] || '#71717a';
+        const epic = issueMap[n.epicId];
+        const label = epic ? (epic.title.length > 25 ? epic.title.slice(0, 23) + '..' : epic.title) : n.epicId;
+        // Subtle band behind epic group
+        ctx.fillStyle = color + '08';
+        const groupNodes = this.nodes.filter(gn => gn.wave === n.wave && gn.epicId === n.epicId && (this.showClosed || gn.status !== 'closed'));
+        if (groupNodes.length) {
+          const gMinY = Math.min(...groupNodes.map(g => g.y)) - 4;
+          const gMaxY = Math.max(...groupNodes.map(g => g.y + g.h)) + 4;
+          ctx.fillRect(n.x - 6, gMinY, n.w + 12, gMaxY - gMinY);
+          // Epic label above group
+          ctx.font = '600 8px "Syne"';
+          ctx.fillStyle = color + 'aa';
+          ctx.textAlign = 'left';
+          ctx.fillText(label, n.x, gMinY - 4);
+        }
+      });
+    }
+
     this.nodes.forEach(n => {
       if (!this.showClosed && n.status === 'closed') return;
       const dimmed = this.hover && !hoverSet.has(n.id);
-      ctx.globalAlpha = dimmed ? 0.15 : 1;
-      const { x, y, w, h, status, issue, critical, ready } = n;
+      const wiNode = wiActive && (n.id === this.whatIf.id);
+      const wiUnblocked = wiActive && wiAll.has(n.id);
+      const wiDimmed = wiActive && !wiNode && !wiUnblocked && n.status !== 'closed';
+      ctx.globalAlpha = dimmed ? 0.15 : wiDimmed ? 0.25 : 1;
+      const { x, y, w, h, status, issue, critical, ready, epicId, isArticulation, slack: nodeSlack } = n;
+
+      // Determine left bar color based on mode
+      let barColor = statusColors[status] || '#71717a';
+      if (this.colorMode === 'slack' && status !== 'closed') barColor = this.slackColor(nodeSlack);
+      else if (this.colorMode === 'epic' && epicId) barColor = this.epicColors[epicId] || '#71717a';
 
       // Background
       ctx.beginPath();
       this.roundRect(x, y, w, h, 7);
-      ctx.fillStyle = bgColors[status] || (isDark ? '#1a1a1e' : '#f5f5f7');
+      if (this.colorMode === 'epic' && epicId && status !== 'closed') {
+        const ec = this.epicColors[epicId] || '#71717a';
+        ctx.fillStyle = ec + (isDark ? '18' : '12');
+      } else {
+        ctx.fillStyle = bgColors[status] || (isDark ? '#1a1a1e' : '#f5f5f7');
+      }
       ctx.fill();
 
-      // Ready node glow
-      if (ready && !dimmed) {
+      // What-If glow for simulated node
+      if (wiNode && !dimmed) {
+        ctx.save();
+        const pulse = Math.sin(wiElapsed * 4) * 0.2 + 0.6;
+        ctx.shadowColor = `rgba(34,197,94,${pulse.toFixed(2)})`;
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        this.roundRect(x, y, w, h, 7);
+        ctx.strokeStyle = `rgba(34,197,94,0.8)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // What-If glow for unblocked nodes (animate in with delay)
+      if (wiUnblocked && !dimmed) {
+        const isDirect = wiDirect.has(n.id);
+        const delay = isDirect ? 0.2 : 0.6;
+        const intensity = clamp((wiElapsed - delay) * 3, 0, 1);
+        if (intensity > 0) {
+          ctx.save();
+          ctx.shadowColor = `rgba(34,197,94,${(intensity * 0.4).toFixed(2)})`;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          this.roundRect(x, y, w, h, 7);
+          ctx.strokeStyle = `rgba(34,197,94,${(intensity * 0.7).toFixed(2)})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Ready node glow (only in status mode)
+      if (ready && !dimmed && !wiActive && this.colorMode === 'status') {
         ctx.save();
         ctx.shadowColor = 'rgba(99,102,241,0.4)';
         ctx.shadowBlur = 12 + Math.sin(this.animT * Math.PI * 2) * 4;
@@ -1774,8 +2174,8 @@ class FlowGraph {
         ctx.restore();
       }
 
-      // Critical path glow
-      if (critical && !ready && !dimmed) {
+      // Critical path glow (only in status mode)
+      if (critical && !ready && !dimmed && !wiActive && this.colorMode === 'status') {
         ctx.save();
         ctx.shadowColor = 'rgba(239,68,68,0.3)';
         ctx.shadowBlur = 8;
@@ -1796,7 +2196,7 @@ class FlowGraph {
       ctx.lineTo(x, y + h - 7);
       ctx.arcTo(x, y + h, x, y + h - 7, 7);
       ctx.closePath();
-      ctx.fillStyle = statusColors[status] || '#71717a';
+      ctx.fillStyle = barColor;
       ctx.fill();
 
       // Border
@@ -1821,11 +2221,13 @@ class FlowGraph {
         ctx.fillText(title, x + 14, y + 25);
       }
 
-      // Type badge
+      // Type badge + slack value in slack mode
       ctx.font = '500 9px "DM Sans"';
       ctx.fillStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
       ctx.textAlign = 'left';
-      ctx.fillText(issue.issue_type || 'task', x + 14, y + 40);
+      let typeText = issue.issue_type || 'task';
+      if (this.colorMode === 'slack' && status !== 'closed') typeText += ' · slack ' + nodeSlack;
+      ctx.fillText(typeText, x + 14, y + 40);
 
       // ID
       ctx.font = '9px "JetBrains Mono"';
@@ -1845,6 +2247,14 @@ class FlowGraph {
       ctx.fillStyle = statusColors[status];
       ctx.fillText(icons[status] || '\u25CB', x + w - 12, y + 22);
 
+      // Articulation point warning
+      if (isArticulation && status !== 'closed' && !dimmed) {
+        ctx.font = '12px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillText('\u26A0', x + w - 28, y + 22);
+      }
+
       // Strikethrough for closed
       if (status === 'closed' && this.showLabels) {
         ctx.beginPath();
@@ -1857,6 +2267,26 @@ class FlowGraph {
 
       ctx.globalAlpha = 1;
     });
+
+    // What-If ripple rings
+    if (wiActive && this.whatIf) {
+      const srcNode = this.nodeMap[this.whatIf.id];
+      if (srcNode) {
+        const cx = srcNode.x + srcNode.w / 2, cy = srcNode.y + srcNode.h / 2;
+        for (let ring = 0; ring < 3; ring++) {
+          const delay = ring * 0.3;
+          const t = clamp((wiElapsed - delay) * 1.5, 0, 1);
+          if (t > 0 && t < 1) {
+            const r = 30 + t * 120;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(34,197,94,${((1 - t) * 0.3).toFixed(2)})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+      }
+    }
 
     ctx.restore();
   }
@@ -1883,7 +2313,7 @@ class FlowGraph {
         return;
       }
       this.hover = this.nodeAt(sx, sy);
-      c.style.cursor = this.hover ? 'pointer' : 'grab';
+      c.style.cursor = this.whatIfMode ? (this.hover ? 'crosshair' : 'default') : (this.hover ? 'pointer' : 'grab');
       const tip = document.getElementById('flow-tooltip');
       if (this.hover && tip) {
         const i = this.hover.issue;
@@ -1902,7 +2332,13 @@ class FlowGraph {
     });
     c.addEventListener('mousedown', e => {
       const rect = c.getBoundingClientRect();
-      this.pan = { sx: e.clientX - rect.left, sy: e.clientY - rect.top, ox: this.ox, oy: this.oy };
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      if (this.whatIfMode) {
+        const n = this.nodeAt(sx, sy);
+        if (n && n.status !== 'closed') { this.simulateWhatIf(n.id); return; }
+        else if (!n) { this.clearWhatIf(); }
+      }
+      this.pan = { sx, sy, ox: this.ox, oy: this.oy };
     });
     c.addEventListener('mouseup', () => { this.pan = null; });
     c.addEventListener('mouseleave', () => {
@@ -1949,6 +2385,61 @@ function initFlowGraph() {
     flowGraph.fitToView();
     if (!flowGraph.running) flowGraph.draw();
   });
+
+  // Color mode buttons
+  const modeBtns = ['flow-mode-status', 'flow-mode-slack', 'flow-mode-epic'];
+  const modeMap = { 'flow-mode-status': 'status', 'flow-mode-slack': 'slack', 'flow-mode-epic': 'epic' };
+  modeBtns.forEach(btnId => {
+    document.getElementById(btnId)?.addEventListener('click', function() {
+      modeBtns.forEach(id => document.getElementById(id)?.classList.remove('active'));
+      this.classList.add('active');
+      flowGraph.colorMode = modeMap[btnId];
+      // Update legend
+      updateFlowLegend(flowGraph.colorMode);
+      if (!flowGraph.running) flowGraph.draw();
+    });
+  });
+
+  // What-If toggle
+  document.getElementById('flow-whatif')?.addEventListener('click', function() {
+    flowGraph.whatIfMode = !flowGraph.whatIfMode;
+    this.classList.toggle('active');
+    if (!flowGraph.whatIfMode) flowGraph.clearWhatIf();
+    if (!flowGraph.running) flowGraph.draw();
+  });
+}
+
+function updateFlowLegend(mode) {
+  const legend = document.getElementById('flow-legend');
+  if (!legend) return;
+  if (mode === 'slack') {
+    legend.innerHTML = `
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#ef4444"></div>Slack 0 (critical)</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#f97316"></div>Low slack</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#eab308"></div>Medium</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#22c55e"></div>High slack</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:#06b6d4"></div>Max flexibility</div>
+      <div class="flow-legend-item"><span style="font-size:0.8rem">\u26A0</span> Bridge Node</div>`;
+  } else if (mode === 'epic') {
+    let html = '';
+    const epics = ISSUES.filter(i => i.issue_type === 'epic').sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    const EPIC_HUES = ['#8b5cf6','#f59e0b','#06b6d4','#ec4899','#10b981','#f97316','#6366f1','#14b8a6','#e11d48','#84cc16'];
+    epics.forEach((e, i) => {
+      const color = EPIC_HUES[i % EPIC_HUES.length];
+      const name = e.title.length > 18 ? e.title.slice(0, 16) + '..' : e.title;
+      html += `<div class="flow-legend-item"><div class="flow-legend-dot" style="background:${color}"></div>${esc(name)}</div>`;
+    });
+    html += `<div class="flow-legend-item"><div class="flow-legend-dot" style="background:#71717a"></div>No epic</div>`;
+    legend.innerHTML = html;
+  } else {
+    legend.innerHTML = `
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-open)"></div>Ready</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-wip)"></div>In Progress</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-blocked)"></div>Blocked</div>
+      <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-closed)"></div>Closed</div>
+      <div class="flow-legend-item"><span style="color:var(--status-blocked);font-weight:600;font-size:0.8rem">\u2014</span> Critical Path</div>
+      <div class="flow-legend-item"><span style="font-size:0.8rem">\u26A0</span> Bridge Node</div>`;
+  }
 }
 
 // ─── Detail Drawer ───────────────────────────────────────────────────────────
@@ -2085,7 +2576,7 @@ function parseHash() {
       return;
     }
   }
-  const valid = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow'];
+  const valid = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow', 'forecast'];
   navigateTo(valid.includes(h) ? h : 'dashboard');
 }
 
@@ -2133,8 +2624,8 @@ function initKeyboard() {
       return;
     }
 
-    const views = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow'];
-    if (e.key >= '1' && e.key <= '6') { navigateTo(views[+e.key - 1]); return; }
+    const views = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow', 'forecast'];
+    if (e.key >= '1' && e.key <= '7') { navigateTo(views[+e.key - 1]); return; }
     if (e.key === '/') { e.preventDefault(); navigateTo('issues'); setTimeout(() => document.getElementById('search')?.focus(), 50); return; }
     if (e.key === 'Escape') {
       closePalette();
@@ -2321,6 +2812,7 @@ async function init() {
     app.insertAdjacentHTML('beforeend', renderEpicsView());
     app.insertAdjacentHTML('beforeend', renderInsightsView());
     app.insertAdjacentHTML('beforeend', renderFlowView());
+    app.insertAdjacentHTML('beforeend', renderForecastView());
 
     // Bind nav tabs
     document.querySelectorAll('.nav-tab').forEach(tab => {

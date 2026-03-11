@@ -13,6 +13,9 @@
 .beads-go-backup/
 .beads/backup/backup/
 
+# Beadspace generated data (pipeline regenerates from .beads/issues.jsonl)
+.beadspace/*.json
+
 # .NET
 **/bin/
 **/obj/
