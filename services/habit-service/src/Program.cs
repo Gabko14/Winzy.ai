@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
@@ -36,7 +37,11 @@ app.MapServiceHealthChecks();
 
 // --- DTOs ---
 
-var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+var jsonOptions = new JsonSerializerOptions
+{
+    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+};
 
 // --- Authenticated endpoints (user_id from X-User-Id header) ---
 
