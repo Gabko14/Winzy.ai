@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+# Pre-push: thorough checks — typecheck, build, test
+# Skip with: git push --no-verify
+
+REMOTE="$1"
+URL="$2"
+
+# Determine the range of commits being pushed
+while read LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  if [ "$LOCAL_SHA" = "0000000000000000000000000000000000000000" ]; then
+    # Deleting a branch, nothing to check
+    continue
+  fi
+
+  if [ "$REMOTE_SHA" = "0000000000000000000000000000000000000000" ]; then
+    # New branch — compare against main
+    RANGE="origin/main...$LOCAL_SHA"
+  else
+    RANGE="$REMOTE_SHA...$LOCAL_SHA"
+  fi
+
+  CHANGED_FILES=$(git diff --name-only "$RANGE" 2>/dev/null || git diff --name-only "origin/main...HEAD")
+
+  # --- Frontend checks ---
+  if echo "$CHANGED_FILES" | grep -q '^frontend/'; then
+    echo "Frontend changes detected — running typecheck and tests..."
+    (cd frontend && npx tsc --noEmit) || exit 1
+    (cd frontend && npm test -- --ci --passWithNoTests) || exit 1
+  fi
+
+  # --- Backend checks: only changed service/shared projects ---
+  CHANGED_SERVICES=""
+
+  # Check each service
+  for SERVICE_DIR in services/gateway services/auth-service services/habit-service services/social-service services/challenge-service services/notification-service services/activity-service; do
+    if echo "$CHANGED_FILES" | grep -q "^${SERVICE_DIR}/"; then
+      CHANGED_SERVICES="$CHANGED_SERVICES $SERVICE_DIR"
+    fi
+  done
+
+  # Check shared projects
+  if echo "$CHANGED_FILES" | grep -q '^shared/'; then
+    # Shared code changed — test all services
+    CHANGED_SERVICES="services/gateway services/auth-service services/habit-service services/social-service services/challenge-service services/notification-service services/activity-service"
+  fi
+
+  if [ -n "$CHANGED_SERVICES" ]; then
+    echo "Backend changes detected — building and testing changed services..."
+    for SERVICE_DIR in $CHANGED_SERVICES; do
+      SRC_DIR="$SERVICE_DIR/src"
+      TEST_DIR="$SERVICE_DIR/tests"
+
+      if [ -d "$SRC_DIR" ]; then
+        echo "Building: $SRC_DIR"
+        dotnet build "$SRC_DIR" -consoleLoggerParameters:NoSummary -verbosity:quiet || exit 1
+      fi
+
+      if [ -d "$TEST_DIR" ]; then
+        echo "Testing: $TEST_DIR"
+        dotnet test "$TEST_DIR" --logger "console;verbosity=minimal" || exit 1
+      fi
+    done
+
+    # Also test shared projects if they changed
+    if echo "$CHANGED_FILES" | grep -q '^shared/'; then
+      if [ -d "shared/Winzy.Common.Tests" ]; then
+        echo "Testing: shared/Winzy.Common.Tests"
+        dotnet test "shared/Winzy.Common.Tests" --logger "console;verbosity=minimal" || exit 1
+      fi
+    fi
+  fi
+done
+
+echo "All pre-push checks passed."

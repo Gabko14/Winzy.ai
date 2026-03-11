@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Pre-commit: fast checks only (<10 seconds)
+# Skip with: git commit --no-verify
+
+# --- Frontend: ESLint on staged files via lint-staged ---
+npx lint-staged
+
+# --- Backend: dotnet format on staged .cs files ---
+STAGED_CS=$(git diff --cached --name-only --diff-filter=ACM -- '*.cs')
+if [ -n "$STAGED_CS" ]; then
+  echo "Checking C# formatting..."
+  dotnet format Winzy.slnx --verify-no-changes --include $STAGED_CS
+fi
