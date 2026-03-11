@@ -40,13 +40,13 @@ test.describe("Auth flow", () => {
     });
 
     await test.step("verify landing in authenticated app", async () => {
-      // After successful registration, auth state changes and user sees the main app
-      await expect(page.getByText(new RegExp(`Welcome, ${uniqueUser}`))).toBeVisible({
+      // After successful registration, new users (no displayName) see profile completion
+      await expect(page.getByText("What should we call you?")).toBeVisible({
         timeout: 10_000,
       });
       test.info().annotations.push({
         type: "step",
-        description: "User landed in authenticated app",
+        description: "User landed in profile completion screen",
       });
     });
   });
@@ -72,10 +72,11 @@ test.describe("Auth flow", () => {
     // Note: this test requires a running backend with the test user seeded.
     // If running without backend, verify that the appropriate error is shown.
     await test.step("verify sign-in result", async () => {
-      // Either lands in app or shows error (depends on backend availability)
+      // Either lands on Today screen or shows error (depends on backend availability)
       const result = await Promise.race([
         page
-          .getByText(new RegExp(`Welcome, ${TEST_USER.username}`))
+          .getByTestId("today-empty")
+          .or(page.getByTestId("today-screen"))
           .waitFor({ timeout: 10_000 })
           .then(() => "authenticated"),
         page

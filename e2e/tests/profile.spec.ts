@@ -44,14 +44,15 @@ test.describe("Profile flow", () => {
       });
     });
 
-    await test.step("verify landing in authenticated app", async () => {
-      // After profile completion, user lands in the main app
-      await expect(page.getByText(new RegExp(`Welcome, ${displayName}`))).toBeVisible({
+    await test.step("verify landing in Today screen", async () => {
+      // After profile completion, user lands on the Today screen (empty for new users)
+      await expect(page.getByTestId("today-empty")).toBeVisible({
         timeout: 10_000,
       });
+      await expect(page.getByText("Ready to build a habit?")).toBeVisible();
       test.info().annotations.push({
         type: "step",
-        description: "User landed in app after profile completion",
+        description: "User landed on Today screen after profile completion",
       });
     });
   });
@@ -89,14 +90,15 @@ test.describe("Profile flow", () => {
       });
     });
 
-    await test.step("verify landing in authenticated app", async () => {
-      // After skip, user lands in the main app (username shown since no displayName)
-      await expect(page.getByText(new RegExp(`Welcome, ${uniqueUser}`))).toBeVisible({
+    await test.step("verify landing in Today screen", async () => {
+      // After skip, user lands on the Today screen (empty for new users)
+      await expect(page.getByTestId("today-empty")).toBeVisible({
         timeout: 10_000,
       });
+      await expect(page.getByText("Ready to build a habit?")).toBeVisible();
       test.info().annotations.push({
         type: "step",
-        description: "User landed in app after skipping profile completion",
+        description: "User landed on Today screen after skipping profile completion",
       });
     });
   });

@@ -28,8 +28,10 @@ setup("authenticate", async ({ page }) => {
     await page.getByLabel("Password").fill(TEST_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    // Wait for successful auth — either land in the app or hit an error
-    await expect(page.getByTestId("main-app")).toBeVisible({ timeout: 10_000 });
+    // Wait for successful auth — land on Today screen (empty or populated)
+    await expect(
+      page.getByTestId("today-empty").or(page.getByTestId("today-screen")),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Save authenticated state
     await page.context().storageState({ path: authFile });

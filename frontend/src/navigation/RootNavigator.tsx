@@ -18,12 +18,13 @@ type AppScreen = "home" | "habits" | "profile" | "editProfile";
 /**
  * Extracts the username from a /@username URL path on web.
  * Returns null if the path doesn't match the pattern.
+ * Regex aligned with auth service: ^[a-zA-Z0-9_-]{3,64}$
  */
 function getPublicFlameUsername(): string | null {
   if (Platform.OS !== "web") return null;
   try {
     const path = window.location.pathname;
-    const match = path.match(/^\/@([a-zA-Z0-9_-]+)$/);
+    const match = path.match(/^\/@([a-zA-Z0-9_-]{3,64})$/);
     return match ? match[1] : null;
   } catch {
     return null;
@@ -43,6 +44,7 @@ export function RootNavigator() {
   const colors = lightTheme;
   const [screen, setScreen] = useState<AppScreen>("home");
   const [profileCompleted, setProfileCompleted] = useState(false);
+  const [exitPublicFlame, setExitPublicFlame] = useState(false);
 
   const goToProfile = useCallback(() => setScreen("profile"), []);
   const goToEditProfile = useCallback(() => setScreen("editProfile"), []);
@@ -53,12 +55,19 @@ export function RootNavigator() {
     setProfileCompleted(true);
   }, []);
 
+  const handlePublicFlameCta = useCallback(() => {
+    setExitPublicFlame(true);
+    if (Platform.OS === "web") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
+
   // Public flame page: /@username route (web only, no auth required)
   const publicUsername = getPublicFlameUsername();
-  if (publicUsername) {
+  if (publicUsername && !exitPublicFlame) {
     return (
       <>
-        <PublicFlameScreen username={publicUsername} />
+        <PublicFlameScreen username={publicUsername} onNavigateToSignUp={handlePublicFlameCta} />
         <StatusBar style="auto" />
       </>
     );
