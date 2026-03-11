@@ -316,6 +316,16 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .footer{border-top:1px solid var(--border);padding:1.25rem;text-align:center;font-size:0.68rem;color:var(--text-muted);position:relative;z-index:1}
 .footer a{color:var(--text-secondary);text-decoration:none}
 .footer a:hover{color:var(--accent-bright)}
+/* ═══ Flow View ═══ */
+#view-flow{padding:0 !important}
+.flow-wrap{position:relative;width:100%;height:calc(100vh - 52px);background:var(--bg-deep);overflow:hidden}
+.flow-canvas{width:100%;height:100%;display:block}
+.flow-controls{position:absolute;top:12px;left:12px;display:flex;gap:4px;z-index:10}
+.flow-tooltip{position:absolute;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.85rem;font-size:0.72rem;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:20;max-width:300px;box-shadow:0 4px 16px rgba(0,0,0,0.4)}
+.flow-tooltip.visible{opacity:1}
+.flow-legend{position:absolute;bottom:12px;left:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:0.5rem 0.75rem;display:flex;gap:0.75rem;font-size:0.65rem;color:var(--text-muted);backdrop-filter:blur(8px)}
+.flow-legend-item{display:flex;align-items:center;gap:0.3rem}
+.flow-legend-dot{width:8px;height:4px;border-radius:2px}
 </style>
 </head>
 <body>
@@ -328,6 +338,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <button class="nav-tab" data-view="graph">Graph<span class="tab-key">3</span></button>
     <button class="nav-tab" data-view="epics">Epics<span class="tab-key">4</span></button>
     <button class="nav-tab" data-view="insights">Insights<span class="tab-key">5</span></button>
+    <button class="nav-tab" data-view="flow">Flow<span class="tab-key">6</span></button>
   </div>
   <div class="topbar-right">
     <div class="topbar-meta" id="topbar-meta"></div>
@@ -350,7 +361,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <div class="kbd-overlay" id="kbd-overlay">
   <div class="kbd-card">
     <h3>Keyboard Shortcuts</h3>
-    <div class="kbd-row"><span class="kbd-key">1-5</span><span class="kbd-desc">Switch views</span></div>
+    <div class="kbd-row"><span class="kbd-key">1-6</span><span class="kbd-desc">Switch views</span></div>
     <div class="kbd-row"><span class="kbd-key">/</span><span class="kbd-desc">Focus search</span></div>
     <div class="kbd-row"><span class="kbd-key">&#8984;K</span><span class="kbd-desc">Quick jump to issue</span></div>
     <div class="kbd-row"><span class="kbd-key">j / k</span><span class="kbd-desc">Next / previous issue</span></div>
@@ -1360,6 +1371,586 @@ function renderInsightsView() {
   return html;
 }
 
+// ─── Render: Flow (Layered DAG) ───────────────────────────────────────────────
+function renderFlowView() {
+  return `<div id="view-flow" class="view">
+    <div class="flow-wrap">
+      <canvas class="flow-canvas" id="flow-canvas"></canvas>
+      <div class="flow-controls">
+        <button class="graph-btn" id="flow-fit" title="Fit to view (F)">Fit</button>
+        <button class="graph-btn active" id="flow-labels" title="Toggle labels">Labels</button>
+        <button class="graph-btn" id="flow-closed" title="Show completed issues">Show Closed</button>
+      </div>
+      <div class="flow-tooltip" id="flow-tooltip"></div>
+      <div class="flow-legend">
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-open)"></div>Ready</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-wip)"></div>In Progress</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-blocked)"></div>Blocked</div>
+        <div class="flow-legend-item"><div class="flow-legend-dot" style="background:var(--status-closed)"></div>Closed</div>
+        <div class="flow-legend-item"><span style="color:var(--status-blocked);font-weight:600;font-size:0.8rem">—</span> Critical Path</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+class FlowGraph {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.dpr = window.devicePixelRatio || 1;
+    this.resize();
+
+    this.colW = 260;
+    this.nodeW = 215;
+    this.nodeH = 64;
+    this.nodeGapY = 14;
+    this.epicGapY = 26;
+    this.padX = 50;
+    this.padY = 56;
+    this.headerH = 40;
+
+    this.ox = 0; this.oy = 0; this.scale = 1;
+    this.hover = null; this.pan = null;
+    this.showLabels = true;
+    this.showClosed = false;
+    this.running = true;
+    this.animT = 0;
+    this.whatIf = null; // { id, unblocked: Set, transitive: Set, daysSaved: number, animStart: number }
+
+    this.computeLayout();
+    this.bindEvents();
+    this.focusOnFrontier();
+    this.animate();
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    this.w = rect.width; this.h = rect.height;
+    this.canvas.width = this.w * this.dpr;
+    this.canvas.height = this.h * this.dpr;
+    this.canvas.style.width = this.w + 'px';
+    this.canvas.style.height = this.h + 'px';
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+  }
+
+  computeLayout() {
+    const ids = new Set(ISSUES.map(i => i.id));
+    const blockFwd = {}, blockRev = {};
+    ISSUES.forEach(i => { blockFwd[i.id] = []; blockRev[i.id] = []; });
+    DEPS.filter(d => d.type === 'blocks').forEach(d => {
+      const blocker = norm(d.depends_on_id), blocked = norm(d.issue_id);
+      if (!ids.has(blocker) || !ids.has(blocked)) return;
+      blockFwd[blocker].push(blocked);
+      blockRev[blocked].push(blocker);
+    });
+
+    // Compute waves via longest path from roots (Kahn's with DP)
+    const wave = {};
+    ISSUES.forEach(i => wave[i.id] = 0);
+    const inDeg = {};
+    ISSUES.forEach(i => inDeg[i.id] = blockRev[i.id].length);
+    const queue = ISSUES.filter(i => inDeg[i.id] === 0).map(i => i.id);
+    const processed = new Set();
+    while (queue.length) {
+      const id = queue.shift();
+      if (processed.has(id)) continue;
+      processed.add(id);
+      blockFwd[id].forEach(next => {
+        wave[next] = Math.max(wave[next], wave[id] + 1);
+        inDeg[next]--;
+        if (inDeg[next] === 0) queue.push(next);
+      });
+    }
+    const maxW = Math.max(...Object.values(wave), 0);
+    ISSUES.forEach(i => { if (!processed.has(i.id)) wave[i.id] = maxW + 1; });
+
+    // Group by wave
+    const waveGroups = {};
+    ISSUES.forEach(i => {
+      const w = wave[i.id];
+      if (!waveGroups[w]) waveGroups[w] = [];
+      waveGroups[w].push(i);
+    });
+
+    // Sort within each wave: epic group, then open before closed, then priority
+    Object.values(waveGroups).forEach(group => {
+      group.sort((a, b) => {
+        const eA = parentOf[a.id] || (a.issue_type === 'epic' ? a.id : '');
+        const eB = parentOf[b.id] || (b.issue_type === 'epic' ? b.id : '');
+        if (eA !== eB) return eA.localeCompare(eB);
+        const sA = a.status === 'closed' ? 1 : 0;
+        const sB = b.status === 'closed' ? 1 : 0;
+        if (sA !== sB) return sA - sB;
+        return (a.priority ?? 2) - (b.priority ?? 2);
+      });
+    });
+
+    // Compute node positions
+    this.nodes = [];
+    this.nodeMap = {};
+    this.waveList = Object.keys(waveGroups).map(Number).sort((a, b) => a - b);
+
+    this.waveList.forEach(w => {
+      const group = waveGroups[w];
+      let y = this.padY + this.headerH;
+      let lastEpic = null;
+      group.forEach(i => {
+        const epic = parentOf[i.id] || (i.issue_type === 'epic' ? i.id : '');
+        if (lastEpic !== null && epic !== lastEpic) y += this.epicGapY;
+        lastEpic = epic;
+        const node = {
+          id: i.id,
+          x: this.padX + w * this.colW + (this.colW - this.nodeW) / 2,
+          y,
+          w: this.nodeW,
+          h: this.nodeH,
+          wave: w,
+          status: effectiveStatus(i),
+          issue: i,
+          critical: metrics.cpSet?.has(i.id),
+          ready: effectiveStatus(i) === 'open' && !blockedSet.has(i.id) && i.status !== 'closed'
+        };
+        this.nodes.push(node);
+        this.nodeMap[i.id] = node;
+        y += this.nodeH + this.nodeGapY;
+      });
+    });
+
+    // Blocking edges
+    this.edges = [];
+    DEPS.filter(d => d.type === 'blocks').forEach(d => {
+      const from = norm(d.depends_on_id), to = norm(d.issue_id);
+      if (this.nodeMap[from] && this.nodeMap[to]) {
+        this.edges.push({ from, to, critical: metrics.cpSet?.has(from) && metrics.cpSet?.has(to) });
+      }
+    });
+
+    // Bounds
+    if (this.nodes.length) {
+      this.contentW = Math.max(...this.nodes.map(n => n.x + n.w)) + this.padX;
+      this.contentH = Math.max(...this.nodes.map(n => n.y + n.h)) + this.padY;
+    } else {
+      this.contentW = this.w; this.contentH = this.h;
+    }
+
+    // NOW frontier: boundary between closed and open work
+    this.nowWave = -1;
+    for (let i = 0; i < this.waveList.length - 1; i++) {
+      const cur = waveGroups[this.waveList[i]] || [];
+      const next = waveGroups[this.waveList[i + 1]] || [];
+      if (cur.every(x => x.status === 'closed') && next.some(x => x.status !== 'closed')) {
+        this.nowWave = this.waveList[i];
+      }
+    }
+    // Also check mixed waves
+    if (this.nowWave === -1) {
+      this.waveList.forEach(w => {
+        const group = waveGroups[w] || [];
+        if (group.some(i => i.status === 'closed') && group.some(i => i.status !== 'closed')) {
+          this.nowWave = Math.max(this.nowWave, w - 1);
+        }
+      });
+    }
+
+    // Wave stats
+    this.waveStats = {};
+    this.waveList.forEach(w => {
+      const group = waveGroups[w] || [];
+      this.waveStats[w] = { total: group.length, closed: group.filter(i => i.status === 'closed').length };
+    });
+  }
+
+  screenToWorld(sx, sy) { return [(sx - this.ox) / this.scale, (sy - this.oy) / this.scale]; }
+
+  nodeAt(sx, sy) {
+    const [wx, wy] = this.screenToWorld(sx, sy);
+    for (let i = this.nodes.length - 1; i >= 0; i--) {
+      const n = this.nodes[i];
+      if (!this.showClosed && n.status === 'closed') continue;
+      if (wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h) return n;
+    }
+    return null;
+  }
+
+  fitToView() {
+    const visible = this.showClosed ? this.nodes : this.nodes.filter(n => n.status !== 'closed');
+    if (!visible.length) { if (this.nodes.length) { this.showClosed = true; return this.fitToView(); } return; }
+    const mnx = Math.min(...visible.map(n => n.x)) - 30;
+    const mny = Math.min(...visible.map(n => n.y)) - 50;
+    const mxx = Math.max(...visible.map(n => n.x + n.w)) + 30;
+    const mxy = Math.max(...visible.map(n => n.y + n.h)) + 30;
+    const gw = mxx - mnx, gh = mxy - mny;
+    this.scale = Math.min(this.w / gw, this.h / gh, 1.5) * 0.9;
+    this.ox = (this.w - (mxx + mnx) * this.scale) / 2;
+    this.oy = (this.h - (mxy + mny) * this.scale) / 2;
+  }
+
+  focusOnFrontier() {
+    // Find actionable nodes: ready first, then WIP, then any open
+    const open = this.nodes.filter(n => n.status !== 'closed');
+    const readyNodes = open.filter(n => n.ready);
+    const wipNodes = open.filter(n => n.status === 'in_progress');
+    const anchor = readyNodes.length ? readyNodes : wipNodes.length ? wipNodes : open;
+    if (!anchor.length) return this.fitToView();
+
+    // Determine the wave range of these anchor nodes + 1 wave context each side
+    const anchorWaves = new Set(anchor.map(n => n.wave));
+    const minW = Math.min(...anchorWaves);
+    const maxW = Math.max(...anchorWaves);
+    const viewMin = Math.max(0, minW - 1);
+    const viewMax = maxW + 1;
+
+    // Collect all visible nodes in that range
+    const inRange = open.filter(n => n.wave >= viewMin && n.wave <= viewMax);
+    if (!inRange.length) return this.fitToView();
+
+    const mnx = Math.min(...inRange.map(n => n.x)) - 40;
+    const mny = Math.min(...inRange.map(n => n.y)) - 60;
+    const mxx = Math.max(...inRange.map(n => n.x + n.w)) + 40;
+    const mxy = Math.max(...inRange.map(n => n.y + n.h)) + 40;
+    const gw = mxx - mnx, gh = mxy - mny;
+    // Scale to fill viewport but never zoom in past 1.15 (keeps text crisp)
+    this.scale = Math.min(this.w / gw, this.h / gh, 1.15);
+    this.ox = (this.w - (mxx + mnx) * this.scale) / 2;
+    this.oy = (this.h - (mxy + mny) * this.scale) / 2;
+  }
+
+  roundRect(x, y, w, h, r) {
+    const ctx = this.ctx;
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  draw() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.clearRect(0, 0, this.w, this.h);
+    ctx.translate(this.ox, this.oy);
+    ctx.scale(this.scale, this.scale);
+    const isDark = document.documentElement.dataset.theme !== 'light';
+
+    // Wave column bands
+    this.waveList.forEach(w => {
+      const stats = this.waveStats[w];
+      if (!this.showClosed && stats.closed === stats.total) return;
+      const x = this.padX + w * this.colW;
+      ctx.fillStyle = w % 2 === 0 ? (isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.018)') : 'transparent';
+      ctx.fillRect(x, this.padY, this.colW, this.contentH - this.padY);
+
+      // Header
+      ctx.font = '700 13px "Syne"';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+      ctx.fillText('Wave ' + w, x + this.colW / 2, this.padY + 16);
+      ctx.font = '400 10px "JetBrains Mono"';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.22)';
+      ctx.fillText(stats.closed + '/' + stats.total, x + this.colW / 2, this.padY + 32);
+    });
+
+    // NOW frontier
+    if (this.nowWave >= 0) {
+      const nx = this.padX + (this.nowWave + 1) * this.colW;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(nx, this.padY - 20);
+      ctx.lineTo(nx, this.contentH);
+      ctx.strokeStyle = isDark ? 'rgba(99,102,241,0.35)' : 'rgba(79,70,229,0.25)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '700 10px "Syne"';
+      ctx.fillStyle = isDark ? 'rgba(99,102,241,0.7)' : 'rgba(79,70,229,0.6)';
+      ctx.textAlign = 'center';
+      ctx.fillText('NOW', nx, this.padY - 6);
+      ctx.restore();
+    }
+
+    // Hover neighborhood
+    const hoverSet = new Set();
+    if (this.hover) {
+      hoverSet.add(this.hover.id);
+      this.edges.forEach(e => {
+        if (e.from === this.hover.id) hoverSet.add(e.to);
+        if (e.to === this.hover.id) hoverSet.add(e.from);
+      });
+    }
+
+    // Edges
+    this.edges.forEach(e => {
+      const s = this.nodeMap[e.from], t = this.nodeMap[e.to];
+      if (!s || !t) return;
+      if (!this.showClosed && (s.status === 'closed' || t.status === 'closed')) return;
+      const dimmed = this.hover && !hoverSet.has(e.from) && !hoverSet.has(e.to);
+      const sx = s.x + s.w, sy = s.y + s.h / 2;
+      const tx = t.x, ty = t.y + t.h / 2;
+      const dx = Math.abs(tx - sx) * 0.45;
+
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.bezierCurveTo(sx + dx, sy, tx - dx, ty, tx, ty);
+      if (e.critical) {
+        ctx.strokeStyle = dimmed ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.5)';
+        ctx.lineWidth = 2.5;
+      } else {
+        ctx.strokeStyle = dimmed ? 'rgba(113,113,122,0.04)' : (isDark ? 'rgba(113,113,122,0.18)' : 'rgba(113,113,122,0.22)');
+        ctx.lineWidth = 1;
+      }
+      ctx.stroke();
+
+      // Arrowhead
+      if (!dimmed) {
+        const aLen = 6;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - aLen, ty - aLen * 0.45);
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - aLen, ty + aLen * 0.45);
+        ctx.stroke();
+      }
+    });
+
+    // Particles on critical path edges
+    if (this.running) {
+      this.edges.filter(e => e.critical).forEach(e => {
+        const s = this.nodeMap[e.from], t = this.nodeMap[e.to];
+        if (!s || !t) return;
+        if (!this.showClosed && (s.status === 'closed' || t.status === 'closed')) return;
+        if (this.hover && !hoverSet.has(e.from) && !hoverSet.has(e.to)) return;
+        const sx = s.x + s.w, sy = s.y + s.h / 2;
+        const tx = t.x, ty = t.y + t.h / 2;
+        const dx = Math.abs(tx - sx) * 0.45;
+        for (let p = 0; p < 3; p++) {
+          const tt = ((this.animT * 0.3 + p * 0.33) % 1);
+          const mt = 1 - tt;
+          const px = mt*mt*mt*sx + 3*mt*mt*tt*(sx+dx) + 3*mt*tt*tt*(tx-dx) + tt*tt*tt*tx;
+          const py = mt*mt*mt*sy + 3*mt*mt*tt*sy + 3*mt*tt*tt*ty + tt*tt*tt*ty;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(239,68,68,' + (0.7 * (1 - tt * 0.5)).toFixed(2) + ')';
+          ctx.fill();
+        }
+      });
+    }
+
+    // Nodes
+    const statusColors = { closed: '#22c55e', in_progress: '#f59e0b', blocked: '#ef4444', open: '#6366f1' };
+    const priColors = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#52525b'];
+    const bgColors = isDark
+      ? { closed: '#111814', in_progress: '#191710', blocked: '#191111', open: '#111119' }
+      : { closed: '#f0f9f0', in_progress: '#fef9ec', blocked: '#fef2f2', open: '#eef2ff' };
+    const icons = { closed: '\u2713', in_progress: '\u25CF', blocked: '\u25C6', open: '\u25CB' };
+
+    this.nodes.forEach(n => {
+      if (!this.showClosed && n.status === 'closed') return;
+      const dimmed = this.hover && !hoverSet.has(n.id);
+      ctx.globalAlpha = dimmed ? 0.15 : 1;
+      const { x, y, w, h, status, issue, critical, ready } = n;
+
+      // Background
+      ctx.beginPath();
+      this.roundRect(x, y, w, h, 7);
+      ctx.fillStyle = bgColors[status] || (isDark ? '#1a1a1e' : '#f5f5f7');
+      ctx.fill();
+
+      // Ready node glow
+      if (ready && !dimmed) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(99,102,241,0.4)';
+        ctx.shadowBlur = 12 + Math.sin(this.animT * Math.PI * 2) * 4;
+        ctx.beginPath();
+        this.roundRect(x, y, w, h, 7);
+        ctx.strokeStyle = 'rgba(99,102,241,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Critical path glow
+      if (critical && !ready && !dimmed) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(239,68,68,0.3)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        this.roundRect(x, y, w, h, 7);
+        ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Left status bar
+      ctx.beginPath();
+      ctx.moveTo(x, y + 7);
+      ctx.arcTo(x, y, x + 7, y, 7);
+      ctx.lineTo(x + 4, y);
+      ctx.lineTo(x + 4, y + h);
+      ctx.lineTo(x, y + h - 7);
+      ctx.arcTo(x, y + h, x, y + h - 7, 7);
+      ctx.closePath();
+      ctx.fillStyle = statusColors[status] || '#71717a';
+      ctx.fill();
+
+      // Border
+      ctx.beginPath();
+      this.roundRect(x, y, w, h, 7);
+      ctx.strokeStyle = this.hover === n
+        ? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.4)')
+        : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)');
+      ctx.lineWidth = this.hover === n ? 1.5 : 0.5;
+      ctx.stroke();
+
+      // Title
+      if (this.showLabels || this.hover === n) {
+        ctx.font = '500 ' + (status === 'closed' ? '11.5' : '13') + 'px "DM Sans"';
+        ctx.fillStyle = status === 'closed'
+          ? (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)')
+          : (isDark ? '#ededef' : '#18181b');
+        ctx.textAlign = 'left';
+        const maxTW = w - 24;
+        let title = issue.title || '';
+        while (ctx.measureText(title).width > maxTW && title.length > 5) title = title.slice(0, -4) + '..';
+        ctx.fillText(title, x + 14, y + 25);
+      }
+
+      // Type badge
+      ctx.font = '500 9px "DM Sans"';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
+      ctx.textAlign = 'left';
+      ctx.fillText(issue.issue_type || 'task', x + 14, y + 40);
+
+      // ID
+      ctx.font = '9px "JetBrains Mono"';
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)';
+      ctx.textAlign = 'left';
+      ctx.fillText(issue.id, x + 14, y + h - 10);
+
+      // Priority
+      ctx.font = '600 9px "JetBrains Mono"';
+      ctx.fillStyle = priColors[issue.priority ?? 2];
+      ctx.textAlign = 'right';
+      ctx.fillText('P' + (issue.priority ?? 2), x + w - 12, y + h - 10);
+
+      // Status icon
+      ctx.font = '13px system-ui';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = statusColors[status];
+      ctx.fillText(icons[status] || '\u25CB', x + w - 12, y + 22);
+
+      // Strikethrough for closed
+      if (status === 'closed' && this.showLabels) {
+        ctx.beginPath();
+        ctx.moveTo(x + 14, y + 22);
+        ctx.lineTo(x + w - 28, y + 22);
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
+    });
+
+    ctx.restore();
+  }
+
+  animate() {
+    if (!this.running) return;
+    this.animT = (this.animT + 0.004) % 1;
+    this.draw();
+    requestAnimationFrame(() => this.animate());
+  }
+
+  pause() { this.running = false; }
+  resume() { this.running = true; this.animate(); }
+
+  bindEvents() {
+    const c = this.canvas;
+    c.addEventListener('mousemove', e => {
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      if (this.pan) {
+        this.ox = this.pan.ox + (sx - this.pan.sx);
+        this.oy = this.pan.oy + (sy - this.pan.sy);
+        if (!this.running) this.draw();
+        return;
+      }
+      this.hover = this.nodeAt(sx, sy);
+      c.style.cursor = this.hover ? 'pointer' : 'grab';
+      const tip = document.getElementById('flow-tooltip');
+      if (this.hover && tip) {
+        const i = this.hover.issue;
+        const cascade = metrics.cascadeUnblock[i.id] || 0;
+        const blockerCount = (adjOut[i.id] || []).filter(d => issueMap[d.to]?.status !== 'closed').length;
+        tip.innerHTML = '<strong>' + esc(i.title) + '</strong><br><span style="font-size:0.62rem;color:var(--text-muted)">'
+          + esc(i.id) + ' \u00B7 ' + esc(i.issue_type || 'task') + ' \u00B7 ' + pShort(i.priority) + '<br>'
+          + 'Wave ' + this.hover.wave + ' \u00B7 ' + (blockerCount > 0 ? blockerCount + ' blocker' + (blockerCount > 1 ? 's' : '') : 'Ready')
+          + (cascade > 0 ? ' \u00B7 Close \u2192 ' + cascade + ' unblock' : '')
+          + '</span>';
+        tip.style.left = (e.clientX - rect.left + 14) + 'px';
+        tip.style.top = (e.clientY - rect.top - 10) + 'px';
+        tip.classList.add('visible');
+      } else if (tip) tip.classList.remove('visible');
+      if (!this.running) this.draw();
+    });
+    c.addEventListener('mousedown', e => {
+      const rect = c.getBoundingClientRect();
+      this.pan = { sx: e.clientX - rect.left, sy: e.clientY - rect.top, ox: this.ox, oy: this.oy };
+    });
+    c.addEventListener('mouseup', () => { this.pan = null; });
+    c.addEventListener('mouseleave', () => {
+      this.pan = null; this.hover = null;
+      const tip = document.getElementById('flow-tooltip');
+      if (tip) tip.classList.remove('visible');
+      if (!this.running) this.draw();
+    });
+    c.addEventListener('dblclick', e => {
+      const rect = c.getBoundingClientRect();
+      const n = this.nodeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (n) openDrawer(n.id);
+    });
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      const rect = c.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const old = this.scale;
+      this.scale *= e.deltaY > 0 ? 0.92 : 1.08;
+      this.scale = clamp(this.scale, 0.15, 3);
+      this.ox = sx - (sx - this.ox) * (this.scale / old);
+      this.oy = sy - (sy - this.oy) * (this.scale / old);
+      if (!this.running) this.draw();
+    }, { passive: false });
+    window.addEventListener('resize', () => { this.resize(); if (!this.running) this.draw(); });
+  }
+}
+
+let flowGraph = null;
+
+function initFlowGraph() {
+  const canvas = document.getElementById('flow-canvas');
+  if (!canvas) return;
+  flowGraph = new FlowGraph(canvas);
+  document.getElementById('flow-fit')?.addEventListener('click', () => { flowGraph.fitToView(); if (!flowGraph.running) flowGraph.draw(); });
+  document.getElementById('flow-labels')?.addEventListener('click', function() {
+    flowGraph.showLabels = !flowGraph.showLabels;
+    this.classList.toggle('active');
+    if (!flowGraph.running) flowGraph.draw();
+  });
+  document.getElementById('flow-closed')?.addEventListener('click', function() {
+    flowGraph.showClosed = !flowGraph.showClosed;
+    this.classList.toggle('active');
+    flowGraph.fitToView();
+    if (!flowGraph.running) flowGraph.draw();
+  });
+}
+
 // ─── Detail Drawer ───────────────────────────────────────────────────────────
 function openDrawer(issueId) {
   const i = issueMap[issueId];
@@ -1472,9 +2063,13 @@ function navigateTo(view) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   if (view === 'graph') {
-    if (!forceGraph) initForceGraph(); // Lazy init — canvas needs to be visible for dimensions
+    if (!forceGraph) initForceGraph();
     else { forceGraph.resize(); forceGraph.resume(); }
   } else if (forceGraph) forceGraph.pause();
+  if (view === 'flow') {
+    if (!flowGraph) initFlowGraph();
+    else { flowGraph.resize(); flowGraph.resume(); }
+  } else if (flowGraph) flowGraph.pause();
   if (view === 'issues') refreshIssuesTable();
   window.location.hash = view;
 }
@@ -1490,7 +2085,7 @@ function parseHash() {
       return;
     }
   }
-  const valid = ['dashboard', 'issues', 'graph', 'epics', 'insights'];
+  const valid = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow'];
   navigateTo(valid.includes(h) ? h : 'dashboard');
 }
 
@@ -1538,8 +2133,8 @@ function initKeyboard() {
       return;
     }
 
-    const views = ['dashboard', 'issues', 'graph', 'epics', 'insights'];
-    if (e.key >= '1' && e.key <= '5') { navigateTo(views[+e.key - 1]); return; }
+    const views = ['dashboard', 'issues', 'graph', 'epics', 'insights', 'flow'];
+    if (e.key >= '1' && e.key <= '6') { navigateTo(views[+e.key - 1]); return; }
     if (e.key === '/') { e.preventDefault(); navigateTo('issues'); setTimeout(() => document.getElementById('search')?.focus(), 50); return; }
     if (e.key === 'Escape') {
       closePalette();
@@ -1579,11 +2174,21 @@ function initKeyboard() {
       return;
     }
     if (e.key === '?') { document.getElementById('kbd-overlay').classList.toggle('open'); return; }
-    if (e.key === 'f' && STATE.view === 'graph' && forceGraph) { forceGraph.fitToView(); return; }
-    if (e.key === 'l' && STATE.view === 'graph' && forceGraph) {
-      forceGraph.showLabels = !forceGraph.showLabels;
-      document.getElementById('graph-labels')?.classList.toggle('active');
-      if (!forceGraph.running) forceGraph.draw();
+    if (e.key === 'f') {
+      if (STATE.view === 'graph' && forceGraph) { forceGraph.fitToView(); return; }
+      if (STATE.view === 'flow' && flowGraph) { flowGraph.fitToView(); if (!flowGraph.running) flowGraph.draw(); return; }
+    }
+    if (e.key === 'l') {
+      if (STATE.view === 'graph' && forceGraph) {
+        forceGraph.showLabels = !forceGraph.showLabels;
+        document.getElementById('graph-labels')?.classList.toggle('active');
+        if (!forceGraph.running) forceGraph.draw();
+      }
+      if (STATE.view === 'flow' && flowGraph) {
+        flowGraph.showLabels = !flowGraph.showLabels;
+        document.getElementById('flow-labels')?.classList.toggle('active');
+        if (!flowGraph.running) flowGraph.draw();
+      }
     }
   });
 }
@@ -1715,6 +2320,7 @@ async function init() {
     app.insertAdjacentHTML('beforeend', renderGraphView());
     app.insertAdjacentHTML('beforeend', renderEpicsView());
     app.insertAdjacentHTML('beforeend', renderInsightsView());
+    app.insertAdjacentHTML('beforeend', renderFlowView());
 
     // Bind nav tabs
     document.querySelectorAll('.nav-tab').forEach(tab => {
