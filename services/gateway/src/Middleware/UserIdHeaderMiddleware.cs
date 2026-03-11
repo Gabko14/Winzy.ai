@@ -5,11 +5,13 @@ namespace Winzy.Gateway.Middleware;
 public class UserIdHeaderMiddleware(RequestDelegate next)
 {
     private const string UserIdHeader = "X-User-Id";
+    private const string ResolvedUserIdHeader = "X-Resolved-User-Id";
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Always strip incoming X-User-Id to prevent spoofing
+        // Always strip incoming internal headers to prevent spoofing
         context.Request.Headers.Remove(UserIdHeader);
+        context.Request.Headers.Remove(ResolvedUserIdHeader);
 
         if (context.User.Identity?.IsAuthenticated == true)
         {

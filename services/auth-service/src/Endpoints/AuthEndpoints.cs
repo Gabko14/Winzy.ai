@@ -27,6 +27,7 @@ public static class AuthEndpoints
         group.MapPut("/password", ChangePassword);
         group.MapDelete("/account", DeleteAccount);
         group.MapGet("/users/search", SearchUsers);
+        group.MapGet("/internal/resolve/{username}", ResolveUsername);
     }
 
     private static async Task<IResult> Register(
@@ -101,6 +102,9 @@ public static class AuthEndpoints
         HttpContext httpContext,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(request.EmailOrUsername) || string.IsNullOrWhiteSpace(request.Password))
+            return Results.BadRequest(new { error = "Email/username and password are required." });
+
         var input = request.EmailOrUsername.Trim().ToLowerInvariant();
 
         var user = await db.Users.FirstOrDefaultAsync(
@@ -339,6 +343,20 @@ public static class AuthEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(results);
+    }
+
+    private static async Task<IResult> ResolveUsername(
+        string username,
+        AuthDbContext db,
+        CancellationToken ct)
+    {
+        var usernameLower = username.Trim().ToLowerInvariant();
+        var user = await db.Users
+            .Where(u => u.Username == usernameLower)
+            .Select(u => new { u.Id })
+            .FirstOrDefaultAsync(ct);
+
+        return user is null ? Results.NotFound() : Results.Ok(new { userId = user.Id });
     }
 
     private static Guid? GetUserId(HttpContext httpContext)

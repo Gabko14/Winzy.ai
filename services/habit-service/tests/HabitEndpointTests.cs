@@ -482,8 +482,10 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         await client.PostAsJsonAsync("/habits", new { name = "Meditate", frequency = 0 }, CT);
 
+        // Register username -> userId in the mock auth service
+        MockAuthHandler.UsernameToUserId["testuser"] = _userId;
+
         using var publicClient = _fixture.Factory.CreateClient();
-        publicClient.DefaultRequestHeaders.Add("X-Resolved-User-Id", _userId.ToString());
         publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
 
         var response = await publicClient.GetAsync("/habits/public/testuser", CT);

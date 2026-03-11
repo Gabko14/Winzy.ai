@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,6 +73,10 @@ public sealed class HabitServiceFixture : IAsyncLifetime
                     services.AddNats(configureOpts: opts => opts with { Url = NatsUrl });
                     services.AddHostedService<JetStreamSetup>();
                     services.AddSingleton<NatsEventPublisher>();
+
+                    // Replace AuthService HttpClient with mock handler
+                    services.AddHttpClient("AuthService")
+                        .ConfigurePrimaryHttpMessageHandler(() => new MockAuthHandler());
                 });
             });
 
@@ -100,8 +107,34 @@ public sealed class HabitServiceFixture : IAsyncLifetime
 
     public async Task ResetDataAsync()
     {
+        MockAuthHandler.UsernameToUserId.Clear();
         using var db = CreateDbContext();
         await db.Completions.ExecuteDeleteAsync();
         await db.Habits.ExecuteDeleteAsync();
+    }
+}
+
+internal class MockAuthHandler : HttpMessageHandler
+{
+    public static readonly ConcurrentDictionary<string, Guid> UsernameToUserId = new();
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+        var prefix = "/auth/internal/resolve/";
+
+        if (path.StartsWith(prefix))
+        {
+            var username = Uri.UnescapeDataString(path[prefix.Length..]).ToLowerInvariant();
+            if (UsernameToUserId.TryGetValue(username, out var userId))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { userId })
+                });
+            }
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
 }
