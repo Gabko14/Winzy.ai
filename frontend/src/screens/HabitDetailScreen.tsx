@@ -21,7 +21,6 @@ import {
   radii,
   typography,
   lightTheme,
-  shadows,
 } from "../design-system";
 import { useHabitDetail, useToggleCompletion } from "../hooks/useHabitDetail";
 import { isApiError } from "../api";
@@ -71,11 +70,6 @@ function formatDate(year: number, month: number, day: number): string {
 function parseDate(dateStr: string): { year: number; month: number; day: number } {
   const [y, m, d] = dateStr.split("-").map(Number);
   return { year: y, month: m - 1, day: d };
-}
-
-function todayString(): string {
-  const now = new Date();
-  return formatDate(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 // --- Encouraging messages ---
@@ -132,7 +126,6 @@ function Calendar({
   const daysInMonth = getDaysInMonth(year, month);
   const firstOffset = getFirstDayOffset(year, month);
   const todayParsed = parseDate(today);
-  const windowStartParsed = parseDate(windowStart);
 
   const canGoNext = !(year === todayParsed.year && month === todayParsed.month);
 

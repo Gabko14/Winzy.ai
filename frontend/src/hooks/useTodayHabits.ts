@@ -1,0 +1,199 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fetchHabits,
+  fetchHabitStats,
+  completeHabit,
+  deleteCompletion,
+  type Habit,
+  type FlameLevel,
+} from "../api/habits";
+import type { ApiError } from "../api/types";
+import { isApiError } from "../api/types";
+
+export type TodayHabit = {
+  habit: Habit;
+  completedToday: boolean;
+  flameLevel: FlameLevel;
+  consistency: number;
+};
+
+type TodayState = {
+  items: TodayHabit[];
+  loading: boolean;
+  error: ApiError | null;
+};
+
+function getUserTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function getTodayDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function useTodayHabits() {
+  const [state, setState] = useState<TodayState>({
+    items: [],
+    loading: true,
+    error: null,
+  });
+  const [completing, setCompleting] = useState<Set<string>>(new Set());
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const load = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    const tz = getUserTimezone();
+
+    try {
+      const habits = await fetchHabits();
+      if (!mountedRef.current) return;
+
+      // Fetch stats for all habits in parallel (for flame levels)
+      const statsResults = await Promise.allSettled(
+        habits.map((h) => fetchHabitStats(h.id, tz)),
+      );
+      if (!mountedRef.current) return;
+
+      const items: TodayHabit[] = habits.map((habit, i) => {
+        const statsResult = statsResults[i];
+        const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
+
+        return {
+          habit,
+          // No endpoint to query today's completion; starts as false.
+          // The toggle handles 409 (already completed) gracefully.
+          completedToday: false,
+          flameLevel: (stats?.flameLevel ?? "none") as FlameLevel,
+          consistency: stats?.consistency ?? 0,
+        };
+      });
+
+      setState({ items, loading: false, error: null });
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setState((s) => ({ ...s, loading: false, error: err as ApiError }));
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggleCompletion = useCallback(
+    async (habitId: string) => {
+      const tz = getUserTimezone();
+      const today = getTodayDate();
+      const currentItem = state.items.find((i) => i.habit.id === habitId);
+      if (!currentItem) return;
+
+      const wasCompleted = currentItem.completedToday;
+
+      // Prevent double-taps while a completion is in flight
+      if (completing.has(habitId)) return;
+      setCompleting((s) => new Set(s).add(habitId));
+
+      // Optimistic update
+      setState((s) => ({
+        ...s,
+        items: s.items.map((i) =>
+          i.habit.id === habitId ? { ...i, completedToday: !wasCompleted } : i,
+        ),
+      }));
+
+      try {
+        if (wasCompleted) {
+          await deleteCompletion(habitId, today);
+        } else {
+          await completeHabit(habitId, { timezone: tz, date: today });
+        }
+
+        if (!mountedRef.current) return;
+
+        // Refresh stats for updated flame level
+        try {
+          const updatedStats = await fetchHabitStats(habitId, tz);
+          if (!mountedRef.current) return;
+          setState((s) => ({
+            ...s,
+            items: s.items.map((i) =>
+              i.habit.id === habitId
+                ? {
+                    ...i,
+                    flameLevel: updatedStats.flameLevel as FlameLevel,
+                    consistency: updatedStats.consistency,
+                  }
+                : i,
+            ),
+          }));
+        } catch {
+          // Stats refresh failure is non-critical
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+
+        // 409 on complete = already completed today. Update state to reflect reality.
+        if (!wasCompleted && isApiError(err) && err.code === "conflict") {
+          setState((s) => ({
+            ...s,
+            items: s.items.map((i) =>
+              i.habit.id === habitId ? { ...i, completedToday: true } : i,
+            ),
+          }));
+          return;
+        }
+        // 404 on uncomplete = already uncompleted. Update state to reflect reality.
+        if (wasCompleted && isApiError(err) && err.code === "not_found") {
+          setState((s) => ({
+            ...s,
+            items: s.items.map((i) =>
+              i.habit.id === habitId ? { ...i, completedToday: false } : i,
+            ),
+          }));
+          return;
+        }
+
+        // Revert optimistic update for other errors
+        setState((s) => ({
+          ...s,
+          items: s.items.map((i) =>
+            i.habit.id === habitId ? { ...i, completedToday: wasCompleted } : i,
+          ),
+        }));
+      } finally {
+        if (mountedRef.current) {
+          setCompleting((s) => {
+            const next = new Set(s);
+            next.delete(habitId);
+            return next;
+          });
+        }
+      }
+    },
+    [state.items, completing],
+  );
+
+  const completedCount = state.items.filter((i) => i.completedToday).length;
+  const totalCount = state.items.length;
+
+  return {
+    items: state.items,
+    loading: state.loading,
+    error: state.error,
+    completing,
+    completedCount,
+    totalCount,
+    refresh: load,
+    toggleCompletion,
+  };
+}
