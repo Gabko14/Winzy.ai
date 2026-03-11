@@ -58,7 +58,6 @@ These are the non-obvious choices that agents get wrong without being told:
 - **Agent needs a file outside its plan → messages the team.** Other agents working on that file coordinate directly. One goes first, lead commits between handoffs.
 - **Commit per worker-reviewer pair, not batched.** Reviewer approves → worker/reviewer verify build and tests pass → lead commits → both shut down. Nothing is committed until the pair is done. Batching all commits at the end risks agents overwriting each other's work.
 - **Review inline, not after all work.** Each worker gets a paired reviewer. Keep the worker alive until review is done. Reviewer messages worker directly with issues → worker fixes → reviewer approves. Optimize for quality, not token cost.
-- **3-5 workers max**, each with a paired reviewer. Group related small tasks into one agent.
 - **Don't duplicate issue content in prompts.** Teammates run `br show <id>` themselves.
 - **`br update --claim` and `br comments add` are safe per-teammate.** `br close` and `br sync` go through the lead only.
 

@@ -21,6 +21,13 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<HabitDbContext>()
     .AddNatsHealthCheck();
 
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["Services:AuthServiceUrl"] ?? "http://auth-service:5001";
+    client.BaseAddress = new Uri(authUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
@@ -111,7 +118,13 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
         return Results.BadRequest(new { error = "Request body is required" });
 
     if (request.Name is not null)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return Results.BadRequest(new { error = "Name is required" });
+        if (request.Name.Trim().Length > 256)
+            return Results.BadRequest(new { error = "Name must not exceed 256 characters" });
         habit.Name = request.Name.Trim();
+    }
     if (request.Icon is not null)
         habit.Icon = request.Icon.Trim();
     if (request.Color is not null)
@@ -337,14 +350,28 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
 
 // --- Public endpoint (no auth, used for shareable flame profiles) ---
 
-app.MapGet("/habits/public/{username}", async (string username, HabitDbContext db, HttpContext ctx) =>
+app.MapGet("/habits/public/{username}", async (string username, HabitDbContext db, HttpContext ctx, IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
 {
-    // This endpoint resolves username -> userId by calling the auth service internally.
-    // For MVP, we use an X-Resolved-User-Id header set by the gateway/BFF layer
-    // that has already resolved the username via the auth service.
-    var resolvedUserIdHeader = ctx.Request.Headers["X-Resolved-User-Id"].FirstOrDefault();
-    if (string.IsNullOrWhiteSpace(resolvedUserIdHeader) || !Guid.TryParse(resolvedUserIdHeader, out var resolvedUserId))
+    // Resolve username -> userId via the auth service (service-to-service call)
+    Guid resolvedUserId;
+    try
+    {
+        var authClient = httpClientFactory.CreateClient("AuthService");
+        using var resolveResponse = await authClient.GetAsync($"/auth/internal/resolve/{Uri.EscapeDataString(username)}");
+        if (!resolveResponse.IsSuccessStatusCode)
+            return Results.NotFound();
+
+        var resolved = await resolveResponse.Content.ReadFromJsonAsync<ResolvedUserResponse>();
+        if (resolved is null)
+            return Results.NotFound();
+
+        resolvedUserId = resolved.UserId;
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        logger.LogWarning(ex, "Failed to resolve username {Username} via auth service", username);
         return Results.NotFound();
+    }
 
     var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
     TimeZoneInfo tz;
@@ -413,6 +440,7 @@ static object MapToResponse(Habit habit) => new
 internal record CreateHabitRequest(string Name, string? Icon, string? Color, FrequencyType Frequency, List<DayOfWeek>? CustomDays);
 internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays);
 internal record CompleteHabitRequest(string? Date, string Timezone);
+internal record ResolvedUserResponse(Guid UserId);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;
