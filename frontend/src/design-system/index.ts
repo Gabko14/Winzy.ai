@@ -39,4 +39,8 @@ export {
   type ErrorStateProps,
   Modal,
   type ModalProps,
+  Flame,
+  type FlameProps,
+  type FlameLevel,
+  type FlameSize,
 } from "./components";
