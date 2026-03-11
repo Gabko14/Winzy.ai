@@ -25,7 +25,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = true,
@@ -84,13 +84,15 @@ var challengeUrl = builder.Configuration["ReverseProxy:Clusters:challenge-cluste
 var notificationUrl = builder.Configuration["ReverseProxy:Clusters:notification-cluster:Destinations:destination1:Address"] ?? "http://notification-service:5005";
 var activityUrl = builder.Configuration["ReverseProxy:Clusters:activity-cluster:Destinations:destination1:Address"] ?? "http://activity-service:5006";
 
+var downstreamTimeout = TimeSpan.FromSeconds(5);
+
 builder.Services.AddHealthChecks()
-    .AddUrlGroup(new Uri($"{authUrl}/health"), "auth-service", tags: ["downstream"])
-    .AddUrlGroup(new Uri($"{habitUrl}/health"), "habit-service", tags: ["downstream"])
-    .AddUrlGroup(new Uri($"{socialUrl}/health"), "social-service", tags: ["downstream"])
-    .AddUrlGroup(new Uri($"{challengeUrl}/health"), "challenge-service", tags: ["downstream"])
-    .AddUrlGroup(new Uri($"{notificationUrl}/health"), "notification-service", tags: ["downstream"])
-    .AddUrlGroup(new Uri($"{activityUrl}/health"), "activity-service", tags: ["downstream"]);
+    .AddUrlGroup(new Uri($"{authUrl}/health"), "auth-service", tags: ["downstream"], timeout: downstreamTimeout)
+    .AddUrlGroup(new Uri($"{habitUrl}/health"), "habit-service", tags: ["downstream"], timeout: downstreamTimeout)
+    .AddUrlGroup(new Uri($"{socialUrl}/health"), "social-service", tags: ["downstream"], timeout: downstreamTimeout)
+    .AddUrlGroup(new Uri($"{challengeUrl}/health"), "challenge-service", tags: ["downstream"], timeout: downstreamTimeout)
+    .AddUrlGroup(new Uri($"{notificationUrl}/health"), "notification-service", tags: ["downstream"], timeout: downstreamTimeout)
+    .AddUrlGroup(new Uri($"{activityUrl}/health"), "activity-service", tags: ["downstream"], timeout: downstreamTimeout);
 
 // Forwarded headers: only trust explicitly configured proxies.
 // Without configured proxies, X-Forwarded-For headers are ignored, preventing
@@ -152,13 +154,18 @@ app.MapHealthChecks("/health", new HealthCheckOptions
         };
 
         await context.Response.WriteAsync(
-            JsonSerializer.Serialize(response, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true
-            }));
+            JsonSerializer.Serialize(response, HealthJsonOptions));
     }
 });
 app.MapReverseProxy();
 
 app.Run();
+
+public partial class Program
+{
+    internal static readonly JsonSerializerOptions HealthJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+}
