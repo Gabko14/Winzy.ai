@@ -468,11 +468,26 @@ function animateValue(el, target, dur = 700) {
 
 // ─── Data Loading ────────────────────────────────────────────────────────────
 async function loadData() {
-  const [ir, dr, er] = await Promise.all([
-    fetch('issues.json').then(r => r.json()),
-    fetch('deps.json').then(r => r.json()).catch(() => []),
-    fetch('events.json').then(r => r.json()).catch(() => [])
-  ]);
+  let ir, dr, er;
+  try {
+    [ir, dr, er] = await Promise.all([
+      fetch('issues.json').then(r => {
+        if (!r.ok) throw new Error(`issues.json: ${r.status}`);
+        return r.json();
+      }),
+      fetch('deps.json').then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch('events.json').then(r => r.ok ? r.json() : []).catch(() => [])
+    ]);
+  } catch (e) {
+    document.body.innerHTML = '<div style="font-family:system-ui;max-width:600px;margin:80px auto;text-align:center;color:#ccc">'
+      + '<h2>Beadspace data files not found</h2>'
+      + '<p style="color:#999">The dashboard needs <code>issues.json</code>, <code>deps.json</code>, and <code>events.json</code> in this directory.</p>'
+      + '<p style="color:#999">Generate them locally:</p>'
+      + '<pre style="background:#1a1a2e;padding:16px;border-radius:8px;text-align:left;color:#7fdbca">bash .beadspace/generate.sh</pre>'
+      + '<p style="color:#666;font-size:0.85em">This converts .beads/*.jsonl into the JSON files the dashboard expects.</p>'
+      + '</div>';
+    throw e;
+  }
   ISSUES = ir.filter(i => i.status !== 'tombstone' && !i.deleted_at);
   DEPS = dr;
   EVENTS = er;
