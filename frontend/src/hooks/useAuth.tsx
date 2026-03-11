@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 import { api, bootstrapSession, tokenStore } from "../api";
 import type { AuthResponse, UserProfile } from "../api";
 
@@ -37,7 +38,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (emailOrUsername: string, password: string) => {
     const data = await api.post<AuthResponse>("/auth/login", { emailOrUsername, password }, { noAuth: true });
     await tokenStore.setAccessToken(data.accessToken);
-    if (data.refreshToken) {
+    // On web, rely on httpOnly cookie for refresh — don't store in localStorage (XSS risk).
+    if (data.refreshToken && Platform.OS !== "web") {
       await tokenStore.setRefreshToken(data.refreshToken);
     }
     setState({ status: "authenticated", user: data.user });
@@ -52,7 +54,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         { noAuth: true },
       );
       await tokenStore.setAccessToken(data.accessToken);
-      if (data.refreshToken) {
+      // On web, rely on httpOnly cookie for refresh — don't store in localStorage (XSS risk).
+      if (data.refreshToken && Platform.OS !== "web") {
         await tokenStore.setRefreshToken(data.refreshToken);
       }
       setState({ status: "authenticated", user: data.user });
