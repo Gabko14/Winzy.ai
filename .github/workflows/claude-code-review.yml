@@ -32,6 +32,14 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install E2E dependencies and Playwright
+        run: cd e2e && npm ci && npx playwright install chromium
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
