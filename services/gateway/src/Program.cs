@@ -16,19 +16,7 @@ builder.Services.AddReverseProxy()
 
 // JWT secret validation — fail fast if missing, too short, or still the old placeholder
 var jwtSecret = builder.Configuration["Jwt:Secret"];
-const string oldPlaceholder = "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long";
-
-if (string.IsNullOrWhiteSpace(jwtSecret))
-    throw new InvalidOperationException(
-        "Jwt:Secret is not configured. Set it via environment variable Jwt__Secret, appsettings, or user-secrets.");
-
-if (string.Equals(jwtSecret, oldPlaceholder, StringComparison.Ordinal))
-    throw new InvalidOperationException(
-        $"Jwt:Secret is still the placeholder value '{oldPlaceholder}'. Provide a real secret.");
-
-if (jwtSecret.Length < 32)
-    throw new InvalidOperationException(
-        $"Jwt:Secret must be at least 32 characters (got {jwtSecret.Length}). Use a cryptographically random value.");
+Winzy.Gateway.JwtSecretValidator.Validate(jwtSecret);
 
 // JWT authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
