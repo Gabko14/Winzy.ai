@@ -206,6 +206,7 @@ services:
       ConnectionStrings__DefaultConnection: Host=habit-db;Port=5432;Database=habit_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
       ASPNETCORE_URLS: http://+:5002
+      Services__AuthServiceUrl: http://auth-service:5001
     depends_on:
       habit-db:
         condition: service_healthy
@@ -242,6 +243,7 @@ services:
       ConnectionStrings__DefaultConnection: Host=challenge-db;Port=5432;Database=challenge_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
       ASPNETCORE_URLS: http://+:5004
+      Services__SocialServiceUrl: http://social-service:5003
     depends_on:
       challenge-db:
         condition: service_healthy
