@@ -1,0 +1,11 @@
+{
+  "name": "winzy-perf",
+  "private": true,
+  "description": "Load/performance validation scripts for Winzy.ai",
+  "scripts": {
+    "nats-load": "node nats-load.js"
+  },
+  "dependencies": {
+    "nats": "^2.28.0"
+  }
+}

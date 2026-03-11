@@ -1,0 +1,50 @@
+# Docker Compose override for running k6 load tests against the stack.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f perf/docker-compose.perf.yml up -d
+#   docker compose -f docker-compose.yml -f perf/docker-compose.perf.yml run k6-gateway
+#   docker compose -f docker-compose.yml -f perf/docker-compose.perf.yml run nats-load
+#
+# Or use: ./perf/run.sh
+#
+# NOTE: This override raises the gateway auth rate limit from 10/min to 10000/min
+# so that perf scenarios can register/login at realistic concurrency without
+# triggering 429s. The rate_limit_probe scenario validates rate limiting
+# separately against the production-configured gateway (see run.sh).
+
+services:
+  # Override gateway to raise auth rate limit for perf testing
+  api-gateway:
+    environment:
+      RateLimiting__AuthPermitLimit: "10000"
+  k6-gateway:
+    image: grafana/k6:latest
+    volumes:
+      - ./perf:/scripts
+    environment:
+      GATEWAY_URL: http://api-gateway:5000
+    command: run /scripts/gateway-http.js
+    networks:
+      - winzy-network
+    profiles:
+      - perf
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  nats-load:
+    image: node:22-alpine
+    working_dir: /scripts
+    volumes:
+      - ./perf:/scripts
+    environment:
+      NATS_URL: nats://nats:4222
+      NATS_MSG_COUNT: "100"
+    command: sh -c "npm install --silent && node nats-load.js"
+    networks:
+      - winzy-network
+    profiles:
+      - perf
+    depends_on:
+      nats:
+        condition: service_healthy
