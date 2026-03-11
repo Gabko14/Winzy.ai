@@ -3,6 +3,7 @@ using Winzy.AuthService.Endpoints;
 using Winzy.AuthService.Services;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
+using Winzy.Common.Observability;
 using Winzy.Common.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,6 +19,7 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+app.UseObservability();
 app.MapOpenApi();
 app.MapServiceHealthChecks();
 app.MapAuthEndpoints();
