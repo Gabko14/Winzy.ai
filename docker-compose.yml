@@ -32,6 +32,9 @@ services:
   # All containers listen on 5432 internally; host ports are offset to avoid collisions.
   # These host mappings are for local dev (services running outside Docker). In-container
   # services connect via Docker DNS on port 5432 (see ConnectionStrings in service envs).
+  #
+  # Verify connectivity: psql -h localhost -p <host-port> -U winzy -d <service>_db -c '\conninfo'
+  # Example:             psql -h localhost -p 5433 -U winzy -d auth_db -c '\conninfo'
 
   auth-db:
     image: postgres:17-alpine
