@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
+using Winzy.Common.Observability;
 using Winzy.Common.Persistence;
 using Winzy.Contracts;
 using Winzy.Contracts.Events;
@@ -22,6 +23,7 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+app.UseObservability();
 app.MapOpenApi();
 app.MapServiceHealthChecks();
 
@@ -285,6 +287,7 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
         .ToListAsync();
 
     var consistency = ConsistencyCalculator.Calculate(habit, [.. completedDates], tz);
+    var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
     var totalCompletions = completedDates.Count;
 
     var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
@@ -297,6 +300,7 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
     {
         habitId = id,
         consistency,
+        flameLevel = flameLevel.ToString().ToLowerInvariant(),
         totalCompletions,
         completionsInWindow,
         windowDays = ConsistencyCalculator.WindowDays,
@@ -365,6 +369,7 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
     {
         var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
         var consistency = ConsistencyCalculator.Calculate(h, completedDates, tz);
+        var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
 
         return new
         {
@@ -372,7 +377,8 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
             name = h.Name,
             icon = h.Icon,
             color = h.Color,
-            consistency
+            consistency,
+            flameLevel = flameLevel.ToString().ToLowerInvariant()
         };
     });
 

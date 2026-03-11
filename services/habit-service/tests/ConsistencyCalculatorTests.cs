@@ -358,4 +358,395 @@ public class ConsistencyCalculatorTests
 
         Assert.InRange(result, 0, 100);
     }
+
+    // --- Timezone: creation date resolved in user's timezone ---
+
+    [Fact]
+    public void Calculate_HabitCreatedAtUtcMidnight_ResolvedToPreviousDayInNegativeOffset()
+    {
+        // Habit created at UTC midnight = Dec 31 23:00 in EST (UTC-5)
+        // So effectiveStart should be Dec 31, not Jan 1
+        var today = new DateOnly(2025, 1, 10);
+        var habit = new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "TZ Test",
+            Frequency = FrequencyType.Daily,
+            CreatedAt = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero) // midnight UTC
+        };
+
+        // Using the testable overload: habitCreatedLocalDate = Dec 31 (as if resolved in EST)
+        var habitCreatedLocalDate = new DateOnly(2024, 12, 31);
+        var completed = new HashSet<DateOnly>();
+        for (var d = habitCreatedLocalDate; d <= today; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, habitCreatedLocalDate);
+
+        // 11 days (Dec 31 to Jan 10), all completed
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Calculate_HabitCreatedAt_PositiveOffset_ResolvedToNextDayInPositiveOffset()
+    {
+        // Habit created at UTC 23:00 = Jan 2 08:00 in UTC+9 (Tokyo)
+        // So effectiveStart should be Jan 2, not Jan 1
+        var today = new DateOnly(2025, 1, 10);
+        var habit = new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "TZ Test Tokyo",
+            Frequency = FrequencyType.Daily,
+            CreatedAt = new DateTimeOffset(2025, 1, 1, 23, 0, 0, TimeSpan.Zero) // 23:00 UTC
+        };
+
+        var habitCreatedLocalDate = new DateOnly(2025, 1, 2); // Next day in Tokyo
+        var completed = new HashSet<DateOnly>();
+        for (var d = habitCreatedLocalDate; d <= today; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, habitCreatedLocalDate);
+
+        // 9 days (Jan 2 to Jan 10), all completed
+        Assert.Equal(100, result);
+    }
+
+    // --- Weekly: new habit created mid-week ---
+
+    [Fact]
+    public void Weekly_NewHabit_CreatedMidWeek_PartialFirstWeekCounts()
+    {
+        // Created on Thursday, today is the following Wednesday (6 days later)
+        // First partial week (Thu-Sun) + second partial week (Mon-Wed) = 2 weeks
+        var today = new DateOnly(2025, 3, 12); // Wednesday
+        var createdDate = new DateOnly(2025, 3, 6); // Thursday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: createdDate);
+
+        // Complete on Thursday (first week) and Tuesday (second week)
+        var completed = new HashSet<DateOnly>
+        {
+            new DateOnly(2025, 3, 6),  // Thursday
+            new DateOnly(2025, 3, 11)  // Tuesday
+        };
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, createdDate);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Weekly_NewHabit_CreatedMidWeek_OnlySecondWeekCompleted()
+    {
+        var today = new DateOnly(2025, 3, 12); // Wednesday
+        var createdDate = new DateOnly(2025, 3, 6); // Thursday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: createdDate);
+
+        // Only complete in second week
+        var completed = new HashSet<DateOnly> { new DateOnly(2025, 3, 11) };
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, createdDate);
+
+        // 1 of 2 weeks = 50%
+        Assert.Equal(50, result);
+    }
+
+    // --- Custom frequency: single day per week ---
+
+    [Fact]
+    public void Custom_SingleDay_MondayOnly()
+    {
+        var today = new DateOnly(2025, 3, 1); // Saturday
+        var customDays = new List<DayOfWeek> { DayOfWeek.Monday };
+        var habit = MakeHabit(frequency: FrequencyType.Custom, customDays: customDays, createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59);
+        var completed = new HashSet<DateOnly>();
+        var applicableCount = 0;
+        for (var d = windowStart; d <= today; d = d.AddDays(1))
+        {
+            if (d.DayOfWeek == DayOfWeek.Monday)
+            {
+                completed.Add(d);
+                applicableCount++;
+            }
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(100, result);
+    }
+
+    // --- Spec example calculations ---
+
+    [Fact]
+    public void SpecExample_Daily_45of60_Returns75()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59);
+        var completed = new HashSet<DateOnly>();
+        var count = 0;
+        for (var d = windowStart; d <= today; d = d.AddDays(1))
+        {
+            if (count < 45)
+                completed.Add(d);
+            count++;
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(75, result);
+    }
+
+    [Fact]
+    public void SpecExample_Daily_30of60_Returns50()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var completed = new HashSet<DateOnly>();
+        var windowStart = today.AddDays(-59);
+        for (var d = windowStart; d <= today; d = d.AddDays(2))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void SpecExample_Daily_6of60_Returns10()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59);
+        var completed = new HashSet<DateOnly>();
+        for (var i = 0; i < 6; i++)
+            completed.Add(windowStart.AddDays(i));
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(10, result);
+    }
+
+    [Fact]
+    public void SpecExample_Weekly_6of8_Returns75()
+    {
+        // 60-day window from a Monday: ~9 ISO weeks
+        var today = new DateOnly(2025, 3, 10); // Monday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59); // Jan 10 (Friday)
+        // Count total weeks first to know denominator
+        var dayOfWeek = ((int)windowStart.DayOfWeek + 6) % 7;
+        var firstMonday = windowStart.AddDays(-dayOfWeek);
+        var totalWeeks = 0;
+        for (var ws = firstMonday; ws <= today; ws = ws.AddDays(7))
+        {
+            var overlapStart = ws < windowStart ? windowStart : ws;
+            var overlapEnd = ws.AddDays(6) > today ? today : ws.AddDays(6);
+            if (overlapStart <= overlapEnd)
+                totalWeeks++;
+        }
+
+        // Complete 75% of weeks (rounding)
+        var targetWeeks = (int)Math.Round(totalWeeks * 0.75);
+        var completed = new HashSet<DateOnly>();
+        var weekCount = 0;
+        for (var ws = firstMonday; ws <= today; ws = ws.AddDays(7))
+        {
+            var overlapStart = ws < windowStart ? windowStart : ws;
+            var overlapEnd = ws.AddDays(6) > today ? today : ws.AddDays(6);
+            if (overlapStart <= overlapEnd)
+            {
+                if (weekCount < targetWeeks)
+                    completed.Add(overlapStart);
+                weekCount++;
+            }
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+        var expected = Math.Round((double)targetWeeks / totalWeeks * 100, 1);
+
+        Assert.Equal(expected, result);
+    }
+}
+
+// --- Flame level mapping tests ---
+
+public class FlameLevelTests
+{
+    // --- Rising thresholds (no previous level) ---
+
+    [Theory]
+    [InlineData(0, FlameLevel.None)]
+    [InlineData(5, FlameLevel.None)]
+    [InlineData(9.9, FlameLevel.None)]
+    [InlineData(10, FlameLevel.Ember)]
+    [InlineData(20, FlameLevel.Ember)]
+    [InlineData(29.9, FlameLevel.Ember)]
+    [InlineData(30, FlameLevel.Steady)]
+    [InlineData(45, FlameLevel.Steady)]
+    [InlineData(54.9, FlameLevel.Steady)]
+    [InlineData(55, FlameLevel.Strong)]
+    [InlineData(70, FlameLevel.Strong)]
+    [InlineData(79.9, FlameLevel.Strong)]
+    [InlineData(80, FlameLevel.Blazing)]
+    [InlineData(90, FlameLevel.Blazing)]
+    [InlineData(100, FlameLevel.Blazing)]
+    public void RisingThresholds_NoPreviousLevel(double consistency, FlameLevel expected)
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        Assert.Equal(expected, result);
+    }
+
+    // --- "Grows quickly": improvement immediately reflected ---
+
+    [Fact]
+    public void GrowsQuickly_FromNone_To_Ember_At10Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(10, FlameLevel.None);
+
+        Assert.Equal(FlameLevel.Ember, result);
+    }
+
+    [Fact]
+    public void GrowsQuickly_FromEmber_To_Steady_At30Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(30, FlameLevel.Ember);
+
+        Assert.Equal(FlameLevel.Steady, result);
+    }
+
+    [Fact]
+    public void GrowsQuickly_FromSteady_To_Strong_At55Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(55, FlameLevel.Steady);
+
+        Assert.Equal(FlameLevel.Strong, result);
+    }
+
+    [Fact]
+    public void GrowsQuickly_FromStrong_To_Blazing_At80Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(80, FlameLevel.Strong);
+
+        Assert.Equal(FlameLevel.Blazing, result);
+    }
+
+    // --- "Shrinks slowly": flame holds level until consistency drops further ---
+
+    [Fact]
+    public void ShrinkSlowly_Blazing_HoldsAt65Percent()
+    {
+        // At 65% the rising level would be Strong, but with previousLevel=Blazing,
+        // the falling threshold keeps it at Blazing
+        var result = ConsistencyCalculator.GetFlameLevel(65, FlameLevel.Blazing);
+
+        Assert.Equal(FlameLevel.Blazing, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Blazing_DropsToStrongAt64Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(64, FlameLevel.Blazing);
+
+        Assert.Equal(FlameLevel.Strong, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Strong_HoldsAt40Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(40, FlameLevel.Strong);
+
+        Assert.Equal(FlameLevel.Strong, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Strong_DropsToSteadyAt39Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(39, FlameLevel.Strong);
+
+        Assert.Equal(FlameLevel.Steady, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Steady_HoldsAt20Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(20, FlameLevel.Steady);
+
+        Assert.Equal(FlameLevel.Steady, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Steady_DropsToEmberAt19Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(19, FlameLevel.Steady);
+
+        Assert.Equal(FlameLevel.Ember, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Ember_HoldsAt5Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(5, FlameLevel.Ember);
+
+        Assert.Equal(FlameLevel.Ember, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Ember_DropsToNoneAt4Percent()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(4, FlameLevel.Ember);
+
+        Assert.Equal(FlameLevel.None, result);
+    }
+
+    // --- Edge: multi-level drop ---
+
+    [Fact]
+    public void ShrinkSlowly_Blazing_DropsToEmber_AtVeryLowConsistency()
+    {
+        // At 5%, falling level is Ember. Previous was Blazing. Flame drops but doesn't skip.
+        var result = ConsistencyCalculator.GetFlameLevel(5, FlameLevel.Blazing);
+
+        Assert.Equal(FlameLevel.Ember, result);
+    }
+
+    [Fact]
+    public void ShrinkSlowly_Blazing_DropsToNone_AtZero()
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(0, FlameLevel.Blazing);
+
+        Assert.Equal(FlameLevel.None, result);
+    }
+
+    // --- Boundary: exact thresholds ---
+
+    [Theory]
+    [InlineData(0, FlameLevel.None)]
+    [InlineData(100, FlameLevel.Blazing)]
+    public void Boundaries_ExtremeValues(double consistency, FlameLevel expected)
+    {
+        var result = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        Assert.Equal(expected, result);
+    }
+
+    // --- Same level: no change when consistency stays in same band ---
+
+    [Fact]
+    public void SameLevel_NoChangeWhenStayingInBand()
+    {
+        // Previous was Strong (55-79), consistency is 60 — still Strong
+        var result = ConsistencyCalculator.GetFlameLevel(60, FlameLevel.Strong);
+
+        Assert.Equal(FlameLevel.Strong, result);
+    }
 }

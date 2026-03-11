@@ -135,6 +135,64 @@ public static class ConsistencyCalculator
     }
 
     /// <summary>
+    /// Maps a consistency percentage to a Flame intensity level (0-4).
+    /// The thresholds are asymmetric: "grows quickly, shrinks slowly."
+    /// Rising thresholds are lower so improvement is rewarded fast.
+    /// Falling thresholds are higher so decline is forgiving.
+    /// </summary>
+    /// <param name="consistency">Consistency percentage (0-100).</param>
+    /// <param name="previousLevel">
+    /// The user's previous flame level (null if unknown / first calculation).
+    /// When provided, the "shrinks slowly" thresholds apply — the flame won't
+    /// drop a level until consistency falls further below the rising threshold.
+    /// </param>
+    /// <returns>
+    /// A <see cref="FlameLevel"/> value: None (0), Ember (1), Steady (2), Strong (3), Blazing (4).
+    /// </returns>
+    public static FlameLevel GetFlameLevel(double consistency, FlameLevel? previousLevel = null)
+    {
+        // Rising thresholds — used when consistency is improving or no previous level known.
+        // "Grows quickly": lower thresholds so users see flame growth fast.
+        //   0-9%   → None
+        //   10-29% → Ember
+        //   30-54% → Steady
+        //   55-79% → Strong
+        //   80%+   → Blazing
+        //
+        // Falling thresholds — used when consistency would cause a level drop.
+        // "Shrinks slowly": the flame holds its level until consistency drops further.
+        //   below 5%  → None
+        //   below 20% → Ember (was Steady, holds until 20%)
+        //   below 40% → Steady (was Strong, holds until 40%)
+        //   below 65% → Strong (was Blazing, holds until 65%)
+
+        var risingLevel = consistency switch
+        {
+            >= 80 => FlameLevel.Blazing,
+            >= 55 => FlameLevel.Strong,
+            >= 30 => FlameLevel.Steady,
+            >= 10 => FlameLevel.Ember,
+            _ => FlameLevel.None
+        };
+
+        if (previousLevel is null || risingLevel >= previousLevel.Value)
+            return risingLevel;
+
+        // Apply "shrinks slowly" — use lower falling thresholds to resist decline
+        var fallingLevel = consistency switch
+        {
+            >= 65 => FlameLevel.Blazing,
+            >= 40 => FlameLevel.Strong,
+            >= 20 => FlameLevel.Steady,
+            >= 5 => FlameLevel.Ember,
+            _ => FlameLevel.None
+        };
+
+        // The flame can't exceed the previous level (it's declining, not rising)
+        return fallingLevel > previousLevel.Value ? previousLevel.Value : fallingLevel;
+    }
+
+    /// <summary>
     /// Determines whether a given date is an "applicable" day for this habit
     /// based on its frequency type. Used for Daily and Custom frequencies.
     /// </summary>
@@ -147,4 +205,17 @@ public static class ConsistencyCalculator
             _ => false
         };
     }
+}
+
+/// <summary>
+/// Flame intensity levels. Higher = more consistent.
+/// Frontend maps these to visual flame states.
+/// </summary>
+public enum FlameLevel
+{
+    None = 0,
+    Ember = 1,
+    Steady = 2,
+    Strong = 3,
+    Blazing = 4
 }
