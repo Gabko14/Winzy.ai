@@ -31,7 +31,7 @@ var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingP
 
 // --- Authenticated endpoints (user_id from X-User-Id header) ---
 
-app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPublisher nats) =>
+app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPublisher nats, ILogger<Program> logger) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -58,7 +58,14 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     db.Habits.Add(habit);
     await db.SaveChangesAsync();
 
-    await nats.PublishAsync(Subjects.HabitCreated, new HabitCreatedEvent(userId, habit.Id, habit.Name));
+    try
+    {
+        await nats.PublishAsync(Subjects.HabitCreated, new HabitCreatedEvent(userId, habit.Id, habit.Name));
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to publish habit.created event for habit {HabitId}", habit.Id);
+    }
 
     return Results.Created($"/habits/{habit.Id}", MapToResponse(habit));
 });
@@ -81,7 +88,7 @@ app.MapGet("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId);
+    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId && h.ArchivedAt == null);
     if (habit is null)
         return Results.NotFound();
 
@@ -93,7 +100,7 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId);
+    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == id && h.UserId == userId && h.ArchivedAt == null);
     if (habit is null)
         return Results.NotFound();
 
@@ -113,6 +120,12 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
             return Results.BadRequest(new { error = "CustomDays required for Custom frequency" });
         habit.Frequency = request.Frequency.Value;
         habit.CustomDays = request.Frequency.Value == FrequencyType.Custom ? request.CustomDays : null;
+    }
+    else if (request.CustomDays is not null && habit.Frequency == FrequencyType.Custom)
+    {
+        if (request.CustomDays.Count == 0)
+            return Results.BadRequest(new { error = "CustomDays cannot be empty for Custom frequency" });
+        habit.CustomDays = request.CustomDays;
     }
 
     await db.SaveChangesAsync();
@@ -136,7 +149,7 @@ app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbConte
     return Results.NoContent();
 });
 
-app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, HabitDbContext db, NatsEventPublisher nats) =>
+app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, HabitDbContext db, NatsEventPublisher nats, ILogger<Program> logger) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -203,8 +216,15 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
 
     var consistency = ConsistencyCalculator.Calculate(habit, [.. completedDates], tz);
 
-    await nats.PublishAsync(Subjects.HabitCompleted,
-        new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency));
+    try
+    {
+        await nats.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency));
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to publish habit.completed event for habit {HabitId}", id);
+    }
 
     return Results.Created($"/habits/{id}/completions/{localDate:yyyy-MM-dd}", new
     {
