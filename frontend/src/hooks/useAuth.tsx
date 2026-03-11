@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { api, bootstrapSession, tokenStore } from "../api";
-import type { AuthResponse, UserProfile } from "../api";
+import type { AuthResponse, UpdateProfileRequest, UserProfile } from "../api";
 
 type AuthState =
   | { status: "loading" }
@@ -12,6 +12,7 @@ type AuthContextValue = AuthState & {
   login: (emailOrUsername: string, password: string) => Promise<AuthResponse>;
   register: (email: string, username: string, password: string, displayName?: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
+  updateProfile: (request: UpdateProfileRequest) => Promise<UserProfile>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -64,6 +65,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const updateProfile = useCallback(async (request: UpdateProfileRequest) => {
+    const profile = await api.put<UserProfile>("/auth/profile", request);
+    setState((prev) => (prev.status === "authenticated" ? { status: "authenticated", user: profile } : prev));
+    return profile;
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout", undefined);
@@ -75,8 +82,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...state, login, register, logout }),
-    [state, login, register, logout],
+    () => ({ ...state, login, register, logout, updateProfile }),
+    [state, login, register, logout, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
