@@ -6,3 +6,4 @@ export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { LoadingState, type LoadingStateProps } from "./LoadingState";
 export { ErrorState, type ErrorStateProps } from "./ErrorState";
 export { Modal, type ModalProps } from "./Modal";
+export { Flame, type FlameProps, type FlameLevel, type FlameSize } from "./Flame";
