@@ -41,9 +41,11 @@ self.addEventListener("fetch", (event) => {
   // Only handle GET requests
   if (request.method !== "GET") return;
 
-  // Skip API requests — server is source of truth
+  // Skip all backend routes — server is source of truth.
+  // These match the gateway's route prefixes.
   const url = new URL(request.url);
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
+  const backendPrefixes = ["/auth/", "/habits", "/notifications", "/social", "/challenges", "/friends", "/health"];
+  if (backendPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
     return;
   }
 

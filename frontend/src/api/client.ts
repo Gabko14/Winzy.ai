@@ -2,13 +2,15 @@ import { Platform } from "react-native";
 import { tokenStore } from "./token";
 import type { ApiError, AuthResponse } from "./types";
 
-// Gateway is exposed on port 5050 in dev (macOS AirPlay conflict on 5000)
+// Gateway is exposed on port 5050 in dev (macOS AirPlay conflict on 5000).
+// Web: same-origin (gateway proxied or same host). Native: explicit gateway URL.
 const DEFAULT_BASE_URL =
-  Platform.OS === "web" ? "/api" : "http://localhost:5050";
+  Platform.OS === "web" ? "" : "http://localhost:5050";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 let baseUrl = DEFAULT_BASE_URL;
 
@@ -71,18 +73,24 @@ async function fetchRefreshAndStore(): Promise<AuthResponse | null> {
     });
 
     if (!res.ok) {
-      await tokenStore.clear();
+      // Only clear tokens on confirmed auth rejection (401/403).
+      // Preserve tokens on transient server errors so offline/restart recovery works.
+      if (res.status === 401 || res.status === 403) {
+        await tokenStore.clear();
+      }
       return null;
     }
 
     const data: AuthResponse = await res.json();
     await tokenStore.setAccessToken(data.accessToken);
-    if (data.refreshToken) {
+    // On web, rely on httpOnly cookie for refresh — don't store in localStorage (XSS risk).
+    // On native, persist refresh token for secure storage.
+    if (data.refreshToken && Platform.OS !== "web") {
       await tokenStore.setRefreshToken(data.refreshToken);
     }
     return data;
   } catch {
-    await tokenStore.clear();
+    // Network error / offline — do NOT clear tokens. Preserve for retry.
     return null;
   }
 }
@@ -209,8 +217,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       throw mapHttpError(401, null);
     }
 
-    // Retryable server errors
-    if (RETRYABLE_STATUSES.has(res.status) && retriesLeft > 0 && !noRetry) {
+    // Retryable server errors (safe/idempotent methods only — replaying mutations is dangerous)
+    if (RETRYABLE_STATUSES.has(res.status) && retriesLeft > 0 && !noRetry && SAFE_METHODS.has(method)) {
       await delay(300 * (MAX_RETRIES - retriesLeft + 1));
       return attempt(retriesLeft - 1, isRetryAfterRefresh);
     }

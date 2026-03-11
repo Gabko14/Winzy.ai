@@ -8,6 +8,7 @@ on:
       - 'e2e/**'
       - 'services/**'
       - 'docker-compose.yml'
+      - '.github/workflows/ci-e2e.yml'
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - 'e2e/**'
       - 'services/**'
       - 'docker-compose.yml'
+      - '.github/workflows/ci-e2e.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

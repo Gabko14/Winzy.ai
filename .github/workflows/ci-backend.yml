@@ -9,6 +9,7 @@ on:
       - 'Directory.Build.props'
       - 'global.json'
       - 'Winzy.slnx'
+      - '.github/workflows/ci-backend.yml'
   pull_request:
     branches: [main]
     paths:
@@ -17,6 +18,7 @@ on:
       - 'Directory.Build.props'
       - 'global.json'
       - 'Winzy.slnx'
+      - '.github/workflows/ci-backend.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -60,7 +62,8 @@ jobs:
           retention-days: 14
 
       - name: Format Check
-        run: dotnet format Winzy.slnx --verify-no-changes --no-restore 2>&1 | tee format-output.txt
+        shell: bash
+        run: set -o pipefail && dotnet format Winzy.slnx --verify-no-changes --no-restore 2>&1 | tee format-output.txt
 
       - name: Upload format output
         if: failure()

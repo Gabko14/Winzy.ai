@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
   pull_request:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
