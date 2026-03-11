@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NATS.Client.Hosting;
+using Winzy.Common.Health;
 
 namespace Winzy.Common.Messaging;
 
@@ -17,5 +18,18 @@ public static class NatsServiceExtensions
         services.AddSingleton<NatsEventPublisher>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers NATS messaging and adds a NATS health check.
+    /// Use this instead of calling AddNatsMessaging + AddNatsHealthCheck separately.
+    /// </summary>
+    public static IHealthChecksBuilder AddNatsMessagingWithHealthCheck(
+        this IServiceCollection services,
+        IConfiguration config,
+        IHealthChecksBuilder healthChecks)
+    {
+        services.AddNatsMessaging(config);
+        return healthChecks.AddNatsHealthCheck();
     }
 }
