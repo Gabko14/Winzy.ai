@@ -30,6 +30,8 @@ public sealed class ChallengeDbContext(DbContextOptions<ChallengeDbContext> opti
             b.Property(c => c.EndsAt).HasColumnType("timestamptz");
             b.Property(c => c.CompletedAt).HasColumnType("timestamptz");
             b.Property(c => c.ClaimedAt).HasColumnType("timestamptz");
+            b.Property(c => c.CustomStartDate).HasColumnType("timestamptz");
+            b.Property(c => c.CustomEndDate).HasColumnType("timestamptz");
         });
     }
 }

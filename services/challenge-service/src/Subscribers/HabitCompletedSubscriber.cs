@@ -47,16 +47,34 @@ public sealed class HabitCompletedSubscriber(
             return;
         }
 
+        var ctx = new MilestoneContext(data.Consistency, data.Date);
+
         foreach (var challenge in activeChallenges)
         {
-            // Always update progress so GET /challenges/{id} returns current state
-            challenge.CurrentProgress = ProgressCalculator.CalculateProgress(challenge, data.Consistency);
+            // For count-based milestones, increment the completion count
+            if (challenge.MilestoneType is MilestoneType.DaysInPeriod or MilestoneType.TotalCompletions)
+            {
+                challenge.CompletionCount++;
+            }
 
-            if (!ProgressCalculator.IsMilestoneReached(challenge, data.Consistency))
+            // For improvement milestones, capture baseline on first event
+            if (challenge.MilestoneType == MilestoneType.ImprovementMilestone
+                && challenge.BaselineConsistency is null)
+            {
+                challenge.BaselineConsistency = data.Consistency;
+                logger.LogInformation(
+                    "Challenge {ChallengeId} baseline captured at {Baseline}%",
+                    challenge.Id, data.Consistency);
+            }
+
+            // Always update progress so GET /challenges/{id} returns current state
+            challenge.CurrentProgress = ProgressCalculator.CalculateProgress(challenge, ctx);
+
+            if (!ProgressCalculator.IsMilestoneReached(challenge, ctx))
             {
                 logger.LogDebug(
-                    "Challenge {ChallengeId} progress updated — consistency {Consistency} / target {Target} = {Progress:P0}",
-                    challenge.Id, data.Consistency, challenge.TargetValue, challenge.CurrentProgress);
+                    "Challenge {ChallengeId} progress updated — {Progress:P0}",
+                    challenge.Id, challenge.CurrentProgress);
                 continue;
             }
 
@@ -65,8 +83,8 @@ public sealed class HabitCompletedSubscriber(
             challenge.CompletedAt = DateTimeOffset.UtcNow;
 
             logger.LogInformation(
-                "Challenge {ChallengeId} completed! Consistency {Consistency} >= target {Target}. Reward: {Reward}",
-                challenge.Id, data.Consistency, challenge.TargetValue, challenge.RewardDescription);
+                "Challenge {ChallengeId} completed! Type={MilestoneType}, Reward: {Reward}",
+                challenge.Id, challenge.MilestoneType, challenge.RewardDescription);
 
             try
             {
