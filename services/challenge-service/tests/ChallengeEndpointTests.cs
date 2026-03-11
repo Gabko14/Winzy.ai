@@ -245,16 +245,16 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         // Creator should see it as sender
         var creatorResponse = await creatorClient.GetAsync("/challenges", CT);
         Assert.Equal(HttpStatusCode.OK, creatorResponse.StatusCode);
-        var creatorChallenges = await creatorResponse.Content.ReadFromJsonAsync<JsonElement[]>(CT);
-        Assert.NotNull(creatorChallenges);
-        Assert.Single(creatorChallenges);
+        var creatorBody = await creatorResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var creatorItems = creatorBody.GetProperty("items");
+        Assert.Equal(1, creatorItems.GetArrayLength());
 
         // Recipient should see it as receiver
         var recipientResponse = await recipientClient.GetAsync("/challenges", CT);
         Assert.Equal(HttpStatusCode.OK, recipientResponse.StatusCode);
-        var recipientChallenges = await recipientResponse.Content.ReadFromJsonAsync<JsonElement[]>(CT);
-        Assert.NotNull(recipientChallenges);
-        Assert.Single(recipientChallenges);
+        var recipientBody = await recipientResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var recipientItems = recipientBody.GetProperty("items");
+        Assert.Equal(1, recipientItems.GetArrayLength());
     }
 
     [Fact]
@@ -276,9 +276,9 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         var otherUserId = Guid.NewGuid();
         using var otherClient = _fixture.CreateAuthenticatedClient(otherUserId);
         var response = await otherClient.GetAsync("/challenges", CT);
-        var challenges = await response.Content.ReadFromJsonAsync<JsonElement[]>(CT);
-        Assert.NotNull(challenges);
-        Assert.Empty(challenges);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(0, items.GetArrayLength());
     }
 
     // --- GET /challenges/{id} ---

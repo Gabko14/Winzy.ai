@@ -33,8 +33,10 @@ setup("authenticate", async ({ page }) => {
 
     // Save authenticated state
     await page.context().storageState({ path: authFile });
-  } catch {
-    // Backend not available or test user not seeded — save empty state as fallback
+  } catch (error) {
+    // Log the error so auth failures don't silently pass downstream tests
+    console.error("[auth.setup] Authentication failed:", error instanceof Error ? error.message : error);
+    // Save empty state so dependent tests run (unauthenticated) rather than crashing
     await page.context().storageState({ path: authFile });
   }
 });
