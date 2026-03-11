@@ -16,6 +16,16 @@ public sealed class Challenge : BaseEntity
     public DateTimeOffset EndsAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? ClaimedAt { get; set; }
+
+    // DaysInPeriod / TotalCompletions: tracks how many completions have been recorded
+    public int CompletionCount { get; set; }
+
+    // CustomDateRange: the active window for the challenge
+    public DateTimeOffset? CustomStartDate { get; set; }
+    public DateTimeOffset? CustomEndDate { get; set; }
+
+    // ImprovementMilestone: the consistency when the challenge started
+    public double? BaselineConsistency { get; set; }
 }
 
 public enum ChallengeStatus
@@ -28,5 +38,9 @@ public enum ChallengeStatus
 
 public enum MilestoneType
 {
-    ConsistencyTarget
+    ConsistencyTarget,
+    DaysInPeriod,
+    TotalCompletions,
+    CustomDateRange,
+    ImprovementMilestone
 }

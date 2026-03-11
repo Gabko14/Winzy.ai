@@ -61,10 +61,26 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
         return Results.BadRequest(new { error = "RewardDescription must not exceed 512 characters" });
     if (System.Text.RegularExpressions.Regex.IsMatch(request.RewardDescription, @"<[^>]+>"))
         return Results.BadRequest(new { error = "RewardDescription must not contain HTML tags" });
-    if (request.TargetValue <= 0 || request.TargetValue > 100)
-        return Results.BadRequest(new { error = "TargetValue must be between 1 and 100" });
     if (request.PeriodDays <= 0 || request.PeriodDays > 365)
         return Results.BadRequest(new { error = "PeriodDays must be between 1 and 365" });
+
+    // Milestone-type-specific validation
+    if (!Enum.IsDefined(request.MilestoneType))
+        return Results.BadRequest(new { error = "Invalid MilestoneType" });
+
+    var targetError = ValidateTargetValue(request);
+    if (targetError is not null)
+        return Results.BadRequest(new { error = targetError });
+
+    if (request.MilestoneType == MilestoneType.CustomDateRange)
+    {
+        if (request.CustomStartDate is null || request.CustomEndDate is null)
+            return Results.BadRequest(new { error = "CustomStartDate and CustomEndDate are required for CustomDateRange" });
+        if (request.CustomEndDate <= request.CustomStartDate)
+            return Results.BadRequest(new { error = "CustomEndDate must be after CustomStartDate" });
+        if (request.CustomEndDate <= DateTimeOffset.UtcNow)
+            return Results.BadRequest(new { error = "CustomEndDate must be in the future" });
+    }
 
     // Validate friendship via Social Service
     bool areFriends;
@@ -95,6 +111,10 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
     if (existingActive)
         return Results.Conflict(new { error = "An active challenge already exists for this habit and recipient" });
 
+    var endsAt = request.MilestoneType == MilestoneType.CustomDateRange && request.CustomEndDate is not null
+        ? request.CustomEndDate.Value
+        : DateTimeOffset.UtcNow.AddDays(request.PeriodDays);
+
     var challenge = new Challenge
     {
         CreatorId = userId,
@@ -105,7 +125,9 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
         PeriodDays = request.PeriodDays,
         RewardDescription = request.RewardDescription.Trim(),
         Status = ChallengeStatus.Active,
-        EndsAt = DateTimeOffset.UtcNow.AddDays(request.PeriodDays)
+        EndsAt = endsAt,
+        CustomStartDate = request.CustomStartDate,
+        CustomEndDate = request.CustomEndDate
     };
 
     db.Challenges.Add(challenge);
@@ -254,11 +276,33 @@ static object MapToDetailResponse(Challenge c) => new
     rewardDescription = c.RewardDescription,
     status = EffectiveStatus(c),
     progress = c.CurrentProgress,
+    completionCount = c.CompletionCount,
+    baselineConsistency = c.BaselineConsistency,
+    customStartDate = c.CustomStartDate,
+    customEndDate = c.CustomEndDate,
     createdAt = c.CreatedAt,
     endsAt = c.EndsAt,
     completedAt = c.CompletedAt,
     claimedAt = c.ClaimedAt
 };
+
+static string? ValidateTargetValue(CreateChallengeRequest request)
+{
+    return request.MilestoneType switch
+    {
+        MilestoneType.ConsistencyTarget when request.TargetValue <= 0 || request.TargetValue > 100
+            => "TargetValue must be between 1 and 100",
+        MilestoneType.DaysInPeriod when request.TargetValue <= 0 || request.TargetValue > request.PeriodDays
+            => $"TargetValue must be between 1 and {request.PeriodDays} (PeriodDays)",
+        MilestoneType.TotalCompletions when request.TargetValue <= 0 || request.TargetValue > 10000
+            => "TargetValue must be between 1 and 10000",
+        MilestoneType.CustomDateRange when request.TargetValue <= 0 || request.TargetValue > 100
+            => "TargetValue must be between 1 and 100",
+        MilestoneType.ImprovementMilestone when request.TargetValue <= 0 || request.TargetValue > 100
+            => "TargetValue must be between 1 and 100",
+        _ => null
+    };
+}
 
 // --- Request DTOs ---
 
@@ -268,7 +312,9 @@ internal record CreateChallengeRequest(
     MilestoneType MilestoneType,
     double TargetValue,
     int PeriodDays,
-    string RewardDescription);
+    string RewardDescription,
+    DateTimeOffset? CustomStartDate = null,
+    DateTimeOffset? CustomEndDate = null);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

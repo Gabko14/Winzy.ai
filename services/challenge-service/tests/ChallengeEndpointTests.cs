@@ -549,6 +549,326 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    // --- Milestone type validation ---
+
+    [Fact]
+    public async Task CreateChallenge_DaysInPeriod_ValidRequest_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 1, // DaysInPeriod
+            targetValue = 20.0,
+            periodDays = 30,
+            rewardDescription = "Coffee for completing 20 days!"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("daysinperiod", body.GetProperty("milestoneType").GetString());
+        Assert.Equal(20.0, body.GetProperty("targetValue").GetDouble());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_DaysInPeriod_TargetExceedsPeriod_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 1, // DaysInPeriod
+            targetValue = 31.0, // exceeds periodDays=30
+            periodDays = 30,
+            rewardDescription = "Impossible target"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_TotalCompletions_ValidRequest_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 2, // TotalCompletions
+            targetValue = 500.0,
+            periodDays = 365,
+            rewardDescription = "500 meditation sessions!"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("totalcompletions", body.GetProperty("milestoneType").GetString());
+        Assert.Equal(500.0, body.GetProperty("targetValue").GetDouble());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_TotalCompletions_Over10000_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 2, // TotalCompletions
+            targetValue = 10001.0,
+            periodDays = 365,
+            rewardDescription = "Too many"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_CustomDateRange_ValidRequest_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var startDate = DateTimeOffset.UtcNow.AddDays(1);
+        var endDate = DateTimeOffset.UtcNow.AddDays(31);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 3, // CustomDateRange
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "March consistency goal!",
+            customStartDate = startDate,
+            customEndDate = endDate
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("customdaterange", body.GetProperty("milestoneType").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_CustomDateRange_MissingDates_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 3, // CustomDateRange
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "Missing dates"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("CustomStartDate", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_CustomDateRange_EndBeforeStart_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 3, // CustomDateRange
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "Bad dates",
+            customStartDate = DateTimeOffset.UtcNow.AddDays(10),
+            customEndDate = DateTimeOffset.UtcNow.AddDays(5)
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("after", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_CustomDateRange_EndInPast_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 3, // CustomDateRange
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "Past end",
+            customStartDate = DateTimeOffset.UtcNow.AddDays(-10),
+            customEndDate = DateTimeOffset.UtcNow.AddDays(-1)
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("future", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_ImprovementMilestone_ValidRequest_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 4, // ImprovementMilestone
+            targetValue = 20.0,
+            periodDays = 60,
+            rewardDescription = "Improve by 20%!"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("improvementmilestone", body.GetProperty("milestoneType").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_ImprovementMilestone_Over100_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 4, // ImprovementMilestone
+            targetValue = 101.0,
+            periodDays = 60,
+            rewardDescription = "Too much improvement"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_InvalidMilestoneType_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 99, // Invalid
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Bad type"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid MilestoneType", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task GetChallengeDetail_DaysInPeriod_ReturnsCompletionCount()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var createResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 1, // DaysInPeriod
+            targetValue = 20.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var challengeId = created.GetProperty("id").GetGuid();
+
+        // Set some completion count in DB
+        {
+            using var db = _fixture.CreateDbContext();
+            var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+            challenge.CompletionCount = 10;
+            challenge.CurrentProgress = 0.5;
+            await db.SaveChangesAsync(CT);
+        }
+
+        var response = await client.GetAsync($"/challenges/{challengeId}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(10, body.GetProperty("completionCount").GetInt32());
+        Assert.Equal(0.5, body.GetProperty("progress").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetChallengeDetail_ImprovementMilestone_ReturnsBaselineConsistency()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var createResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 4, // ImprovementMilestone
+            targetValue = 20.0,
+            periodDays = 60,
+            rewardDescription = "Improve!"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var challengeId = created.GetProperty("id").GetGuid();
+
+        // Set baseline in DB
+        {
+            using var db = _fixture.CreateDbContext();
+            var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+            challenge.BaselineConsistency = 45.0;
+            await db.SaveChangesAsync(CT);
+        }
+
+        var response = await client.GetAsync($"/challenges/{challengeId}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(45.0, body.GetProperty("baselineConsistency").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetChallengeDetail_CustomDateRange_ReturnsDateRange()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var startDate = DateTimeOffset.UtcNow.AddDays(1);
+        var endDate = DateTimeOffset.UtcNow.AddDays(31);
+
+        var createResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 3, // CustomDateRange
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "Date range challenge",
+            customStartDate = startDate,
+            customEndDate = endDate
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var challengeId = created.GetProperty("id").GetGuid();
+
+        var response = await client.GetAsync($"/challenges/{challengeId}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.TryGetProperty("customStartDate", out _));
+        Assert.True(body.TryGetProperty("customEndDate", out _));
+    }
+
     // --- GET /health ---
 
     [Fact]
