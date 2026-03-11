@@ -26,6 +26,9 @@
 # br history snapshots
 .beads/.br_history/
 
+# Node.js
+node_modules/
+
 # .NET
 **/bin/
 **/obj/

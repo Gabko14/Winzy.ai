@@ -1,14 +1,8 @@
-import React from 'react';
-import {
-  Modal as RNModal,
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from 'react-native';
-import { spacing, radii, shadows } from '../tokens/spacing';
-import { typography } from '../tokens/typography';
-import { lightTheme } from '../tokens/colors';
+import React from "react";
+import { Modal as RNModal, View, Text, Pressable, StyleSheet } from "react-native";
+import { spacing, radii, shadows } from "../tokens/spacing";
+import { typography } from "../tokens/typography";
+import { lightTheme } from "../tokens/colors";
 
 export type ModalProps = {
   visible: boolean;
@@ -35,18 +29,12 @@ export function Modal({ visible, onClose, title, children }: ModalProps) {
         accessibilityLabel="Close modal"
       >
         <Pressable
-          style={[
-            styles.content,
-            shadows.lg,
-            { backgroundColor: colors.surface },
-          ]}
+          style={[styles.content, shadows.lg, { backgroundColor: colors.surface }]}
           onPress={(e) => e.stopPropagation()}
         >
           {title && (
             <View style={styles.header}>
-              <Text style={[styles.title, { color: colors.textPrimary }]}>
-                {title}
-              </Text>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
               <Pressable
                 onPress={onClose}
                 accessibilityRole="button"
@@ -54,7 +42,7 @@ export function Modal({ visible, onClose, title, children }: ModalProps) {
                 hitSlop={8}
               >
                 <Text style={[styles.closeButton, { color: colors.textSecondary }]}>
-                  {'\u2715'}
+                  {"\u2715"}
                 </Text>
               </Pressable>
             </View>
@@ -69,20 +57,20 @@ export function Modal({ visible, onClose, title, children }: ModalProps) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: spacing.xl,
   },
   content: {
-    width: '100%',
+    width: "100%",
     maxWidth: 480,
     borderRadius: radii.xl,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.sm,

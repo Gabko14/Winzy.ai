@@ -6,7 +6,7 @@ namespace Winzy.Common.Health;
 
 public static class HealthCheckResponseWriter
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true
@@ -33,6 +33,6 @@ public static class HealthCheckResponseWriter
         };
 
         await context.Response.WriteAsync(
-            JsonSerializer.Serialize(response, JsonOptions));
+            JsonSerializer.Serialize(response, _jsonOptions));
     }
 }

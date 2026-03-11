@@ -1,18 +1,11 @@
-import React from 'react';
-import {
-  Pressable,
-  Text,
-  StyleSheet,
-  ViewStyle,
-  TextStyle,
-  ActivityIndicator,
-} from 'react-native';
-import { spacing, radii } from '../tokens/spacing';
-import { typography } from '../tokens/typography';
-import { lightTheme } from '../tokens/colors';
+import React from "react";
+import { Pressable, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from "react-native";
+import { spacing, radii } from "../tokens/spacing";
+import { typography } from "../tokens/typography";
+import { lightTheme } from "../tokens/colors";
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost';
-type ButtonSize = 'sm' | 'md' | 'lg';
+type ButtonVariant = "primary" | "secondary" | "ghost";
+type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = {
   title: string;
@@ -42,7 +35,7 @@ const sizeStyles: Record<ButtonSize, { container: ViewStyle; text: TextStyle }> 
   lg: {
     container: {
       paddingVertical: spacing.base,
-      paddingHorizontal: spacing['2xl'],
+      paddingHorizontal: spacing["2xl"],
     },
     text: { ...typography.button, fontSize: 18 },
   },
@@ -56,23 +49,23 @@ function getVariantStyles(variant: ButtonVariant, pressed: boolean) {
   };
 
   switch (variant) {
-    case 'primary':
+    case "primary":
       base.container = {
         backgroundColor: pressed ? colors.brandSecondary : colors.brandPrimary,
       };
       base.text = { color: colors.textInverse };
       break;
-    case 'secondary':
+    case "secondary":
       base.container = {
-        backgroundColor: pressed ? colors.backgroundSecondary : 'transparent',
+        backgroundColor: pressed ? colors.backgroundSecondary : "transparent",
         borderWidth: 1,
         borderColor: colors.border,
       };
       base.text = { color: colors.textPrimary };
       break;
-    case 'ghost':
+    case "ghost":
       base.container = {
-        backgroundColor: pressed ? colors.backgroundSecondary : 'transparent',
+        backgroundColor: pressed ? colors.backgroundSecondary : "transparent",
       };
       base.text = { color: colors.brandPrimary };
       break;
@@ -84,8 +77,8 @@ function getVariantStyles(variant: ButtonVariant, pressed: boolean) {
 export function Button({
   title,
   onPress,
-  variant = 'primary',
-  size = 'md',
+  variant = "primary",
+  size = "md",
   disabled = false,
   loading = false,
   accessibilityLabel,
@@ -114,12 +107,10 @@ export function Button({
         return loading ? (
           <ActivityIndicator
             size="small"
-            color={variant === 'primary' ? lightTheme.textInverse : lightTheme.brandPrimary}
+            color={variant === "primary" ? lightTheme.textInverse : lightTheme.brandPrimary}
           />
         ) : (
-          <Text
-            style={[sizeStyle.text, variantStyle.text, disabled && styles.disabledText]}
-          >
+          <Text style={[sizeStyle.text, variantStyle.text, disabled && styles.disabledText]}>
             {title}
           </Text>
         );
@@ -131,9 +122,9 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
   },
   disabled: {
     opacity: 0.5,

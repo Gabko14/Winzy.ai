@@ -1,9 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { spacing, radii } from '../tokens/spacing';
-import { typography } from '../tokens/typography';
-import { lightTheme } from '../tokens/colors';
-import { Button } from './Button';
+import React from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { spacing, radii } from "../tokens/spacing";
+import { typography } from "../tokens/typography";
+import { lightTheme } from "../tokens/colors";
+import { Button } from "./Button";
 
 export type ErrorStateProps = {
   title?: string;
@@ -11,11 +11,7 @@ export type ErrorStateProps = {
   onRetry?: () => void;
 };
 
-export function ErrorState({
-  title = 'Something went wrong',
-  message,
-  onRetry,
-}: ErrorStateProps) {
+export function ErrorState({ title = "Something went wrong", message, onRetry }: ErrorStateProps) {
   const colors = lightTheme;
 
   return (
@@ -36,19 +32,19 @@ export function ErrorState({
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing['2xl'],
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing["2xl"],
     gap: spacing.sm,
     borderRadius: radii.lg,
   },
   title: {
     ...typography.h4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   message: {
     ...typography.body,
-    textAlign: 'center',
+    textAlign: "center",
   },
   action: {
     marginTop: spacing.base,
