@@ -8,5 +8,6 @@ public sealed class User : BaseEntity
     public required string Username { get; set; }
     public required string PasswordHash { get; set; }
     public string? DisplayName { get; set; }
+    public string? AvatarUrl { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 }
