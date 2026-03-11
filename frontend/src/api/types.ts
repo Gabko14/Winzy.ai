@@ -20,6 +20,11 @@ export type AuthResponse = {
   user: UserProfile;
 };
 
+export type UpdateProfileRequest = {
+  displayName?: string | null;
+  avatarUrl?: string | null;
+};
+
 export type ValidationProblem = {
   type: string;
   title: string;
