@@ -16,9 +16,9 @@ services:
   nats:
     image: nats:2-alpine
     command: --jetstream -m 8222
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+    expose:
+      - "4222"
+      - "8222"
     networks:
       - winzy-network
     healthcheck:
@@ -28,6 +28,10 @@ services:
       retries: 5
 
   # --- Databases ---
+  # Host port scheme: auth=5433, habit=5434, social=5435, challenge=5436, notification=5437, activity=5438
+  # All containers listen on 5432 internally; host ports are offset to avoid collisions.
+  # These host mappings are for local dev (services running outside Docker). In-container
+  # services connect via Docker DNS on port 5432 (see ConnectionStrings in service envs).
 
   auth-db:
     image: postgres:17-alpine
@@ -49,8 +53,8 @@ services:
 
   habit-db:
     image: postgres:17-alpine
-    ports:
-      - "5434:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: habit_db
       POSTGRES_USER: winzy
@@ -67,8 +71,8 @@ services:
 
   social-db:
     image: postgres:17-alpine
-    ports:
-      - "5435:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: social_db
       POSTGRES_USER: winzy
@@ -85,8 +89,8 @@ services:
 
   challenge-db:
     image: postgres:17-alpine
-    ports:
-      - "5436:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: challenge_db
       POSTGRES_USER: winzy
@@ -103,8 +107,8 @@ services:
 
   notification-db:
     image: postgres:17-alpine
-    ports:
-      - "5437:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: notification_db
       POSTGRES_USER: winzy
@@ -121,8 +125,8 @@ services:
 
   activity-db:
     image: postgres:17-alpine
-    ports:
-      - "5438:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_DB: activity_db
       POSTGRES_USER: winzy
@@ -174,8 +178,8 @@ services:
     build:
       context: .
       dockerfile: services/auth-service/Dockerfile
-    ports:
-      - "5001:5001"
+    expose:
+      - "5001"
     environment:
       ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
@@ -192,8 +196,8 @@ services:
     build:
       context: .
       dockerfile: services/habit-service/Dockerfile
-    ports:
-      - "5002:5002"
+    expose:
+      - "5002"
     environment:
       ConnectionStrings__DefaultConnection: Host=habit-db;Port=5432;Database=habit_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
@@ -210,8 +214,8 @@ services:
     build:
       context: .
       dockerfile: services/social-service/Dockerfile
-    ports:
-      - "5003:5003"
+    expose:
+      - "5003"
     environment:
       ConnectionStrings__DefaultConnection: Host=social-db;Port=5432;Database=social_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
@@ -228,8 +232,8 @@ services:
     build:
       context: .
       dockerfile: services/challenge-service/Dockerfile
-    ports:
-      - "5004:5004"
+    expose:
+      - "5004"
     environment:
       ConnectionStrings__DefaultConnection: Host=challenge-db;Port=5432;Database=challenge_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
@@ -246,8 +250,8 @@ services:
     build:
       context: .
       dockerfile: services/notification-service/Dockerfile
-    ports:
-      - "5005:5005"
+    expose:
+      - "5005"
     environment:
       ConnectionStrings__DefaultConnection: Host=notification-db;Port=5432;Database=notification_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
@@ -264,8 +268,8 @@ services:
     build:
       context: .
       dockerfile: services/activity-service/Dockerfile
-    ports:
-      - "5006:5006"
+    expose:
+      - "5006"
     environment:
       ConnectionStrings__DefaultConnection: Host=activity-db;Port=5432;Database=activity_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
