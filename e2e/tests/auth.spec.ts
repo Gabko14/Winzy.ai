@@ -69,24 +69,19 @@ test.describe("Auth flow", () => {
       test.info().annotations.push({ type: "step", description: "Sign-in submitted" });
     });
 
-    // Note: this test requires a running backend with the test user seeded.
-    // If running without backend, verify that the appropriate error is shown.
-    await test.step("verify sign-in result", async () => {
-      // Either lands on Today screen or shows error (depends on backend availability)
-      const result = await Promise.race([
-        page
-          .getByTestId("today-empty")
-          .or(page.getByTestId("today-screen"))
-          .waitFor({ timeout: 10_000 })
-          .then(() => "authenticated"),
-        page
-          .getByTestId("server-error")
-          .waitFor({ timeout: 10_000 })
-          .then(() => "error"),
-      ]);
+    // This test requires a running backend with the test user seeded.
+    // It must FAIL if authentication doesn't actually succeed.
+    await test.step("verify authenticated landing", async () => {
+      await expect(
+        page.getByTestId("today-empty").or(page.getByTestId("today-screen")),
+      ).toBeVisible({ timeout: 10_000 });
+
+      // Ensure no server error is silently present alongside the screen
+      await expect(page.getByTestId("server-error")).not.toBeVisible();
+
       test.info().annotations.push({
         type: "step",
-        description: `Sign-in result: ${result}`,
+        description: "User authenticated and landed on Today screen",
       });
     });
   });
