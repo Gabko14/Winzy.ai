@@ -1,0 +1,353 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Winzy.SocialService.Entities;
+using Xunit;
+
+namespace Winzy.SocialService.Tests;
+
+[Collection("SocialService")]
+public class FriendshipEndpointTests : IAsyncLifetime
+{
+    private readonly SocialServiceFixture _fixture;
+    private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _friendId = Guid.NewGuid();
+
+    private CancellationToken CT => TestContext.Current.CancellationToken;
+
+    public FriendshipEndpointTests(SocialServiceFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync() => await _fixture.ResetDataAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    // --- POST /social/friends/request ---
+
+    [Fact]
+    public async Task SendFriendRequest_ValidRequest_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(_userId, body.GetProperty("userId").GetGuid());
+        Assert.Equal(_friendId, body.GetProperty("friendId").GetGuid());
+        Assert.Equal("pending", body.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task SendFriendRequest_MissingUserId_Returns400()
+    {
+        using var client = _fixture.Factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendFriendRequest_ToSelf_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _userId }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Cannot send friend request to yourself", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task SendFriendRequest_EmptyFriendId_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = Guid.Empty }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendFriendRequest_Duplicate_Returns409()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Friend request already exists", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task SendFriendRequest_AlreadyFriends_Returns409()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Send and accept
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        // Try again
+        var response = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Already friends", body.GetProperty("error").GetString());
+    }
+
+    // --- PUT /social/friends/request/{id}/accept ---
+
+    [Fact]
+    public async Task AcceptFriendRequest_ValidRequest_Returns200()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+
+        var response = await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("accepted", body.GetProperty("status").GetString());
+
+        // Verify bidirectional — both users should have a friendship
+        using var db = _fixture.CreateDbContext();
+        var forwardExists = await db.Friendships.AnyAsync(
+            f => f.UserId == _userId && f.FriendId == _friendId && f.Status == FriendshipStatus.Accepted, CT);
+        var reverseExists = await db.Friendships.AnyAsync(
+            f => f.UserId == _friendId && f.FriendId == _userId && f.Status == FriendshipStatus.Accepted, CT);
+        Assert.True(forwardExists);
+        Assert.True(reverseExists);
+    }
+
+    [Fact]
+    public async Task AcceptFriendRequest_WrongUser_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+
+        // Sender tries to accept their own request
+        var response = await client.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AcceptFriendRequest_NonExistent_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_friendId);
+
+        var response = await client.PutAsJsonAsync($"/social/friends/request/{Guid.NewGuid()}/accept", new { }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // --- PUT /social/friends/request/{id}/decline ---
+
+    [Fact]
+    public async Task DeclineFriendRequest_ValidRequest_Returns204()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+
+        var response = await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/decline", new { }, CT);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Verify deleted from DB
+        using var db = _fixture.CreateDbContext();
+        var exists = await db.Friendships.AnyAsync(f => f.Id == requestId, CT);
+        Assert.False(exists);
+    }
+
+    [Fact]
+    public async Task DeclineFriendRequest_SenderCannotDecline_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+
+        // Sender tries to decline their own request
+        var response = await client.PutAsJsonAsync($"/social/friends/request/{requestId}/decline", new { }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // --- DELETE /social/friends/{friendId} ---
+
+    [Fact]
+    public async Task RemoveFriend_ValidFriendship_Returns204()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Create friendship
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        // Remove
+        var response = await client.DeleteAsync($"/social/friends/{_friendId}", CT);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Verify both directions removed
+        using var db = _fixture.CreateDbContext();
+        var remaining = await db.Friendships.CountAsync(
+            f => (f.UserId == _userId && f.FriendId == _friendId) ||
+                 (f.UserId == _friendId && f.FriendId == _userId), CT);
+        Assert.Equal(0, remaining);
+    }
+
+    [Fact]
+    public async Task RemoveFriend_NotFriends_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.DeleteAsync($"/social/friends/{Guid.NewGuid()}", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // --- GET /social/friends ---
+
+    [Fact]
+    public async Task ListFriends_ReturnsPaginatedFriends()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Create friendship
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        var response = await client.GetAsync("/social/friends", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(_friendId, items[0].GetProperty("friendId").GetGuid());
+    }
+
+    [Fact]
+    public async Task ListFriends_Empty_ReturnsEmptyList()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.GetAsync("/social/friends", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListFriends_PendingRequestNotIncluded()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Send a request but don't accept it
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        var response = await client.GetAsync("/social/friends", CT);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
+    }
+
+    // --- GET /social/friends/requests ---
+
+    [Fact]
+    public async Task ListFriendRequests_ShowsIncomingAndOutgoing()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Send a request (outgoing for _userId)
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        var response = await client.GetAsync("/social/friends/requests", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("outgoing").GetArrayLength());
+        Assert.Equal(0, body.GetProperty("incoming").GetArrayLength());
+
+        // From friend's perspective it's incoming
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+        var friendResponse = await friendClient.GetAsync("/social/friends/requests", CT);
+        var friendBody = await friendResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, friendBody.GetProperty("outgoing").GetArrayLength());
+        Assert.Equal(1, friendBody.GetProperty("incoming").GetArrayLength());
+    }
+
+    // --- GET /social/internal/friends/{userId1}/{userId2} ---
+
+    [Fact]
+    public async Task InternalFriendsCheck_AreFriends_Returns200()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Create friendship
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        // Internal check
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync($"/social/internal/friends/{_userId}/{_friendId}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.GetProperty("areFriends").GetBoolean());
+    }
+
+    [Fact]
+    public async Task InternalFriendsCheck_NotFriends_Returns404()
+    {
+        using var internalClient = _fixture.Factory.CreateClient();
+
+        var response = await internalClient.GetAsync($"/social/internal/friends/{_userId}/{_friendId}", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InternalFriendsCheck_PendingRequest_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Send request but don't accept
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync($"/social/internal/friends/{_userId}/{_friendId}", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+}
