@@ -1,0 +1,17 @@
+using System.Text.Json;
+using Winzy.Common.Persistence;
+
+namespace Winzy.ActivityService.Entities;
+
+public sealed class FeedEntry : BaseEntity
+{
+    public Guid ActorId { get; set; }
+    public required string EventType { get; set; }
+    public JsonDocument? Data { get; set; }
+
+    /// <summary>
+    /// Unique key for idempotent feed entry creation. Prevents duplicates on NATS redelivery.
+    /// Format: "{eventType}:{actorId}:{event-specific-key}"
+    /// </summary>
+    public string? IdempotencyKey { get; set; }
+}
