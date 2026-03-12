@@ -13,8 +13,10 @@ import { HabitListScreen } from "../screens/HabitListScreen";
 import { TodayScreen } from "../screens/TodayScreen";
 import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
+import { NotificationScreen } from "../components/notifications";
+import { useUnreadCount } from "../hooks/useUnreadCount";
 
-type AppScreen = "home" | "habits" | "profile" | "editProfile" | "habitDetail";
+type AppScreen = "home" | "habits" | "profile" | "editProfile" | "habitDetail" | "notifications";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -52,6 +54,9 @@ export function RootNavigator() {
   const goToEditProfile = useCallback(() => setScreen("editProfile"), []);
   const goToHome = useCallback(() => setScreen("home"), []);
   const goToHabits = useCallback(() => setScreen("habits"), []);
+  const goToNotifications = useCallback(() => setScreen("notifications"), []);
+
+  const unreadCount = useUnreadCount();
   const handleHabitPress = useCallback((habitId: string) => {
     setSelectedHabitId(habitId);
     setScreen("habitDetail");
@@ -142,6 +147,19 @@ export function RootNavigator() {
     );
   }
 
+  // Notifications screen
+  if (screen === "notifications") {
+    return (
+      <>
+        <OfflineIndicator />
+        <NotificationScreen
+          onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // Habits management screen
   if (screen === "habits") {
     return (
@@ -157,7 +175,12 @@ export function RootNavigator() {
   return (
     <>
       <OfflineIndicator />
-      <TodayScreen onCreateHabit={goToHabits} onHabitPress={handleHabitPress} />
+      <TodayScreen
+        onCreateHabit={goToHabits}
+        onHabitPress={handleHabitPress}
+        onNotifications={goToNotifications}
+        unreadNotificationCount={unreadCount.count}
+      />
       <StatusBar style="auto" />
     </>
   );
