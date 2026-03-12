@@ -51,20 +51,60 @@ public sealed class HabitCompletedSubscriber(
 
         foreach (var challenge in activeChallenges)
         {
-            // For count-based milestones, increment the completion count
+            var completionDate = DateOnly.FromDateTime(data.Date);
+
+            // For count-based milestones, only count completions on or after challenge creation
             if (challenge.MilestoneType is MilestoneType.DaysInPeriod or MilestoneType.TotalCompletions)
             {
-                challenge.CompletionCount++;
+                var challengeStart = DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);
+                if (completionDate >= challengeStart)
+                {
+                    challenge.CompletionCount++;
+                }
+                else
+                {
+                    logger.LogDebug(
+                        "Skipping completion dated {Date} for challenge {ChallengeId} — before challenge creation {CreatedAt}",
+                        data.Date, challenge.Id, challenge.CreatedAt);
+                    continue;
+                }
             }
 
-            // For improvement milestones, capture baseline on first event
-            if (challenge.MilestoneType == MilestoneType.ImprovementMilestone
-                && challenge.BaselineConsistency is null)
+            // For custom date range, only count completions within the custom window
+            if (challenge.MilestoneType == MilestoneType.CustomDateRange)
             {
-                challenge.BaselineConsistency = data.Consistency;
-                logger.LogInformation(
-                    "Challenge {ChallengeId} baseline captured at {Baseline}%",
-                    challenge.Id, data.Consistency);
+                var rangeStart = challenge.CustomStartDate is not null
+                    ? DateOnly.FromDateTime(challenge.CustomStartDate.Value.UtcDateTime)
+                    : DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);
+
+                if (completionDate < rangeStart)
+                {
+                    logger.LogDebug(
+                        "Skipping completion dated {Date} for custom-range challenge {ChallengeId} — before range start {RangeStart}",
+                        data.Date, challenge.Id, rangeStart);
+                    continue;
+                }
+            }
+
+            // For improvement milestones, only process events on or after challenge creation
+            if (challenge.MilestoneType == MilestoneType.ImprovementMilestone)
+            {
+                var challengeStart = DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);
+                if (completionDate < challengeStart)
+                {
+                    logger.LogDebug(
+                        "Skipping completion dated {Date} for improvement challenge {ChallengeId} — before challenge creation {CreatedAt}",
+                        data.Date, challenge.Id, challenge.CreatedAt);
+                    continue;
+                }
+
+                if (challenge.BaselineConsistency is null)
+                {
+                    challenge.BaselineConsistency = data.Consistency;
+                    logger.LogInformation(
+                        "Challenge {ChallengeId} baseline captured at {Baseline}%",
+                        challenge.Id, data.Consistency);
+                }
             }
 
             // Always update progress so GET /challenges/{id} returns current state

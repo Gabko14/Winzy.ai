@@ -10,6 +10,7 @@ using Testcontainers.Nats;
 using Testcontainers.PostgreSql;
 using Winzy.Common.Messaging;
 using Winzy.HabitService.Data;
+using Winzy.HabitService.Subscribers;
 using Xunit;
 
 namespace Winzy.HabitService.Tests;
@@ -56,14 +57,16 @@ public sealed class HabitServiceFixture : IAsyncLifetime
                     services.AddDbContext<HabitDbContext>(options =>
                         options.UseNpgsql(PostgresConnectionString));
 
-                    // Remove existing NATS registrations and re-register with Testcontainers NATS URL
+                    // Remove ALL NATS + subscriber registrations so we can re-add in correct order
+                    // (JetStreamSetup must start before subscribers to create streams)
                     var natsDescriptors = services
                         .Where(d =>
                             d.ServiceType == typeof(INatsConnection) ||
                             d.ServiceType.FullName?.Contains("Nats", StringComparison.OrdinalIgnoreCase) == true ||
                             d.ImplementationType?.FullName?.Contains("Nats", StringComparison.OrdinalIgnoreCase) == true ||
                             d.ImplementationType == typeof(JetStreamSetup) ||
-                            d.ImplementationType == typeof(NatsEventPublisher))
+                            d.ImplementationType == typeof(NatsEventPublisher) ||
+                            d.ImplementationType == typeof(UserDeletedSubscriber))
                         .ToList();
 
                     foreach (var descriptor in natsDescriptors)
@@ -74,9 +77,16 @@ public sealed class HabitServiceFixture : IAsyncLifetime
                     services.AddHostedService<JetStreamSetup>();
                     services.AddSingleton<NatsEventPublisher>();
 
+                    // Re-add subscribers AFTER JetStreamSetup so streams exist when they start
+                    services.AddHostedService<UserDeletedSubscriber>();
+
                     // Replace AuthService HttpClient with mock handler
                     services.AddHttpClient("AuthService")
                         .ConfigurePrimaryHttpMessageHandler(() => new MockAuthHandler());
+
+                    // Replace SocialService HttpClient with mock handler
+                    services.AddHttpClient("SocialService")
+                        .ConfigurePrimaryHttpMessageHandler(() => new MockSocialHandler());
                 });
             });
 
@@ -108,6 +118,7 @@ public sealed class HabitServiceFixture : IAsyncLifetime
     public async Task ResetDataAsync()
     {
         MockAuthHandler.UsernameToUserId.Clear();
+        MockSocialHandler.Reset();
         using var db = CreateDbContext();
         await db.Completions.ExecuteDeleteAsync();
         await db.Habits.ExecuteDeleteAsync();
@@ -133,6 +144,55 @@ internal class MockAuthHandler : HttpMessageHandler
                     Content = JsonContent.Create(new { userId })
                 });
             }
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+}
+
+internal class MockSocialHandler : HttpMessageHandler
+{
+    // userId -> (visibleHabitIds, defaultVisibility)
+    private static readonly ConcurrentDictionary<Guid, (List<Guid> HabitIds, string DefaultVisibility)> _visibilityData = new();
+    private static bool _simulateFailure;
+
+    public static void SetVisibility(Guid userId, List<Guid> habitIds, string defaultVisibility = "private")
+    {
+        _visibilityData[userId] = (habitIds, defaultVisibility);
+    }
+
+    public static void SimulateFailure() => _simulateFailure = true;
+
+    public static void Reset()
+    {
+        _visibilityData.Clear();
+        _simulateFailure = false;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (_simulateFailure)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+
+        var path = request.RequestUri?.AbsolutePath ?? "";
+        var prefix = "/social/internal/visible-habits/";
+
+        if (path.StartsWith(prefix))
+        {
+            var userIdStr = path[prefix.Length..];
+            if (Guid.TryParse(userIdStr, out var userId) && _visibilityData.TryGetValue(userId, out var data))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { habitIds = data.HabitIds, defaultVisibility = data.DefaultVisibility })
+                });
+            }
+
+            // No visibility data configured: return empty with default=private
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { habitIds = Array.Empty<Guid>(), defaultVisibility = "private" })
+            });
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));

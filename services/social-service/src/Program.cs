@@ -570,18 +570,21 @@ app.MapGet("/social/internal/visible-habits/{userId:guid}", async (Guid userId, 
     var defaultVisibility = preference?.DefaultHabitVisibility ?? HabitVisibility.Private;
 
     List<Guid> visibleHabitIds;
+    List<Guid> excludedHabitIds;
 
     if (viewer == "public")
     {
-        // Public viewer: only show habits with explicit public visibility or default public
+        // Public viewer: explicitly public habits are visible
         visibleHabitIds = visibilityMap
             .Where(kv => kv.Value == HabitVisibility.Public)
             .Select(kv => kv.Key)
             .ToList();
 
-        // If default is public, we need to know all habit IDs — but we don't store them here.
-        // The caller (Habit Service) has the full list and will treat missing IDs as default.
-        // We return explicitly public ones + a flag for the default.
+        // Habits explicitly set to non-public must be excluded even when default is public
+        excludedHabitIds = visibilityMap
+            .Where(kv => kv.Value != HabitVisibility.Public)
+            .Select(kv => kv.Key)
+            .ToList();
     }
     else if (Guid.TryParse(viewer, out var viewerUserId))
     {
@@ -589,20 +592,37 @@ app.MapGet("/social/internal/visible-habits/{userId:guid}", async (Guid userId, 
         var isFriend = await db.Friendships
             .AnyAsync(f => f.UserId == viewerUserId && f.FriendId == userId && f.Status == FriendshipStatus.Accepted);
 
-        visibleHabitIds = isFriend
-            ? visibilityMap
+        if (isFriend)
+        {
+            visibleHabitIds = visibilityMap
                 .Where(kv => kv.Value is HabitVisibility.Friends or HabitVisibility.Public)
                 .Select(kv => kv.Key)
-                .ToList()
-            : visibilityMap
+                .ToList();
+            excludedHabitIds = visibilityMap
+                .Where(kv => kv.Value is not HabitVisibility.Friends and not HabitVisibility.Public)
+                .Select(kv => kv.Key)
+                .ToList();
+        }
+        else
+        {
+            visibleHabitIds = visibilityMap
                 .Where(kv => kv.Value == HabitVisibility.Public)
                 .Select(kv => kv.Key)
                 .ToList();
+            excludedHabitIds = visibilityMap
+                .Where(kv => kv.Value != HabitVisibility.Public)
+                .Select(kv => kv.Key)
+                .ToList();
+        }
     }
     else
     {
         visibleHabitIds = visibilityMap
             .Where(kv => kv.Value == HabitVisibility.Public)
+            .Select(kv => kv.Key)
+            .ToList();
+        excludedHabitIds = visibilityMap
+            .Where(kv => kv.Value != HabitVisibility.Public)
             .Select(kv => kv.Key)
             .ToList();
     }
@@ -617,6 +637,7 @@ app.MapGet("/social/internal/visible-habits/{userId:guid}", async (Guid userId, 
     return Results.Ok(new
     {
         habitIds = visibleHabitIds,
+        excludedHabitIds,
         defaultVisibility = defaultVisibility.ToString().ToLowerInvariant()
     });
 });

@@ -114,6 +114,11 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
         return scope.ServiceProvider.GetRequiredService<ChallengeDbContext>();
     }
 
+    public NatsEventPublisher GetPublisher()
+    {
+        return Factory.Services.GetRequiredService<NatsEventPublisher>();
+    }
+
     public async Task ResetDataAsync()
     {
         MockSocialHandler.FriendPairs.Clear();
