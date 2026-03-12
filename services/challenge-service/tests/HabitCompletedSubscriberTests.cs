@@ -1,5 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using NATS.Client.Core;
+using Winzy.ChallengeService.Data;
 using Winzy.ChallengeService.Entities;
+using Winzy.ChallengeService.Subscribers;
+using Winzy.Common.Messaging;
 using Winzy.Contracts;
 using Winzy.Contracts.Events;
 using Xunit;
@@ -128,6 +135,8 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
     [Fact]
     public async Task CustomDateRange_CompletionBeforeCustomStart_DoesNotUpdateProgress()
     {
+        MockHabitHandler.SetConsistency(_habitId, 0.9);
+
         var challengeId = await SeedChallengeAsync(
             MilestoneType.CustomDateRange,
             createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
@@ -149,6 +158,8 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
     [Fact]
     public async Task CustomDateRange_CompletionAfterCustomStart_UpdatesProgress()
     {
+        MockHabitHandler.SetConsistency(_habitId, 0.5);
+
         var challengeId = await SeedChallengeAsync(
             MilestoneType.CustomDateRange,
             createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
@@ -169,6 +180,8 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
     [Fact]
     public async Task CustomDateRange_NoCustomStart_FallsBackToCreatedAt()
     {
+        MockHabitHandler.SetConsistency(_habitId, 0.9);
+
         var challengeId = await SeedChallengeAsync(
             MilestoneType.CustomDateRange,
             createdAt: new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero));
@@ -247,6 +260,32 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
         using var db = _fixture.CreateDbContext();
         var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
         Assert.True(challenge.CurrentProgress > 0);
+    }
+
+    // ============================================================
+    // Completion event durability (winzy.ai-1r4.2)
+    // ============================================================
+
+    [Fact]
+    public async Task Completion_PublishesEventOnMilestoneReached()
+    {
+        // Seed a challenge that will complete on the next habit.completed event
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.ConsistencyTarget,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            targetValue: 80.0);
+
+        var publisher = _fixture.GetPublisher();
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId, new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), 80.0), CT);
+
+        await WaitForStatusAsync(challengeId, ChallengeStatus.Completed);
+
+        using var db = _fixture.CreateDbContext();
+        var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(ChallengeStatus.Completed, challenge.Status);
+        Assert.NotNull(challenge.CompletedAt);
+        Assert.Equal(1.0, challenge.CurrentProgress);
     }
 
     // ============================================================
@@ -335,5 +374,107 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
 
         throw new TimeoutException(
             $"Timed out waiting for ChallengeId={challengeId} to have BaselineConsistency set");
+    }
+
+    private async Task WaitForStatusAsync(Guid challengeId, ChallengeStatus expectedStatus, int timeoutMs = 10000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var db = _fixture.CreateDbContext();
+            var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+            if (challenge.Status == expectedStatus)
+                return;
+            await Task.Delay(100, CT);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for ChallengeId={challengeId} to have Status={expectedStatus}");
+    }
+}
+
+/// <summary>
+/// Tests that publish failure in HabitCompletedSubscriber propagates the exception
+/// (triggering NAK/redeliver) and does NOT persist the completion to the DB.
+/// </summary>
+public class HabitCompletedPublishFailureTests : IClassFixture<ChallengeServiceFixture>, IAsyncLifetime
+{
+    private readonly ChallengeServiceFixture _fixture;
+    private readonly Guid _creatorId = Guid.NewGuid();
+    private readonly Guid _recipientId = Guid.NewGuid();
+    private readonly Guid _habitId = Guid.NewGuid();
+
+    private CancellationToken CT => TestContext.Current.CancellationToken;
+
+    public HabitCompletedPublishFailureTests(ChallengeServiceFixture fixture) => _fixture = fixture;
+
+    public async ValueTask InitializeAsync() => await _fixture.ResetDataAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    [Fact]
+    public async Task PublishFailure_ChallengeStaysActive_ExceptionPropagates()
+    {
+        // Seed a challenge that will complete on the next event (consistency >= target)
+        var challengeId = Guid.NewGuid();
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                Id = challengeId,
+                HabitId = _habitId,
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80.0,
+                PeriodDays = 30,
+                RewardDescription = "Test reward",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(30),
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        // Build a service provider with the real DB but a NatsEventPublisher backed by
+        // a broken NATS connection (nats://invalid:0) that will fail on JetStream publish.
+        var failingConnection = new NatsConnection(NatsOpts.Default with { Url = "nats://invalid:0" });
+        var services = new ServiceCollection();
+        services.AddDbContext<ChallengeDbContext>(options =>
+            options.UseNpgsql(_fixture.PostgresConnectionString));
+        services.AddSingleton<NatsEventPublisher>(new NatsEventPublisher(failingConnection));
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        // Use reflection to call the protected HandleAsync method on HabitCompletedSubscriber.
+        // The INatsConnection passed to the constructor is only used by the base class for
+        // consuming messages — HandleAsync resolves its own publisher from the service provider.
+        var subscriber = new HabitCompletedSubscriber(
+            _fixture.Factory.Services.GetRequiredService<INatsConnection>(),
+            serviceProvider,
+            NullLogger<HabitCompletedSubscriber>.Instance);
+
+        var handleMethod = typeof(HabitCompletedSubscriber)
+            .GetMethod("HandleAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        var evt = new HabitCompletedEvent(
+            _recipientId, _habitId,
+            new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc),
+            80.0); // meets the 80% consistency target
+
+        // HandleAsync should throw because the failing publisher can't connect to NATS.
+        // This proves the exception propagates (so NatsEventSubscriber would NAK the message).
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => (Task)handleMethod.Invoke(subscriber, [evt, CT])!);
+
+        // Verify the exception is from NATS publish failure, not something unrelated
+        Assert.True(
+            ex is NatsException || ex is System.Net.Sockets.SocketException || ex is InvalidOperationException,
+            $"Expected NATS/connection failure, got: {ex.GetType().Name}: {ex.Message}");
+
+        // The challenge must remain Active in the DB — SaveChangesAsync was NOT called
+        // because publish happens BEFORE save in the fixed code.
+        using var verifyDb = _fixture.CreateDbContext();
+        var challenge = await verifyDb.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(ChallengeStatus.Active, challenge.Status);
+        Assert.Null(challenge.CompletedAt);
     }
 }

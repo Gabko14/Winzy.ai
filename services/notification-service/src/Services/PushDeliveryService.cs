@@ -73,7 +73,8 @@ public sealed class PushDeliveryService(
     {
         try
         {
-            var subscription = JsonSerializer.Deserialize<WebPushSubscriptionDto>(token.Token);
+            var subscription = JsonSerializer.Deserialize<WebPushSubscriptionDto>(token.Token,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (subscription?.Endpoint is null || subscription.Keys?.P256dh is null || subscription.Keys?.Auth is null)
             {
                 logger.LogWarning("Invalid web push subscription for TokenId={TokenId}", token.Id);

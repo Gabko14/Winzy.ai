@@ -1,5 +1,5 @@
 import React from "react";
-import { render, fireEvent } from "@testing-library/react-native";
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
 import { NotificationScreen } from "../NotificationScreen";
 import type { NotificationItem } from "../../../api/notifications";
 
@@ -13,8 +13,8 @@ const mockUseNotifications = {
   hasMore: false,
   refresh: jest.fn(),
   loadMore: jest.fn(),
-  markRead: jest.fn(),
-  markAllRead: jest.fn(),
+  markRead: jest.fn().mockResolvedValue(true),
+  markAllRead: jest.fn().mockResolvedValue(true),
 };
 
 jest.mock("../../../hooks/useNotifications", () => ({
@@ -40,6 +40,8 @@ beforeEach(() => {
   mockUseNotifications.loadingMore = false;
   mockUseNotifications.error = null;
   mockUseNotifications.hasMore = false;
+  mockUseNotifications.markRead.mockResolvedValue(true);
+  mockUseNotifications.markAllRead.mockResolvedValue(true);
 });
 
 describe("NotificationScreen", () => {
@@ -115,7 +117,7 @@ describe("NotificationScreen", () => {
     expect(queryByText("Mark all as read")).toBeNull();
   });
 
-  it("calls markAllRead and onUnreadCountChange when mark all is pressed", () => {
+  it("calls markAllRead and onUnreadCountChange when mark all is pressed", async () => {
     const onUnreadCountChange = jest.fn();
     mockUseNotifications.items = [
       makeNotification({ id: "n1", readAt: null }),
@@ -130,11 +132,34 @@ describe("NotificationScreen", () => {
 
     fireEvent.press(getByText("Mark all as read"));
 
-    expect(mockUseNotifications.markAllRead).toHaveBeenCalled();
-    expect(onUnreadCountChange).toHaveBeenCalledWith(-2);
+    await waitFor(() => {
+      expect(mockUseNotifications.markAllRead).toHaveBeenCalled();
+      expect(onUnreadCountChange).toHaveBeenCalledWith(-2);
+    });
   });
 
-  it("marks notification as read on press and calls onNotificationPress for deep-linkable types", () => {
+  it("rolls back onUnreadCountChange when markAllRead fails", async () => {
+    const onUnreadCountChange = jest.fn();
+    mockUseNotifications.markAllRead.mockResolvedValue(false);
+    mockUseNotifications.items = [
+      makeNotification({ id: "n1", readAt: null }),
+      makeNotification({ id: "n2", readAt: null }),
+    ];
+    mockUseNotifications.total = 2;
+
+    const { getByText } = render(
+      <NotificationScreen onUnreadCountChange={onUnreadCountChange} />,
+    );
+
+    fireEvent.press(getByText("Mark all as read"));
+
+    await waitFor(() => {
+      expect(onUnreadCountChange).toHaveBeenCalledWith(-2);
+      expect(onUnreadCountChange).toHaveBeenCalledWith(2);
+    });
+  });
+
+  it("marks notification as read on press and calls onNotificationPress for deep-linkable types", async () => {
     const onNotificationPress = jest.fn();
     const onUnreadCountChange = jest.fn();
     const notification = makeNotification({ id: "n1", type: "challengecreated", readAt: null });
@@ -150,9 +175,30 @@ describe("NotificationScreen", () => {
 
     fireEvent.press(getByTestId("notification-row-n1"));
 
-    expect(mockUseNotifications.markRead).toHaveBeenCalledWith("n1");
-    expect(onUnreadCountChange).toHaveBeenCalledWith(-1);
-    expect(onNotificationPress).toHaveBeenCalledWith(notification);
+    await waitFor(() => {
+      expect(mockUseNotifications.markRead).toHaveBeenCalledWith("n1");
+      expect(onUnreadCountChange).toHaveBeenCalledWith(-1);
+      expect(onNotificationPress).toHaveBeenCalledWith(notification);
+    });
+  });
+
+  it("rolls back onUnreadCountChange when markRead fails", async () => {
+    const onUnreadCountChange = jest.fn();
+    mockUseNotifications.markRead.mockResolvedValue(false);
+    const notification = makeNotification({ id: "n1", type: "challengecreated", readAt: null });
+    mockUseNotifications.items = [notification];
+    mockUseNotifications.total = 1;
+
+    const { getByTestId } = render(
+      <NotificationScreen onUnreadCountChange={onUnreadCountChange} />,
+    );
+
+    fireEvent.press(getByTestId("notification-row-n1"));
+
+    await waitFor(() => {
+      expect(onUnreadCountChange).toHaveBeenCalledWith(-1);
+      expect(onUnreadCountChange).toHaveBeenCalledWith(1);
+    });
   });
 
   it("does not call markRead for already-read notifications", () => {
@@ -165,5 +211,60 @@ describe("NotificationScreen", () => {
     fireEvent.press(getByTestId("notification-row-n1"));
 
     expect(mockUseNotifications.markRead).not.toHaveBeenCalled();
+  });
+
+  it("renders back button when onBack is provided", () => {
+    const onBack = jest.fn();
+    mockUseNotifications.items = [makeNotification({ id: "n1" })];
+    mockUseNotifications.total = 1;
+
+    const { getByTestId } = render(<NotificationScreen onBack={onBack} />);
+
+    const backButton = getByTestId("back-button");
+    expect(backButton).toBeTruthy();
+
+    fireEvent.press(backButton);
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it("does not render back button when onBack is not provided", () => {
+    mockUseNotifications.items = [makeNotification({ id: "n1" })];
+    mockUseNotifications.total = 1;
+
+    const { queryByTestId } = render(<NotificationScreen />);
+
+    expect(queryByTestId("back-button")).toBeNull();
+  });
+
+  it("shows back button in loading state", () => {
+    const onBack = jest.fn();
+    mockUseNotifications.loading = true;
+
+    const { getByTestId } = render(<NotificationScreen onBack={onBack} />);
+
+    expect(getByTestId("back-button")).toBeTruthy();
+  });
+
+  it("shows back button in empty state", () => {
+    const onBack = jest.fn();
+    mockUseNotifications.items = [];
+    mockUseNotifications.total = 0;
+
+    const { getByTestId } = render(<NotificationScreen onBack={onBack} />);
+
+    expect(getByTestId("back-button")).toBeTruthy();
+  });
+
+  it("shows back button in error state", () => {
+    const onBack = jest.fn();
+    mockUseNotifications.error = {
+      status: 500,
+      code: "server_error",
+      message: "Server error",
+    };
+
+    const { getByTestId } = render(<NotificationScreen onBack={onBack} />);
+
+    expect(getByTestId("back-button")).toBeTruthy();
   });
 });
