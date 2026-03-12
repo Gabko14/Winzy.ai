@@ -12,6 +12,8 @@ export type NotificationScreenProps = {
   onNotificationPress?: (notification: NotificationItem) => void;
   /** Called when unread count changes (e.g., after mark-read). */
   onUnreadCountChange?: (delta: number) => void;
+  /** Called when all notifications are marked read — resets badge to zero. */
+  onMarkAllRead?: () => void;
   /** Called to navigate back (e.g., to Today screen). */
   onBack?: () => void;
 };
@@ -27,6 +29,7 @@ const DEEP_LINK_TYPES = new Set<NotificationType>([
 export function NotificationScreen({
   onNotificationPress,
   onUnreadCountChange,
+  onMarkAllRead,
   onBack,
 }: NotificationScreenProps) {
   const {
@@ -62,13 +65,19 @@ export function NotificationScreen({
   );
 
   const handleMarkAllRead = useCallback(async () => {
-    const unread = items.filter((item) => item.readAt === null).length;
-    onUnreadCountChange?.(-unread);
+    // Use onMarkAllRead to reset badge to zero (handles unread beyond loaded page).
+    // Fall back to page-local delta if onMarkAllRead not provided.
+    const pageUnread = items.filter((item) => item.readAt === null).length;
+    if (onMarkAllRead) {
+      onMarkAllRead();
+    } else {
+      onUnreadCountChange?.(-pageUnread);
+    }
     const ok = await markAllRead();
     if (!ok) {
-      onUnreadCountChange?.(unread);
+      onUnreadCountChange?.(pageUnread);
     }
-  }, [items, markAllRead, onUnreadCountChange]);
+  }, [items, markAllRead, onMarkAllRead, onUnreadCountChange]);
 
   const backHeader = onBack ? (
     <View style={[styles.header, { borderBottomColor: colors.border }]}>
