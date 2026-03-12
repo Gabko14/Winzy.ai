@@ -17,14 +17,17 @@ import {
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
+import { UnreadBadge } from "../components/notifications";
 import type { FlameLevel } from "../api/habits";
 
 type Props = {
   onCreateHabit?: () => void;
   onHabitPress?: (habitId: string) => void;
+  onNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
-export function TodayScreen({ onCreateHabit, onHabitPress }: Props) {
+export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unreadNotificationCount }: Props) {
   const colors = lightTheme;
   const {
     items,
@@ -80,7 +83,7 @@ export function TodayScreen({ onCreateHabit, onHabitPress }: Props) {
   if (!loading && items.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-empty">
-        <DateHeader />
+        <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
         <View style={styles.emptyContainer}>
           <EmptyState
             title="Ready to build a habit?"
@@ -95,7 +98,7 @@ export function TodayScreen({ onCreateHabit, onHabitPress }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-screen">
-      <DateHeader />
+      <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
 
       {/* Progress summary */}
       <View style={styles.progressRow}>
@@ -128,7 +131,12 @@ export function TodayScreen({ onCreateHabit, onHabitPress }: Props) {
 
 // --- Date Header ---
 
-function DateHeader() {
+type DateHeaderProps = {
+  onNotifications?: () => void;
+  unreadCount?: number;
+};
+
+function DateHeader({ onNotifications, unreadCount }: DateHeaderProps) {
   const colors = lightTheme;
   const today = new Date();
   const dayName = today.toLocaleDateString(undefined, { weekday: "long" });
@@ -139,8 +147,30 @@ function DateHeader() {
 
   return (
     <View style={styles.dateHeader}>
-      <Text style={[styles.dayName, { color: colors.textPrimary }]}>{dayName}</Text>
-      <Text style={[styles.dateStr, { color: colors.textSecondary }]}>{dateStr}</Text>
+      <View style={styles.dateHeaderText}>
+        <Text style={[styles.dayName, { color: colors.textPrimary }]}>{dayName}</Text>
+        <Text style={[styles.dateStr, { color: colors.textSecondary }]}>{dateStr}</Text>
+      </View>
+      {onNotifications && (
+        <Pressable
+          onPress={onNotifications}
+          accessibilityRole="button"
+          accessibilityLabel={
+            unreadCount && unreadCount > 0
+              ? `Notifications, ${unreadCount} unread`
+              : "Notifications"
+          }
+          style={styles.bellButton}
+          testID="notifications-bell"
+        >
+          <Text style={[styles.bellIcon, { color: colors.textPrimary }]}>{"\uD83D\uDD14"}</Text>
+          {unreadCount != null && unreadCount > 0 && (
+            <View style={styles.badgeOverlay}>
+              <UnreadBadge count={unreadCount} />
+            </View>
+          )}
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -236,9 +266,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dateHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing["3xl"],
     paddingBottom: spacing.sm,
+  },
+  dateHeaderText: {
+    flex: 1,
+  },
+  bellButton: {
+    padding: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  bellIcon: {
+    fontSize: 24,
+  },
+  badgeOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
   },
   dayName: {
     ...typography.h2,

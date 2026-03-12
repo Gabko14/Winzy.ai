@@ -113,24 +113,26 @@ export function useNotifications(pageSize = 20) {
   }, []);
 
   const markAllRead = useCallback(async () => {
-    const previousItems = state.items;
-
-    // Optimistic update
-    setState((s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.readAt ? item : { ...item, readAt: new Date().toISOString() },
-      ),
-    }));
+    // Capture snapshot inside setState to avoid stale closure
+    let previousItems: NotificationItem[] = [];
+    setState((s) => {
+      previousItems = s.items;
+      return {
+        ...s,
+        items: s.items.map((item) =>
+          item.readAt ? item : { ...item, readAt: new Date().toISOString() },
+        ),
+      };
+    });
 
     try {
       await markAllNotificationsRead();
     } catch {
       if (!mountedRef.current) return;
-      // Revert
+      // Revert to snapshot
       setState((s) => ({ ...s, items: previousItems }));
     }
-  }, [state.items]);
+  }, []);
 
   const hasMore = state.items.length < state.total;
 
