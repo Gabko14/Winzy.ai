@@ -231,6 +231,63 @@ public class FeedEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetFeed_DefaultPublicVisibility_ShowsAllExceptExcluded()
+    {
+        var visibleHabitId = Guid.NewGuid();
+        var excludedHabitId = Guid.NewGuid();
+        var unsetHabitId = Guid.NewGuid(); // No explicit setting — should show when default=public
+
+        // Friend has default=public, one habit explicitly excluded
+        MockSocialHandler.SetVisibleHabitsWithDefault(
+            _friendId, _userId, "public",
+            visibleHabitIds: [visibleHabitId],
+            excludedHabitIds: [excludedHabitId]);
+
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = visibleHabitId });
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = excludedHabitId });
+        await SeedFeedEntry(_friendId, "habit.created", new { habitId = unsetHabitId, name = "Unset" });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        // visibleHabitId and unsetHabitId should show, excludedHabitId should not
+        Assert.Equal(2, items.GetArrayLength());
+
+        var habitIds = Enumerable.Range(0, items.GetArrayLength())
+            .Select(i => items[i].GetProperty("data").GetProperty("habitId").GetGuid())
+            .ToHashSet();
+        Assert.Contains(visibleHabitId, habitIds);
+        Assert.Contains(unsetHabitId, habitIds);
+        Assert.DoesNotContain(excludedHabitId, habitIds);
+    }
+
+    [Fact]
+    public async Task GetFeed_DefaultPrivateVisibility_ShowsOnlyExplicitlyVisible()
+    {
+        var visibleHabitId = Guid.NewGuid();
+        var unsetHabitId = Guid.NewGuid(); // No explicit setting — should NOT show when default=private
+
+        MockSocialHandler.SetVisibleHabitsWithDefault(
+            _friendId, _userId, "private",
+            visibleHabitIds: [visibleHabitId]);
+
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = visibleHabitId });
+        await SeedFeedEntry(_friendId, "habit.created", new { habitId = unsetHabitId, name = "Unset" });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(visibleHabitId, items[0].GetProperty("data").GetProperty("habitId").GetGuid());
+    }
+
+    [Fact]
     public async Task GetFeed_NonHabitEventsNotFilteredByVisibility()
     {
         // Friend's non-habit events should always show regardless of visibility settings

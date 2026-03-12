@@ -147,9 +147,9 @@ internal class MockSocialHandler : HttpMessageHandler
     public static readonly ConcurrentDictionary<Guid, List<Guid>> FriendIds = new();
 
     /// <summary>
-    /// Maps "{userId}:{viewerUserId}" -> list of visible habit IDs.
+    /// Maps "{userId}:{viewerUserId}" -> (visibleHabitIds, excludedHabitIds, defaultVisibility).
     /// </summary>
-    public static readonly ConcurrentDictionary<string, List<Guid>> VisibleHabits = new();
+    public static readonly ConcurrentDictionary<string, (List<Guid> HabitIds, List<Guid> ExcludedHabitIds, string DefaultVisibility)> VisibleHabits = new();
 
     public static void SetFriends(Guid userId, params Guid[] friends)
     {
@@ -158,7 +158,15 @@ internal class MockSocialHandler : HttpMessageHandler
 
     public static void SetVisibleHabits(Guid userId, Guid viewerUserId, params Guid[] habitIds)
     {
-        VisibleHabits[$"{userId}:{viewerUserId}"] = [.. habitIds];
+        VisibleHabits[$"{userId}:{viewerUserId}"] = ([.. habitIds], [], "private");
+    }
+
+    public static void SetVisibleHabitsWithDefault(Guid userId, Guid viewerUserId, string defaultVisibility, Guid[]? visibleHabitIds = null, Guid[]? excludedHabitIds = null)
+    {
+        VisibleHabits[$"{userId}:{viewerUserId}"] = (
+            visibleHabitIds is not null ? [.. visibleHabitIds] : [],
+            excludedHabitIds is not null ? [.. excludedHabitIds] : [],
+            defaultVisibility);
     }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -176,11 +184,16 @@ internal class MockSocialHandler : HttpMessageHandler
             if (Guid.TryParse(userIdStr, out var userId) && Guid.TryParse(viewerParam, out var viewerUserId))
             {
                 var key = $"{userId}:{viewerUserId}";
-                if (VisibleHabits.TryGetValue(key, out var habitIds))
+                if (VisibleHabits.TryGetValue(key, out var visData))
                 {
                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                     {
-                        Content = JsonContent.Create(new { habitIds, defaultVisibility = "private" })
+                        Content = JsonContent.Create(new
+                        {
+                            habitIds = visData.HabitIds,
+                            excludedHabitIds = visData.ExcludedHabitIds,
+                            defaultVisibility = visData.DefaultVisibility
+                        })
                     });
                 }
             }
@@ -188,7 +201,12 @@ internal class MockSocialHandler : HttpMessageHandler
             // Default: no visible habits (private by default)
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new { habitIds = Array.Empty<Guid>(), defaultVisibility = "private" })
+                Content = JsonContent.Create(new
+                {
+                    habitIds = Array.Empty<Guid>(),
+                    excludedHabitIds = Array.Empty<Guid>(),
+                    defaultVisibility = "private"
+                })
             });
         }
 

@@ -101,12 +101,13 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     // Include the user's own entries plus entries from friends
     var actorIds = new List<Guid>(friendIds) { userId };
 
-    // Fetch visible habit IDs per friend for visibility filtering
+    // Fetch visibility data per friend for filtering
     // (user's own habit events are always visible)
-    var visibleHabitsPerFriend = new Dictionary<Guid, HashSet<Guid>?>();
+    var visibilityPerFriend = new Dictionary<Guid, (bool DefaultIsPublic, HashSet<Guid> VisibleHabitIds, HashSet<Guid> ExcludedHabitIds)>();
     var habitEventTypes = new HashSet<string> { "habit.created", "habit.completed" };
 
-    foreach (var friendId in friendIds)
+    // Fetch all friend visibility data concurrently (fixes N+1 sequential HTTP calls)
+    var visibilityTasks = friendIds.Select(async friendId =>
     {
         try
         {
@@ -116,19 +117,26 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
             if (visResponse.IsSuccessStatusCode)
             {
                 var visData = await visResponse.Content.ReadFromJsonAsync<VisibleHabitsResponse>(jsonOptions);
-                visibleHabitsPerFriend[friendId] = visData?.HabitIds?.ToHashSet() ?? [];
+                var defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
+                return (friendId, defaultIsPublic, visData?.HabitIds?.ToHashSet() ?? new HashSet<Guid>(), visData?.ExcludedHabitIds?.ToHashSet() ?? new HashSet<Guid>());
             }
             else
             {
                 // If visibility check fails, exclude friend's habit events (safe default)
-                visibleHabitsPerFriend[friendId] = [];
+                return (friendId, false, new HashSet<Guid>(), new HashSet<Guid>());
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             logger.LogWarning(ex, "Failed to fetch visible habits for FriendId={FriendId}", friendId);
-            visibleHabitsPerFriend[friendId] = [];
+            return (friendId, false, new HashSet<Guid>(), new HashSet<Guid>());
         }
+    }).ToList();
+
+    var visibilityResults = await Task.WhenAll(visibilityTasks);
+    foreach (var (friendId, defaultIsPublic, visibleIds, excludedIds) in visibilityResults)
+    {
+        visibilityPerFriend[friendId] = (defaultIsPublic, visibleIds, excludedIds);
     }
 
     // Fetch in batches, applying visibility filtering until we have enough
@@ -181,14 +189,23 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
             }
 
             // Check if the habit is visible to the requesting user
-            if (!visibleHabitsPerFriend.TryGetValue(e.ActorId, out var visibleHabitIds) || visibleHabitIds is null)
+            if (!visibilityPerFriend.TryGetValue(e.ActorId, out var vis))
                 continue;
 
             // Extract habitId from the JSONB data
             if (e.Data is not null && e.Data.RootElement.TryGetProperty("habitId", out var habitIdProp))
             {
-                if (Guid.TryParse(habitIdProp.GetString(), out var habitId) && visibleHabitIds.Contains(habitId))
-                    filtered.Add(e);
+                if (Guid.TryParse(habitIdProp.GetString(), out var habitId))
+                {
+                    // When default is public, show all habits EXCEPT explicitly excluded.
+                    // When default is private, show only explicitly visible habits.
+                    var isVisible = vis.DefaultIsPublic
+                        ? !vis.ExcludedHabitIds.Contains(habitId)
+                        : vis.VisibleHabitIds.Contains(habitId);
+
+                    if (isVisible)
+                        filtered.Add(e);
+                }
             }
         }
     }
@@ -220,7 +237,7 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 
 internal record FeedEntryDto(Guid Id, Guid ActorId, string EventType, JsonDocument? Data, DateTimeOffset CreatedAt);
 internal record FriendsListResponse(List<Guid> FriendIds);
-internal record VisibleHabitsResponse(List<Guid> HabitIds, string DefaultVisibility);
+internal record VisibleHabitsResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;
