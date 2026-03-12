@@ -12,6 +12,7 @@ COPY services/habit-service/src/ services/habit-service/src/
 RUN dotnet publish services/habit-service/src/Winzy.HabitService.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+RUN apk add --no-cache tzdata
 WORKDIR /app
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "Winzy.HabitService.dll"]
