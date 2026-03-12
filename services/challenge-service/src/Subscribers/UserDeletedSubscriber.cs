@@ -27,16 +27,15 @@ public sealed class UserDeletedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ChallengeDbContext>();
 
-        // Cancel all active challenges where the user is creator or recipient
-        var cancelled = await db.Challenges
-            .Where(c => (c.CreatorId == data.UserId || c.RecipientId == data.UserId)
-                && c.Status == Entities.ChallengeStatus.Active)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(c => c.Status, Entities.ChallengeStatus.Cancelled)
-                .SetProperty(c => c.UpdatedAt, DateTimeOffset.UtcNow), ct);
+        // Delete ALL challenges where the user is creator or recipient, regardless of status.
+        // This covers Active, Completed, Claimed, and Cancelled records — no references to
+        // the deleted user remain in the database (GDPR / deletion contract compliance).
+        var deleted = await db.Challenges
+            .Where(c => c.CreatorId == data.UserId || c.RecipientId == data.UserId)
+            .ExecuteDeleteAsync(ct);
 
         logger.LogInformation(
-            "Cancelled {Count} challenges for deleted UserId={UserId}",
-            cancelled, data.UserId);
+            "Deleted {Count} challenges for deleted UserId={UserId}",
+            deleted, data.UserId);
     }
 }

@@ -86,6 +86,10 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
                     // Replace SocialService HttpClient with mock handler
                     services.AddHttpClient("SocialService")
                         .ConfigurePrimaryHttpMessageHandler(() => new MockSocialHandler());
+
+                    // Replace HabitService HttpClient with mock handler
+                    services.AddHttpClient("HabitService")
+                        .ConfigurePrimaryHttpMessageHandler(() => new MockHabitHandler());
                 });
             });
 
@@ -121,9 +125,9 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
 
     public async Task ResetDataAsync()
     {
-        MockSocialHandler.FriendPairs.Clear();
         using var db = CreateDbContext();
         await db.Challenges.ExecuteDeleteAsync();
+        MockHabitHandler.HabitConsistency.Clear();
     }
 }
 
@@ -160,6 +164,43 @@ internal class MockSocialHandler : HttpMessageHandler
                     });
                 }
             }
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+}
+
+internal class MockHabitHandler : HttpMessageHandler
+{
+    /// <summary>
+    /// Maps habitId -> consistency value for range queries.
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, double> HabitConsistency = new();
+
+    public static void SetConsistency(Guid habitId, double consistency)
+    {
+        HabitConsistency[habitId] = consistency;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+        var prefix = "/habits/internal/";
+
+        if (path.StartsWith(prefix) && path.Contains("/consistency"))
+        {
+            // Extract habitId from /habits/internal/{habitId}/consistency
+            var afterPrefix = path[prefix.Length..];
+            var habitIdStr = afterPrefix[..afterPrefix.IndexOf('/')];
+            if (Guid.TryParse(habitIdStr, out var habitId) && HabitConsistency.TryGetValue(habitId, out var consistency))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { habitId, consistency })
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));

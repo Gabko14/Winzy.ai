@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -47,7 +48,7 @@ public sealed class HabitCompletedSubscriber(
             return;
         }
 
-        var ctx = new MilestoneContext(data.Consistency, data.Date);
+        var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
 
         foreach (var challenge in activeChallenges)
         {
@@ -107,6 +108,17 @@ public sealed class HabitCompletedSubscriber(
                 }
             }
 
+            // Use range-specific consistency for CustomDateRange, global consistency for all others
+            var effectiveConsistency = data.Consistency;
+            if (challenge.MilestoneType == MilestoneType.CustomDateRange)
+            {
+                var rangeConsistency = await FetchRangeConsistencyAsync(
+                    httpClientFactory, data.HabitId, challenge, ct);
+                if (rangeConsistency.HasValue)
+                    effectiveConsistency = rangeConsistency.Value;
+            }
+            var ctx = new MilestoneContext(effectiveConsistency, data.Date);
+
             // Always update progress so GET /challenges/{id} returns current state
             challenge.CurrentProgress = ProgressCalculator.CalculateProgress(challenge, ctx);
 
@@ -125,19 +137,70 @@ public sealed class HabitCompletedSubscriber(
             logger.LogInformation(
                 "Challenge {ChallengeId} completed! Type={MilestoneType}, Reward: {Reward}",
                 challenge.Id, challenge.MilestoneType, challenge.RewardDescription);
+        }
 
-            try
-            {
-                await nats.PublishAsync(Subjects.ChallengeCompleted,
-                    new ChallengeCompletedEvent(challenge.Id, data.UserId, challenge.RewardDescription), ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to publish challenge.completed event for ChallengeId={ChallengeId}",
-                    challenge.Id);
-            }
+        // Collect completion events BEFORE saving — we need the list regardless of save order.
+        var completedChallenges = activeChallenges
+            .Where(c => c.Status == ChallengeStatus.Completed && c.CompletedAt is not null)
+            .ToList();
+
+        // Publish BEFORE persisting. If publish fails, the exception propagates to
+        // NatsEventSubscriber which NAKs the message for redelivery. Because we haven't
+        // saved yet, the challenges remain Active in the DB, so the retry will find and
+        // reprocess them cleanly. If publish succeeds but SaveChanges fails, the NAK
+        // causes a retry which may re-publish (downstream consumers must be idempotent),
+        // but no completion event is permanently lost.
+        foreach (var challenge in completedChallenges)
+        {
+            await nats.PublishAsync(Subjects.ChallengeCompleted,
+                new ChallengeCompletedEvent(challenge.Id, data.UserId, challenge.RewardDescription), ct);
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<double?> FetchRangeConsistencyAsync(
+        IHttpClientFactory httpClientFactory, Guid habitId, Challenge challenge, CancellationToken ct)
+    {
+        var from = challenge.CustomStartDate is not null
+            ? DateOnly.FromDateTime(challenge.CustomStartDate.Value.UtcDateTime)
+            : DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);
+        var to = challenge.CustomEndDate is not null
+            ? DateOnly.FromDateTime(challenge.CustomEndDate.Value.UtcDateTime)
+            : DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+
+        try
+        {
+            var habitClient = httpClientFactory.CreateClient("HabitService");
+            using var response = await habitClient.GetAsync(
+                $"/habits/internal/{habitId}/consistency?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadFromJsonAsync<ConsistencyResponse>(
+                    ConsistencyResponse.JsonOptions, ct);
+                return body?.Consistency;
+            }
+
+            logger.LogWarning(
+                "Habit service returned {StatusCode} for range consistency on HabitId={HabitId}",
+                (int)response.StatusCode, habitId);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex,
+                "Failed to fetch range consistency from habit service for HabitId={HabitId}",
+                habitId);
+        }
+
+        return null;
+    }
+
+    private record ConsistencyResponse(double Consistency)
+    {
+        internal static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
     }
 }

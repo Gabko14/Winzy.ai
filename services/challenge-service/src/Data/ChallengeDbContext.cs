@@ -17,6 +17,13 @@ public sealed class ChallengeDbContext(DbContextOptions<ChallengeDbContext> opti
             b.HasIndex(c => c.HabitId);
             b.HasIndex(c => new { c.RecipientId, c.Status });
 
+            // Unique filtered index: at most one Active challenge per creator+recipient+habit.
+            // Enforces duplicate prevention atomically at the DB level (winzy.ai-3e4).
+            b.HasIndex(c => new { c.CreatorId, c.RecipientId, c.HabitId })
+                .IsUnique()
+                .HasFilter("status = 'Active'")
+                .HasDatabaseName("ix_challenges_unique_active");
+
             b.Property(c => c.RewardDescription).HasMaxLength(512);
 
             b.Property(c => c.MilestoneType)

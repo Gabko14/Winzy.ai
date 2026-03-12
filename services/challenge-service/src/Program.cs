@@ -29,13 +29,24 @@ builder.Services.AddHttpClient("SocialService", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient("HabitService", client =>
+{
+    var habitUrl = builder.Configuration["Services:HabitServiceUrl"] ?? "http://habit-service:5001";
+    client.BaseAddress = new Uri(habitUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
 app.MapOpenApi();
 app.MapServiceHealthChecks();
 
-var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+var jsonOptions = new JsonSerializerOptions
+{
+    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+};
 
 // --- POST /challenges ---
 
@@ -83,13 +94,26 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
     }
 
     // Validate friendship via Social Service
-    bool areFriends;
     try
     {
         var socialClient = httpClientFactory.CreateClient("SocialService");
         using var friendCheck = await socialClient.GetAsync(
             $"/social/internal/friends/{userId}/{request.RecipientId}");
-        areFriends = friendCheck.IsSuccessStatusCode;
+
+        if (friendCheck.IsSuccessStatusCode)
+        {
+            // friendship confirmed — continue
+        }
+        else if (friendCheck.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return Results.BadRequest(new { error = "You can only challenge friends" });
+        }
+        else
+        {
+            logger.LogWarning("Social Service returned {StatusCode} checking friendship between {CreatorId} and {RecipientId}",
+                (int)friendCheck.StatusCode, userId, request.RecipientId);
+            return Results.StatusCode(503);
+        }
     }
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
@@ -98,18 +122,17 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
         return Results.StatusCode(503);
     }
 
-    if (!areFriends)
-        return Results.BadRequest(new { error = "You can only challenge friends" });
-
-    // Prevent duplicate active challenges for the same habit+recipient
-    var existingActive = await db.Challenges.AnyAsync(c =>
-        c.CreatorId == userId &&
-        c.RecipientId == request.RecipientId &&
-        c.HabitId == request.HabitId &&
-        c.Status == ChallengeStatus.Active &&
-        c.EndsAt > DateTimeOffset.UtcNow);
-    if (existingActive)
-        return Results.Conflict(new { error = "An active challenge already exists for this habit and recipient" });
+    // Expire stale challenges that are still Active in the DB but past their end date.
+    // This clears the unique index slot so a new challenge can be created for the same triple.
+    await db.Challenges
+        .Where(c => c.CreatorId == userId
+            && c.RecipientId == request.RecipientId
+            && c.HabitId == request.HabitId
+            && c.Status == ChallengeStatus.Active
+            && c.EndsAt <= DateTimeOffset.UtcNow)
+        .ExecuteUpdateAsync(s => s
+            .SetProperty(c => c.Status, ChallengeStatus.Expired)
+            .SetProperty(c => c.UpdatedAt, DateTimeOffset.UtcNow));
 
     var endsAt = request.MilestoneType == MilestoneType.CustomDateRange && request.CustomEndDate is not null
         ? request.CustomEndDate.Value
@@ -131,7 +154,15 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
     };
 
     db.Challenges.Add(challenge);
-    await db.SaveChangesAsync();
+
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("ix_challenges_unique_active") == true)
+    {
+        return Results.Conflict(new { error = "An active challenge already exists for this habit and recipient" });
+    }
 
     try
     {
@@ -243,7 +274,8 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 }
 
 static string EffectiveStatus(Challenge c) =>
-    c.Status == ChallengeStatus.Active && c.EndsAt <= DateTimeOffset.UtcNow
+    c.Status == ChallengeStatus.Expired
+    || (c.Status == ChallengeStatus.Active && c.EndsAt <= DateTimeOffset.UtcNow)
         ? "expired"
         : c.Status.ToString().ToLowerInvariant();
 
@@ -253,7 +285,7 @@ static object MapToResponse(Challenge c) => new
     habitId = c.HabitId,
     creatorId = c.CreatorId,
     recipientId = c.RecipientId,
-    milestoneType = c.MilestoneType.ToString().ToLowerInvariant(),
+    milestoneType = JsonNamingPolicy.CamelCase.ConvertName(c.MilestoneType.ToString()),
     targetValue = c.TargetValue,
     periodDays = c.PeriodDays,
     rewardDescription = c.RewardDescription,
@@ -270,7 +302,7 @@ static object MapToDetailResponse(Challenge c) => new
     habitId = c.HabitId,
     creatorId = c.CreatorId,
     recipientId = c.RecipientId,
-    milestoneType = c.MilestoneType.ToString().ToLowerInvariant(),
+    milestoneType = JsonNamingPolicy.CamelCase.ConvertName(c.MilestoneType.ToString()),
     targetValue = c.TargetValue,
     periodDays = c.PeriodDays,
     rewardDescription = c.RewardDescription,

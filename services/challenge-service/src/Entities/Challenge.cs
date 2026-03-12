@@ -33,7 +33,8 @@ public enum ChallengeStatus
     Active,
     Completed,
     Claimed,
-    Cancelled
+    Cancelled,
+    Expired
 }
 
 public enum MilestoneType

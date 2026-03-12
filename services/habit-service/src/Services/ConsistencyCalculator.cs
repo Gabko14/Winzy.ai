@@ -193,30 +193,58 @@ public static class ConsistencyCalculator
     }
 
     /// <summary>
+    /// Calculates consistency within an arbitrary date range using timezone-aware date handling.
+    /// Converts the habit's creation timestamp to the user's local timezone before clamping.
+    /// </summary>
+    public static double CalculateForDateRange(
+        Habit habit,
+        HashSet<DateOnly> completedLocalDates,
+        DateOnly rangeStart,
+        DateOnly rangeEnd,
+        TimeZoneInfo userTimeZone)
+    {
+        var habitCreatedLocal = TimeZoneInfo.ConvertTimeFromUtc(habit.CreatedAt.UtcDateTime, userTimeZone);
+        var habitCreatedDate = DateOnly.FromDateTime(habitCreatedLocal);
+
+        return CalculateForDateRange(habit, completedLocalDates, rangeStart, rangeEnd, habitCreatedDate);
+    }
+
+    /// <summary>
     /// Calculates consistency within an arbitrary date range (not locked to the 60-day rolling window).
     /// Used by the challenge service for CustomDateRange milestones.
+    /// Uses explicit habitCreatedLocalDate for testability; falls back to UTC if not provided.
     /// </summary>
     /// <param name="habit">The habit with its frequency configuration.</param>
     /// <param name="completedLocalDates">Set of local dates where the habit was completed.</param>
     /// <param name="rangeStart">Start of the custom date range (inclusive).</param>
     /// <param name="rangeEnd">End of the custom date range (inclusive).</param>
+    /// <param name="habitCreatedLocalDate">The habit's creation date in the user's local timezone. Falls back to UTC if not provided.</param>
     /// <returns>Consistency percentage from 0 to 100.</returns>
     public static double CalculateForDateRange(
         Habit habit,
         HashSet<DateOnly> completedLocalDates,
         DateOnly rangeStart,
-        DateOnly rangeEnd)
+        DateOnly rangeEnd,
+        DateOnly? habitCreatedLocalDate = null)
     {
         if (rangeStart > rangeEnd)
             return 0;
 
+        // Clamp range start to the habit's creation date — days before the habit
+        // existed are not applicable and would artificially lower consistency.
+        var habitCreatedDate = habitCreatedLocalDate ?? DateOnly.FromDateTime(habit.CreatedAt.UtcDateTime);
+        var effectiveStart = rangeStart < habitCreatedDate ? habitCreatedDate : rangeStart;
+
+        if (effectiveStart > rangeEnd)
+            return 0;
+
         if (habit.Frequency == FrequencyType.Weekly)
-            return CalculateWeekly(rangeStart, rangeEnd, completedLocalDates);
+            return CalculateWeekly(effectiveStart, rangeEnd, completedLocalDates);
 
         var applicableDays = 0;
         var completedDays = 0;
 
-        for (var date = rangeStart; date <= rangeEnd; date = date.AddDays(1))
+        for (var date = effectiveStart; date <= rangeEnd; date = date.AddDays(1))
         {
             if (!IsApplicableDay(habit, date))
                 continue;

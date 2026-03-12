@@ -49,7 +49,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(_habitId, body.GetProperty("habitId").GetGuid());
         Assert.Equal(_creatorId, body.GetProperty("creatorId").GetGuid());
         Assert.Equal(_recipientId, body.GetProperty("recipientId").GetGuid());
-        Assert.Equal("consistencytarget", body.GetProperty("milestoneType").GetString());
+        Assert.Equal("consistencyTarget", body.GetProperty("milestoneType").GetString());
         Assert.Equal(80.0, body.GetProperty("targetValue").GetDouble());
         Assert.Equal(30, body.GetProperty("periodDays").GetInt32());
         Assert.Equal("Let's grab coffee together!", body.GetProperty("rewardDescription").GetString());
@@ -568,7 +568,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("daysinperiod", body.GetProperty("milestoneType").GetString());
+        Assert.Equal("daysInPeriod", body.GetProperty("milestoneType").GetString());
         Assert.Equal(20.0, body.GetProperty("targetValue").GetDouble());
     }
 
@@ -607,7 +607,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("totalcompletions", body.GetProperty("milestoneType").GetString());
+        Assert.Equal("totalCompletions", body.GetProperty("milestoneType").GetString());
         Assert.Equal(500.0, body.GetProperty("targetValue").GetDouble());
     }
 
@@ -651,7 +651,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("customdaterange", body.GetProperty("milestoneType").GetString());
+        Assert.Equal("customDateRange", body.GetProperty("milestoneType").GetString());
     }
 
     [Fact]
@@ -735,7 +735,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("improvementmilestone", body.GetProperty("milestoneType").GetString());
+        Assert.Equal("improvementMilestone", body.GetProperty("milestoneType").GetString());
     }
 
     [Fact]
@@ -867,6 +867,274 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.True(body.TryGetProperty("customStartDate", out _));
         Assert.True(body.TryGetProperty("customEndDate", out _));
+    }
+
+    // --- String milestoneType deserialization (winzy.ai-1r4.1) ---
+
+    [Fact]
+    public async Task CreateChallenge_StringMilestoneType_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = "consistencyTarget",
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "String enum test"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("consistencyTarget", body.GetProperty("milestoneType").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_StringMilestoneType_DaysInPeriod_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = "daysInPeriod",
+            targetValue = 20.0,
+            periodDays = 30,
+            rewardDescription = "String enum DaysInPeriod test"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("daysInPeriod", body.GetProperty("milestoneType").GetString());
+    }
+
+    // --- Friendship check integration (winzy.ai-1r4.1) ---
+
+    [Fact]
+    public async Task CreateChallenge_FriendshipCheckContract_MockMatchesRealRoute()
+    {
+        // Verify the mock handler responds on the same route the real Social Service exposes:
+        // GET /social/internal/friends/{userId1}/{userId2}
+        // The mock returns 200 for registered friendships, 404 otherwise — same as the real service.
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // With friendship registered (done in InitializeAsync) — should succeed
+        var friendResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Friends test"
+        }, CT);
+        Assert.Equal(HttpStatusCode.Created, friendResponse.StatusCode);
+
+        // Without friendship — should fail
+        var strangerId = Guid.NewGuid();
+        var strangerResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = Guid.NewGuid(),
+            recipientId = strangerId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Not friends test"
+        }, CT);
+        Assert.Equal(HttpStatusCode.BadRequest, strangerResponse.StatusCode);
+        var body = await strangerResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("You can only challenge friends", body.GetProperty("error").GetString());
+    }
+
+    // --- Duplicate prevention (winzy.ai-3e4) ---
+
+    [Fact]
+    public async Task CreateChallenge_DuplicateActiveChallenge_Returns409()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // First creation succeeds
+        var first = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "First challenge"
+        }, CT);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Second creation for same triple should fail with 409
+        var second = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 90.0,
+            periodDays = 60,
+            rewardDescription = "Duplicate challenge"
+        }, CT);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        var body = await second.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("active challenge already exists", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_ConcurrentDuplicates_OnlyOneSucceeds()
+    {
+        // Test that concurrent requests for the same triple don't both succeed
+        var habitId = Guid.NewGuid();
+        MockSocialHandler.AddFriendship(_creatorId, _recipientId);
+
+        var tasks = Enumerable.Range(0, 5).Select(_ =>
+        {
+            var client = _fixture.CreateAuthenticatedClient(_creatorId);
+            return client.PostAsJsonAsync("/challenges", new
+            {
+                habitId,
+                recipientId = _recipientId,
+                milestoneType = 0,
+                targetValue = 80.0,
+                periodDays = 30,
+                rewardDescription = "Concurrent test"
+            }, CT);
+        }).ToArray();
+
+        var responses = await Task.WhenAll(tasks);
+        var created = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var conflicts = responses.Count(r => r.StatusCode == HttpStatusCode.Conflict);
+
+        Assert.Equal(1, created);
+        Assert.Equal(4, conflicts);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_AfterExpiredChallenge_Succeeds()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Seed an expired challenge (Active but EndsAt in the past)
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 1,
+                RewardDescription = "Old expired challenge",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1) // expired
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        // Creating a new challenge for the same triple should succeed
+        // because the endpoint expires stale Active challenges first
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "New challenge after expiry"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        // Verify the old challenge was marked expired (not cancelled)
+        using var verifyDb = _fixture.CreateDbContext();
+        var allForTriple = await verifyDb.Challenges
+            .Where(c => c.CreatorId == _creatorId && c.RecipientId == _recipientId && c.HabitId == _habitId)
+            .ToListAsync(CT);
+        Assert.Equal(2, allForTriple.Count);
+        Assert.Single(allForTriple, c => c.Status == ChallengeStatus.Active);
+        Assert.Single(allForTriple, c => c.Status == ChallengeStatus.Expired);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_AfterCompletedChallenge_Succeeds()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Seed a completed challenge
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Completed challenge",
+                Status = ChallengeStatus.Completed,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(10),
+                CompletedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        // New challenge should succeed — completed challenges don't block the unique index
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "New after completed"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    // --- Reward description validation ---
+
+    [Fact]
+    public async Task CreateChallenge_RewardDescriptionTooLong_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = new string('a', 513)
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("512", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CreateChallenge_RewardDescriptionWithHtml_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "<script>alert('xss')</script>"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     // --- GET /health ---

@@ -154,6 +154,7 @@ export function RootNavigator() {
         <OfflineIndicator />
         <NotificationScreen
           onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
+          onBack={goToHome}
         />
         <StatusBar style="auto" />
       </>
