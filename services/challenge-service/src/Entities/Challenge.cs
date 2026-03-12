@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Winzy.Common.Persistence;
 
 namespace Winzy.ChallengeService.Entities;
@@ -20,12 +21,30 @@ public sealed class Challenge : BaseEntity
     // DaysInPeriod / TotalCompletions: tracks how many completions have been recorded
     public int CompletionCount { get; set; }
 
+    /// <summary>
+    /// JSON array of completion dates already counted (for idempotent CompletionCount tracking).
+    /// </summary>
+    public string? ProcessedCompletionDates { get; set; }
+
     // CustomDateRange: the active window for the challenge
     public DateTimeOffset? CustomStartDate { get; set; }
     public DateTimeOffset? CustomEndDate { get; set; }
 
     // ImprovementMilestone: the consistency when the challenge started
     public double? BaselineConsistency { get; set; }
+
+    public HashSet<DateOnly> GetProcessedDates()
+    {
+        if (string.IsNullOrEmpty(ProcessedCompletionDates))
+            return new HashSet<DateOnly>();
+        return JsonSerializer.Deserialize<HashSet<DateOnly>>(ProcessedCompletionDates) ?? new();
+    }
+
+    public void SetProcessedDates(HashSet<DateOnly> dates)
+    {
+        ProcessedCompletionDates = JsonSerializer.Serialize(dates);
+        CompletionCount = dates.Count;
+    }
 }
 
 public enum ChallengeStatus

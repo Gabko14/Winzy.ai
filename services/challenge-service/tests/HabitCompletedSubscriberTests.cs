@@ -289,6 +289,58 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
     }
 
     // ============================================================
+    // Idempotency under JetStream redelivery (winzy.ai-wv2)
+    // ============================================================
+
+    [Fact]
+    public async Task DaysInPeriod_DuplicateEvent_DoesNotDoubleIncrement()
+    {
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.DaysInPeriod,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var publisher = _fixture.GetPublisher();
+        var evt = new HabitCompletedEvent(_recipientId, _habitId,
+            new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), 0.5);
+
+        // Publish the same event twice (simulates JetStream redelivery)
+        await publisher.PublishAsync(Subjects.HabitCompleted, evt, CT);
+        await WaitForCompletionCountAsync(challengeId, 1);
+
+        await publisher.PublishAsync(Subjects.HabitCompleted, evt, CT);
+        // Give subscriber time to process (and skip) the duplicate
+        await Task.Delay(1500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(1, challenge.CompletionCount);
+    }
+
+    [Fact]
+    public async Task DaysInPeriod_DifferentDates_IncrementsEachTime()
+    {
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.DaysInPeriod,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var publisher = _fixture.GetPublisher();
+
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId,
+                new DateTime(2026, 3, 5, 12, 0, 0, DateTimeKind.Utc), 0.5), CT);
+        await WaitForCompletionCountAsync(challengeId, 1);
+
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId,
+                new DateTime(2026, 3, 6, 12, 0, 0, DateTimeKind.Utc), 0.5), CT);
+        await WaitForCompletionCountAsync(challengeId, 2);
+
+        using var db = _fixture.CreateDbContext();
+        var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(2, challenge.CompletionCount);
+    }
+
+    // ============================================================
     // Helpers
     // ============================================================
 
