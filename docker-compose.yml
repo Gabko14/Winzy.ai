@@ -225,6 +225,7 @@ services:
       ConnectionStrings__DefaultConnection: Host=social-db;Port=5432;Database=social_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
       ASPNETCORE_URLS: http://+:5003
+      Services__HabitServiceUrl: http://habit-service:5002
     depends_on:
       social-db:
         condition: service_healthy
@@ -280,6 +281,7 @@ services:
       ConnectionStrings__DefaultConnection: Host=activity-db;Port=5432;Database=activity_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
       ASPNETCORE_URLS: http://+:5006
+      Services__SocialServiceUrl: http://social-service:5003
     depends_on:
       activity-db:
         condition: service_healthy
