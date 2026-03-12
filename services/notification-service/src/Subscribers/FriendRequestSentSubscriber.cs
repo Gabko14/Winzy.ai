@@ -47,7 +47,13 @@ public sealed class FriendRequestSentSubscriber(
         var idempotencyKey = $"friend_request_sent:{data.ToUserId}:{data.FromUserId}";
         if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
         {
-            logger.LogInformation("Duplicate friend.request.sent notification skipped (key={Key})", idempotencyKey);
+            logger.LogInformation("Duplicate notification detected (key={Key}), retrying push delivery", idempotencyKey);
+            await pushDelivery.DeliverAsync(
+                db, data.ToUserId,
+                "New friend request",
+                "Someone sent you a friend request",
+                "/friends",
+                ct);
             return;
         }
 
