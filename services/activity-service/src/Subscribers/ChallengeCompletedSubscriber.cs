@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NATS.Client.Core;
@@ -30,6 +31,13 @@ public sealed class ChallengeCompletedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ActivityDbContext>();
 
+        var idempotencyKey = $"challenge.completed:{data.ChallengeId}";
+        if (await db.FeedEntries.AnyAsync(e => e.IdempotencyKey == idempotencyKey, ct))
+        {
+            logger.LogInformation("Duplicate challenge.completed skipped (key={Key})", idempotencyKey);
+            return;
+        }
+
         var entry = new FeedEntry
         {
             ActorId = data.UserId,
@@ -39,7 +47,8 @@ public sealed class ChallengeCompletedSubscriber(
                 challengeId = data.ChallengeId,
                 userId = data.UserId,
                 reward = data.Reward
-            }))
+            })),
+            IdempotencyKey = idempotencyKey
         };
 
         db.FeedEntries.Add(entry);

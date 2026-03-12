@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NATS.Client.Core;
@@ -29,6 +30,13 @@ public sealed class HabitCreatedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ActivityDbContext>();
 
+        var idempotencyKey = $"habit.created:{data.UserId}:{data.HabitId}";
+        if (await db.FeedEntries.AnyAsync(e => e.IdempotencyKey == idempotencyKey, ct))
+        {
+            logger.LogInformation("Duplicate habit.created skipped (key={Key})", idempotencyKey);
+            return;
+        }
+
         var entry = new FeedEntry
         {
             ActorId = data.UserId,
@@ -38,7 +46,8 @@ public sealed class HabitCreatedSubscriber(
                 userId = data.UserId,
                 habitId = data.HabitId,
                 name = data.Name
-            }))
+            })),
+            IdempotencyKey = idempotencyKey
         };
 
         db.FeedEntries.Add(entry);

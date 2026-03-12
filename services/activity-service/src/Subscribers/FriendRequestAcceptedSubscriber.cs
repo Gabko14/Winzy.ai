@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NATS.Client.Core;
@@ -29,25 +30,40 @@ public sealed class FriendRequestAcceptedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ActivityDbContext>();
 
+        // Canonical ordering for the friendship pair key
+        var pairKey = string.Compare(data.UserId1.ToString(), data.UserId2.ToString(), StringComparison.Ordinal) < 0
+            ? $"{data.UserId1}:{data.UserId2}"
+            : $"{data.UserId2}:{data.UserId1}";
+
+        var idempotencyKey1 = $"friend.request.accepted:{pairKey}:1";
+        var idempotencyKey2 = $"friend.request.accepted:{pairKey}:2";
+
+        if (await db.FeedEntries.AnyAsync(e => e.IdempotencyKey == idempotencyKey1, ct))
+        {
+            logger.LogInformation("Duplicate friend.request.accepted skipped (key={Key})", idempotencyKey1);
+            return;
+        }
+
         var payload = JsonSerializer.Serialize(new
         {
             userId1 = data.UserId1,
             userId2 = data.UserId2
         });
 
-        // Create a feed entry for each user in the friendship
         var entry1 = new FeedEntry
         {
             ActorId = data.UserId1,
             EventType = Subjects.FriendRequestAccepted,
-            Data = JsonDocument.Parse(payload)
+            Data = JsonDocument.Parse(payload),
+            IdempotencyKey = idempotencyKey1
         };
 
         var entry2 = new FeedEntry
         {
             ActorId = data.UserId2,
             EventType = Subjects.FriendRequestAccepted,
-            Data = JsonDocument.Parse(payload)
+            Data = JsonDocument.Parse(payload),
+            IdempotencyKey = idempotencyKey2
         };
 
         db.FeedEntries.AddRange(entry1, entry2);

@@ -226,6 +226,56 @@ public class SubscriberTests : IAsyncLifetime
         Assert.Equal(0, otherFriendEntries);
     }
 
+    // --- Idempotency ---
+
+    [Fact]
+    public async Task HabitCreated_DuplicateEvent_DoesNotCreateDuplicateEntry()
+    {
+        var userId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Publish the same event twice
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Meditate"), CT);
+        await WaitForEntryAsync(userId, Subjects.HabitCreated);
+
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Meditate"), CT);
+
+        // Give time for the second event to be processed (or skipped)
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var count = await db.FeedEntries.CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task FriendRequestAccepted_DuplicateEvent_DoesNotCreateDuplicateEntries()
+    {
+        var userId1 = Guid.NewGuid();
+        var userId2 = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        await publisher.PublishAsync(Subjects.FriendRequestAccepted,
+            new FriendRequestAcceptedEvent(userId1, userId2), CT);
+        await WaitForEntryAsync(userId1, Subjects.FriendRequestAccepted);
+        await WaitForEntryAsync(userId2, Subjects.FriendRequestAccepted);
+
+        // Publish the same event again
+        await publisher.PublishAsync(Subjects.FriendRequestAccepted,
+            new FriendRequestAcceptedEvent(userId1, userId2), CT);
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var count = await db.FeedEntries.CountAsync(
+            e => e.EventType == Subjects.FriendRequestAccepted
+                && (e.ActorId == userId1 || e.ActorId == userId2), CT);
+        Assert.Equal(2, count);
+    }
+
     // --- Helpers ---
 
     private async Task WaitForEntryAsync(Guid actorId, string eventType, int timeoutMs = 10000)

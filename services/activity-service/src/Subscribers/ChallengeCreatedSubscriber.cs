@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NATS.Client.Core;
@@ -30,7 +31,13 @@ public sealed class ChallengeCreatedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ActivityDbContext>();
 
-        // The actor is the creator of the challenge
+        var idempotencyKey = $"challenge.created:{data.ChallengeId}";
+        if (await db.FeedEntries.AnyAsync(e => e.IdempotencyKey == idempotencyKey, ct))
+        {
+            logger.LogInformation("Duplicate challenge.created skipped (key={Key})", idempotencyKey);
+            return;
+        }
+
         var entry = new FeedEntry
         {
             ActorId = data.FromUserId,
@@ -41,7 +48,8 @@ public sealed class ChallengeCreatedSubscriber(
                 fromUserId = data.FromUserId,
                 toUserId = data.ToUserId,
                 habitId = data.HabitId
-            }))
+            })),
+            IdempotencyKey = idempotencyKey
         };
 
         db.FeedEntries.Add(entry);
