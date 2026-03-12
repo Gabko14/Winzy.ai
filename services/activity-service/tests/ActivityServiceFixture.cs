@@ -133,6 +133,7 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
     public async Task ResetDataAsync()
     {
         MockSocialHandler.FriendIds.Clear();
+        MockSocialHandler.VisibleHabits.Clear();
         using var db = CreateDbContext();
         await db.FeedEntries.ExecuteDeleteAsync();
     }
@@ -145,19 +146,57 @@ internal class MockSocialHandler : HttpMessageHandler
     /// </summary>
     public static readonly ConcurrentDictionary<Guid, List<Guid>> FriendIds = new();
 
+    /// <summary>
+    /// Maps "{userId}:{viewerUserId}" -> list of visible habit IDs.
+    /// </summary>
+    public static readonly ConcurrentDictionary<string, List<Guid>> VisibleHabits = new();
+
     public static void SetFriends(Guid userId, params Guid[] friends)
     {
         FriendIds[userId] = [.. friends];
     }
 
+    public static void SetVisibleHabits(Guid userId, Guid viewerUserId, params Guid[] habitIds)
+    {
+        VisibleHabits[$"{userId}:{viewerUserId}"] = [.. habitIds];
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri?.AbsolutePath ?? "";
-        var prefix = "/social/internal/friends/";
+        var query = request.RequestUri?.Query ?? "";
 
-        if (path.StartsWith(prefix))
+        // Handle GET /social/internal/visible-habits/{userId}?viewer={viewerUserId}
+        var visPrefix = "/social/internal/visible-habits/";
+        if (path.StartsWith(visPrefix))
         {
-            var userIdStr = path[prefix.Length..];
+            var userIdStr = path[visPrefix.Length..];
+            var viewerParam = System.Web.HttpUtility.ParseQueryString(query)["viewer"];
+
+            if (Guid.TryParse(userIdStr, out var userId) && Guid.TryParse(viewerParam, out var viewerUserId))
+            {
+                var key = $"{userId}:{viewerUserId}";
+                if (VisibleHabits.TryGetValue(key, out var habitIds))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = JsonContent.Create(new { habitIds, defaultVisibility = "private" })
+                    });
+                }
+            }
+
+            // Default: no visible habits (private by default)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new { habitIds = Array.Empty<Guid>(), defaultVisibility = "private" })
+            });
+        }
+
+        // Handle GET /social/internal/friends/{userId}
+        var friendsPrefix = "/social/internal/friends/";
+        if (path.StartsWith(friendsPrefix))
+        {
+            var userIdStr = path[friendsPrefix.Length..];
             if (Guid.TryParse(userIdStr, out var userId) && FriendIds.TryGetValue(userId, out var friends))
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

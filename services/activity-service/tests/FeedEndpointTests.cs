@@ -72,7 +72,9 @@ public class FeedEndpointTests : IAsyncLifetime
     [Fact]
     public async Task GetFeed_ShowsFriendEntries()
     {
-        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = Guid.NewGuid() });
+        var habitId = Guid.NewGuid();
+        MockSocialHandler.SetVisibleHabits(_friendId, _userId, habitId);
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId });
 
         using var client = _fixture.CreateAuthenticatedClient(_userId);
         var response = await client.GetAsync("/activity/feed", CT);
@@ -87,8 +89,10 @@ public class FeedEndpointTests : IAsyncLifetime
     [Fact]
     public async Task GetFeed_ExcludesStrangerEntries()
     {
+        var friendHabitId = Guid.NewGuid();
+        MockSocialHandler.SetVisibleHabits(_friendId, _userId, friendHabitId);
         await SeedFeedEntry(_strangerId, "habit.created", new { habitId = Guid.NewGuid(), name = "Run" });
-        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = Guid.NewGuid() });
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = friendHabitId });
 
         using var client = _fixture.CreateAuthenticatedClient(_userId);
         var response = await client.GetAsync("/activity/feed", CT);
@@ -182,6 +186,62 @@ public class FeedEndpointTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         // Just check it doesn't error — the cap is internal
+    }
+
+    // --- Visibility filtering ---
+
+    [Fact]
+    public async Task GetFeed_HidesFriendPrivateHabitEvents()
+    {
+        var visibleHabitId = Guid.NewGuid();
+        var privateHabitId = Guid.NewGuid();
+
+        // Friend has one visible habit and one private habit
+        MockSocialHandler.SetVisibleHabits(_friendId, _userId, visibleHabitId);
+
+        await SeedFeedEntry(_friendId, "habit.created", new { habitId = visibleHabitId, name = "Visible" });
+        await SeedFeedEntry(_friendId, "habit.created", new { habitId = privateHabitId, name = "Private" });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+
+        var data = items[0].GetProperty("data");
+        Assert.Equal(visibleHabitId, data.GetProperty("habitId").GetGuid());
+    }
+
+    [Fact]
+    public async Task GetFeed_OwnHabitEventsAlwaysVisible()
+    {
+        var habitId = Guid.NewGuid();
+        // Do NOT set visibility for the user's own habits — they should always show
+        await SeedFeedEntry(_userId, "habit.completed", new { habitId, consistency = 0.9 });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetFeed_NonHabitEventsNotFilteredByVisibility()
+    {
+        // Friend's non-habit events should always show regardless of visibility settings
+        await SeedFeedEntry(_friendId, "friend.request.accepted", new { userId1 = _friendId, userId2 = _userId });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
     }
 
     // --- GET /health ---

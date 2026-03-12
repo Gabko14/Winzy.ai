@@ -31,9 +31,7 @@ describe("Flame", () => {
     // The container should be present with dimensions
     const container = getByTestId("flame-container");
     expect(container.props.style).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
-      ]),
+      expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
     );
   });
 
@@ -52,7 +50,7 @@ describe("Flame", () => {
     const container = getByTestId("flame-container");
     const expected = expectedDimensions[size];
     expect(container.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining(expected)]),
+      expect.objectContaining(expected),
     );
   });
 
@@ -60,7 +58,7 @@ describe("Flame", () => {
     const { getByTestId } = render(<Flame flameLevel="steady" />);
     const container = getByTestId("flame-container");
     expect(container.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({ width: 36, height: 48 })]),
+      expect.objectContaining({ width: 36, height: 48 }),
     );
   });
 

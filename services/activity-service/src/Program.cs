@@ -74,10 +74,10 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     }
 
     // Get friend list from Social Service
+    var socialClient = httpClientFactory.CreateClient("SocialService");
     List<Guid> friendIds;
     try
     {
-        var socialClient = httpClientFactory.CreateClient("SocialService");
         using var response = await socialClient.GetAsync($"/social/internal/friends/{userId}");
 
         if (!response.IsSuccessStatusCode)
@@ -101,15 +101,48 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     // Include the user's own entries plus entries from friends
     var actorIds = new List<Guid>(friendIds) { userId };
 
+    // Fetch visible habit IDs per friend for visibility filtering
+    // (user's own habit events are always visible)
+    var visibleHabitsPerFriend = new Dictionary<Guid, HashSet<Guid>?>();
+    var habitEventTypes = new HashSet<string> { "habit.created", "habit.completed" };
+
+    foreach (var friendId in friendIds)
+    {
+        try
+        {
+            using var visResponse = await socialClient.GetAsync(
+                $"/social/internal/visible-habits/{friendId}?viewer={userId}");
+
+            if (visResponse.IsSuccessStatusCode)
+            {
+                var visData = await visResponse.Content.ReadFromJsonAsync<VisibleHabitsResponse>(jsonOptions);
+                visibleHabitsPerFriend[friendId] = visData?.HabitIds?.ToHashSet() ?? [];
+            }
+            else
+            {
+                // If visibility check fails, exclude friend's habit events (safe default)
+                visibleHabitsPerFriend[friendId] = [];
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Failed to fetch visible habits for FriendId={FriendId}", friendId);
+            visibleHabitsPerFriend[friendId] = [];
+        }
+    }
+
+    // Over-fetch to compensate for visibility filtering
+    var fetchLimit = (limit + 1) * 2;
+
     var query = db.FeedEntries
         .Where(e => actorIds.Contains(e.ActorId));
 
     if (cursor.HasValue)
         query = query.Where(e => e.CreatedAt < cursor.Value);
 
-    var entries = await query
+    var rawEntries = await query
         .OrderByDescending(e => e.CreatedAt)
-        .Take(limit + 1) // Fetch one extra to detect if there's a next page
+        .Take(fetchLimit)
         .Select(e => new
         {
             e.Id,
@@ -120,8 +153,33 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
         })
         .ToListAsync();
 
-    var hasMore = entries.Count > limit;
-    var page = hasMore ? entries[..limit] : entries;
+    // Apply visibility filtering: hide friend's habit events for non-visible habits
+    var filtered = rawEntries.Where(e =>
+    {
+        // User's own entries are always visible
+        if (e.actorId == userId)
+            return true;
+
+        // Non-habit events are always visible (friend accepted, challenge events, etc.)
+        if (!habitEventTypes.Contains(e.eventType))
+            return true;
+
+        // Check if the habit is visible to the requesting user
+        if (!visibleHabitsPerFriend.TryGetValue(e.actorId, out var visibleHabitIds) || visibleHabitIds is null)
+            return false;
+
+        // Extract habitId from the JSONB data
+        if (e.data is not null && e.data.RootElement.TryGetProperty("habitId", out var habitIdProp))
+        {
+            if (Guid.TryParse(habitIdProp.GetString(), out var habitId))
+                return visibleHabitIds.Contains(habitId);
+        }
+
+        return false;
+    }).ToList();
+
+    var hasMore = filtered.Count > limit;
+    var page = hasMore ? filtered[..limit] : filtered;
     var nextCursor = hasMore ? page[^1].createdAt.ToString("O") : null;
 
     return Results.Ok(new
@@ -146,6 +204,7 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 // --- DTOs ---
 
 internal record FriendsListResponse(List<Guid> FriendIds);
+internal record VisibleHabitsResponse(List<Guid> HabitIds, string DefaultVisibility);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;
