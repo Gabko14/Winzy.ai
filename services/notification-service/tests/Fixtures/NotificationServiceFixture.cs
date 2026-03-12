@@ -101,6 +101,7 @@ public sealed class NotificationServiceFixture : IAsyncLifetime
         using var db = CreateDbContext();
         await db.Notifications.ExecuteDeleteAsync();
         await db.NotificationSettings.ExecuteDeleteAsync();
+        await db.DeviceTokens.ExecuteDeleteAsync();
     }
 
     public async Task PublishNatsEventAsync<T>(string subject, T data)

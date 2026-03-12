@@ -6,12 +6,15 @@ using Winzy.Common.Observability;
 using Winzy.Common.Persistence;
 using Winzy.NotificationService.Data;
 using Winzy.NotificationService.Entities;
+using Winzy.NotificationService.Services;
 using Winzy.NotificationService.Subscribers;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddServiceDatabase<NotificationDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
+builder.Services.AddHttpClient("webpush");
+builder.Services.AddSingleton<PushDeliveryService>();
 builder.Services.AddHostedService<HabitCompletedSubscriber>();
 builder.Services.AddHostedService<FriendRequestSentSubscriber>();
 builder.Services.AddHostedService<FriendRequestAcceptedSubscriber>();
@@ -149,6 +152,95 @@ app.MapPut("/notifications/settings", async (HttpContext ctx, NotificationDbCont
     });
 });
 
+// --- Device token management (push notifications) ---
+
+app.MapPost("/notifications/devices", async (HttpContext ctx, NotificationDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    RegisterDeviceRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<RegisterDeviceRequest>();
+    }
+    catch (Exception)
+    {
+        request = null;
+    }
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    if (string.IsNullOrWhiteSpace(request.Platform) || string.IsNullOrWhiteSpace(request.Token))
+        return Results.BadRequest(new { error = "Platform and token are required" });
+
+    var validPlatforms = new[] { "web_push", "expo_push" };
+    if (!validPlatforms.Contains(request.Platform))
+        return Results.BadRequest(new { error = "Platform must be 'web_push' or 'expo_push'" });
+
+    // Upsert: if same device already registered, update the token
+    DeviceToken? existing = null;
+    if (!string.IsNullOrWhiteSpace(request.DeviceId))
+    {
+        existing = await db.DeviceTokens
+            .FirstOrDefaultAsync(t => t.UserId == userId && t.DeviceId == request.DeviceId);
+    }
+
+    if (existing is not null)
+    {
+        existing.Token = request.Token;
+        existing.Platform = request.Platform;
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+    else
+    {
+        db.DeviceTokens.Add(new DeviceToken
+        {
+            UserId = userId,
+            Platform = request.Platform,
+            Token = request.Token,
+            DeviceId = request.DeviceId
+        });
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Created();
+});
+
+app.MapDelete("/notifications/devices", async (HttpContext ctx, NotificationDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    UnregisterDeviceRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<UnregisterDeviceRequest>();
+    }
+    catch (Exception)
+    {
+        request = null;
+    }
+    if (request is null || string.IsNullOrWhiteSpace(request.DeviceId))
+        return Results.BadRequest(new { error = "DeviceId is required" });
+
+    var deleted = await db.DeviceTokens
+        .Where(t => t.UserId == userId && t.DeviceId == request.DeviceId)
+        .ExecuteDeleteAsync();
+
+    return deleted > 0 ? Results.NoContent() : Results.NotFound();
+});
+
+// VAPID public key endpoint — clients need this to subscribe to web push
+app.MapGet("/notifications/vapid-public-key", (IConfiguration config) =>
+{
+    var publicKey = config["WebPush:PublicKey"];
+    if (string.IsNullOrEmpty(publicKey))
+        return Results.NotFound(new { error = "VAPID public key not configured" });
+
+    return Results.Ok(new { publicKey });
+});
+
 app.Run();
 
 // --- Helper methods ---
@@ -179,6 +271,8 @@ static JsonElement TryParseJson(string json)
 // --- Request DTOs ---
 
 internal record UpdateSettingsRequest(bool? HabitReminders, bool? FriendActivity, bool? ChallengeUpdates);
+internal record RegisterDeviceRequest(string Platform, string Token, string? DeviceId);
+internal record UnregisterDeviceRequest(string DeviceId);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;
