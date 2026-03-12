@@ -301,6 +301,28 @@ public class FeedEndpointTests : IAsyncLifetime
         Assert.Equal(1, body.GetProperty("items").GetArrayLength());
     }
 
+    [Fact]
+    public async Task GetFeed_MalformedDataInEntry_DoesNotCrashFeed()
+    {
+        var validHabitId = Guid.NewGuid();
+        MockSocialHandler.SetVisibleHabits(_friendId, _userId, validHabitId);
+
+        // Seed a valid entry and one with data that has no habitId (simulates malformed/unexpected shape)
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId = validHabitId });
+        await SeedFeedEntry(_friendId, "habit.completed", new { unexpected = "no-habit-id-here" });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        // Feed should return 200, not 500 — malformed entry is skipped
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        // Only the valid entry should appear
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(validHabitId, items[0].GetProperty("data").GetProperty("habitId").GetGuid());
+    }
+
     // --- GET /health ---
 
     [Fact]

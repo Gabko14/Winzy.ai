@@ -106,9 +106,13 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     var visibilityPerFriend = new Dictionary<Guid, (bool DefaultIsPublic, HashSet<Guid> VisibleHabitIds, HashSet<Guid> ExcludedHabitIds)>();
     var habitEventTypes = new HashSet<string> { "habit.created", "habit.completed" };
 
-    // Fetch all friend visibility data concurrently (fixes N+1 sequential HTTP calls)
+    // Fetch all friend visibility data concurrently with bounded concurrency
+    const int maxConcurrency = 10;
+    var semaphore = new SemaphoreSlim(maxConcurrency);
+
     var visibilityTasks = friendIds.Select(async friendId =>
     {
+        await semaphore.WaitAsync();
         try
         {
             using var visResponse = await socialClient.GetAsync(
@@ -126,10 +130,14 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
                 return (friendId, false, new HashSet<Guid>(), new HashSet<Guid>());
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             logger.LogWarning(ex, "Failed to fetch visible habits for FriendId={FriendId}", friendId);
             return (friendId, false, new HashSet<Guid>(), new HashSet<Guid>());
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }).ToList();
 
@@ -193,19 +201,27 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
                 continue;
 
             // Extract habitId from the JSONB data
-            if (e.Data is not null && e.Data.RootElement.TryGetProperty("habitId", out var habitIdProp))
+            try
             {
-                if (Guid.TryParse(habitIdProp.GetString(), out var habitId))
+                if (e.Data is not null && e.Data.RootElement.TryGetProperty("habitId", out var habitIdProp))
                 {
-                    // When default is public, show all habits EXCEPT explicitly excluded.
-                    // When default is private, show only explicitly visible habits.
-                    var isVisible = vis.DefaultIsPublic
-                        ? !vis.ExcludedHabitIds.Contains(habitId)
-                        : vis.VisibleHabitIds.Contains(habitId);
+                    if (Guid.TryParse(habitIdProp.GetString(), out var habitId))
+                    {
+                        // When default is public, show all habits EXCEPT explicitly excluded.
+                        // When default is private, show only explicitly visible habits.
+                        var isVisible = vis.DefaultIsPublic
+                            ? !vis.ExcludedHabitIds.Contains(habitId)
+                            : vis.VisibleHabitIds.Contains(habitId);
 
-                    if (isVisible)
-                        filtered.Add(e);
+                        if (isVisible)
+                            filtered.Add(e);
+                    }
                 }
+            }
+            catch (JsonException)
+            {
+                // Malformed data in feed entry — skip it rather than crash the feed
+                logger.LogWarning("Skipping feed entry {EntryId} with malformed data", e.Id);
             }
         }
     }
