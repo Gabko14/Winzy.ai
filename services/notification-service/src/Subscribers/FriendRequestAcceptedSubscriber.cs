@@ -53,6 +53,31 @@ public sealed class FriendRequestAcceptedSubscriber(
             .Select(n => n.IdempotencyKey)
             .ToListAsync(ct);
 
+        // If both keys already exist, this is a redelivery — still attempt push (may have crashed after DB save)
+        if (existingKeys.Contains(key1) && existingKeys.Contains(key2))
+        {
+            logger.LogInformation("Duplicate notification detected (both keys exist), retrying push delivery for UserId1={UserId1} and UserId2={UserId2}", userId1, userId2);
+            if (settings1 is null || settings1.FriendActivity)
+            {
+                await pushDelivery.DeliverAsync(
+                    db, userId1,
+                    "Friend request accepted",
+                    "Your friend request was accepted!",
+                    "/friends",
+                    ct);
+            }
+            if (settings2 is null || settings2.FriendActivity)
+            {
+                await pushDelivery.DeliverAsync(
+                    db, userId2,
+                    "Friend request accepted",
+                    "Your friend request was accepted!",
+                    "/friends",
+                    ct);
+            }
+            return;
+        }
+
         var created = new List<Notification>();
 
         if (!existingKeys.Contains(key1) && (settings1 is null || settings1.FriendActivity))

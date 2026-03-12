@@ -47,7 +47,13 @@ public sealed class ChallengeCreatedSubscriber(
         var idempotencyKey = $"challenge_created:{data.ToUserId}:{data.ChallengeId}";
         if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
         {
-            logger.LogInformation("Duplicate challenge.created notification skipped (key={Key})", idempotencyKey);
+            logger.LogInformation("Duplicate notification detected (key={Key}), retrying push delivery", idempotencyKey);
+            await pushDelivery.DeliverAsync(
+                db, data.ToUserId,
+                "New challenge!",
+                "Someone challenged you — check it out!",
+                "/challenges",
+                ct);
             return;
         }
 

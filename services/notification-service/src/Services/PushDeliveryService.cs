@@ -16,6 +16,7 @@ public sealed class PushDeliveryService(
     IConfiguration configuration,
     ILogger<PushDeliveryService> logger)
 {
+    private readonly WebPushClient _webPushClient = new();
     /// <summary>
     /// Attempt to deliver a push notification to all of a user's registered devices.
     /// Best-effort: logs failures but does not throw.
@@ -107,8 +108,7 @@ public sealed class PushDeliveryService(
 
             var vapidDetails = new VapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
-            var client = new WebPushClient();
-            await client.SendNotificationAsync(pushSubscription, payload, vapidDetails, ct);
+            await _webPushClient.SendNotificationAsync(pushSubscription, payload, vapidDetails, ct);
 
             logger.LogDebug("Web push delivered to TokenId={TokenId}", token.Id);
             return true;

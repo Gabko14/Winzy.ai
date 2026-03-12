@@ -47,7 +47,13 @@ public sealed class ChallengeCompletedSubscriber(
         var idempotencyKey = $"challenge_completed:{data.UserId}:{data.ChallengeId}";
         if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
         {
-            logger.LogInformation("Duplicate challenge.completed notification skipped (key={Key})", idempotencyKey);
+            logger.LogInformation("Duplicate notification detected (key={Key}), retrying push delivery", idempotencyKey);
+            await pushDelivery.DeliverAsync(
+                db, data.UserId,
+                "Challenge completed!",
+                $"You completed a challenge — time for: {data.Reward}",
+                "/challenges",
+                ct);
             return;
         }
 
