@@ -8,6 +8,7 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
 {
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -37,6 +38,25 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
         modelBuilder.Entity<NotificationSettings>(b =>
         {
             b.HasIndex(s => s.UserId).IsUnique();
+        });
+
+        modelBuilder.Entity<DeviceToken>(b =>
+        {
+            b.HasIndex(t => t.UserId);
+
+            b.Property(t => t.Platform)
+                .HasMaxLength(32);
+
+            b.Property(t => t.Token)
+                .HasColumnType("text");
+
+            b.Property(t => t.DeviceId)
+                .HasMaxLength(512);
+
+            // One token per device per user
+            b.HasIndex(t => new { t.UserId, t.DeviceId })
+                .IsUnique()
+                .HasFilter("device_id IS NOT NULL");
         });
     }
 }

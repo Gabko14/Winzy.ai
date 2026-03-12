@@ -1,3 +1,5 @@
+/* global self, caches, fetch, Response, URL */
+
 /**
  * Winzy.ai Service Worker
  *
@@ -5,6 +7,10 @@
  * - Cache the app shell (HTML, JS, CSS) on install
  * - Serve from cache when offline, fall back to network
  * - Route fallback: serve index.html for SPA navigation requests
+ *
+ * Push notifications:
+ * - Listens for push events and displays notifications
+ * - Handles notification click to focus/open the app
  *
  * Server is the source of truth — this is NOT offline-first sync.
  */
@@ -69,6 +75,61 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       });
+    }),
+  );
+});
+
+// --- Push notification handling ---
+
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    // Non-JSON push — show a generic notification
+    payload = {
+      title: "Winzy.ai",
+      body: event.data.text() || "You have a new notification",
+    };
+  }
+
+  const title = payload.title || "Winzy.ai";
+  const options = {
+    body: payload.body || "",
+    icon: payload.icon || "/assets/icon.png",
+    badge: payload.badge || "/assets/favicon.png",
+    data: {
+      url: payload.url || "/",
+    },
+    // Vibrate gently — supportive, not alarming
+    vibrate: [100, 50, 100],
+    tag: payload.tag || "winzy-notification",
+    // Replace existing notification with same tag
+    renotify: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // If the app is already open, focus it and navigate
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.focus();
+          client.postMessage({ type: "NOTIFICATION_CLICK", url: targetUrl });
+          return;
+        }
+      }
+      // Otherwise open a new window
+      return self.clients.openWindow(targetUrl);
     }),
   );
 });
