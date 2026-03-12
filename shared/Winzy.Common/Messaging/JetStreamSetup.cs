@@ -19,6 +19,7 @@ public sealed class JetStreamSetup(INatsConnection connection, ILogger<JetStream
         new() { Name = "HABITS", Subjects = ["habit.>"] },
         new() { Name = "FRIENDS", Subjects = ["friend.>"] },
         new() { Name = "CHALLENGES", Subjects = ["challenge.>"] },
+        new() { Name = "VISIBILITY", Subjects = ["visibility.>"] },
     ];
 
     public async Task StartAsync(CancellationToken cancellationToken)

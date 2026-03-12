@@ -1,22 +1,28 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Xunit;
 
 namespace Winzy.SocialService.Tests;
 
+[Collection("SocialService")]
 public class HealthCheckTests
 {
+    private readonly SocialServiceFixture _fixture;
+
+    private CancellationToken CT => TestContext.Current.CancellationToken;
+
+    public HealthCheckTests(SocialServiceFixture fixture) => _fixture = fixture;
+
     [Fact]
     public async Task HealthEndpoint_ReturnsHealthyWithValidContract()
     {
-        await using var factory = new WebApplicationFactory<Program>();
-        using var client = factory.CreateClient();
+        using var client = _fixture.Factory.CreateClient();
 
-        var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        var response = await client.GetAsync("/health", CT);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(CT);
         var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
 
@@ -31,10 +37,9 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthEndpoint_ReturnsJsonContentType()
     {
-        await using var factory = new WebApplicationFactory<Program>();
-        using var client = factory.CreateClient();
+        using var client = _fixture.Factory.CreateClient();
 
-        var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        var response = await client.GetAsync("/health", CT);
 
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
     }
