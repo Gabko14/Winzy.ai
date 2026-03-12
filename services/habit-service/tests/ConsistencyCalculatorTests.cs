@@ -577,6 +577,164 @@ public class ConsistencyCalculatorTests
     }
 }
 
+// --- CalculateForDateRange tests ---
+
+public class CalculateForDateRangeTests
+{
+    private static Habit MakeHabit(
+        FrequencyType frequency = FrequencyType.Daily,
+        List<DayOfWeek>? customDays = null)
+    {
+        return new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "Test Habit",
+            Frequency = frequency,
+            CustomDays = customDays,
+            CreatedAt = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
+        };
+    }
+
+    [Fact]
+    public void Daily_AllCompleted_Returns100()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var completed = new HashSet<DateOnly>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_NoneCompleted_Returns0()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], start, end);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Daily_HalfCompleted_Returns50()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14); // 14 days
+
+        var completed = new HashSet<DateOnly>();
+        for (var d = start; d <= end; d = d.AddDays(2))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void RangeStartAfterEnd_Returns0()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 3, 1);
+        var end = new DateOnly(2025, 2, 1);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], start, end);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void SingleDayRange_Completed_Returns100()
+    {
+        var habit = MakeHabit();
+        var date = new DateOnly(2025, 2, 10);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [date], date, date);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void SingleDayRange_NotCompleted_Returns0()
+    {
+        var habit = MakeHabit();
+        var date = new DateOnly(2025, 2, 10);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], date, date);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Custom_MWF_OnlyCountsApplicableDays()
+    {
+        var customDays = new List<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday };
+        var habit = MakeHabit(FrequencyType.Custom, customDays);
+
+        // Feb 3-9 2025 (Mon-Sun): applicable days are Mon(3), Wed(5), Fri(7) = 3 days
+        var start = new DateOnly(2025, 2, 3);
+        var end = new DateOnly(2025, 2, 9);
+
+        var completed = new HashSet<DateOnly>
+        {
+            new DateOnly(2025, 2, 3), // Monday
+            new DateOnly(2025, 2, 5), // Wednesday
+        };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        // 2 of 3 applicable days = 66.7%
+        Assert.Equal(66.7, result);
+    }
+
+    [Fact]
+    public void Weekly_TwoWeeksOneCompleted_Returns50()
+    {
+        var habit = MakeHabit(FrequencyType.Weekly);
+
+        // Two full ISO weeks: Mon Feb 3 - Sun Feb 16
+        var start = new DateOnly(2025, 2, 3);
+        var end = new DateOnly(2025, 2, 16);
+
+        // Only complete in the first week
+        var completed = new HashSet<DateOnly> { new DateOnly(2025, 2, 5) };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void CompletionsOutsideRange_AreIgnored()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 7); // 7 days
+
+        // Completions outside the range
+        var completed = new HashSet<DateOnly>
+        {
+            new DateOnly(2025, 1, 31), // before range
+            new DateOnly(2025, 2, 8),  // after range
+            new DateOnly(2025, 2, 3),  // inside range
+        };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        // 1 of 7 days = 14.3%
+        Assert.Equal(14.3, result);
+    }
+}
+
 // --- Flame level mapping tests ---
 
 public class FlameLevelTests

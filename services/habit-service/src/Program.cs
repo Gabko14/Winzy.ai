@@ -337,6 +337,47 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
     });
 });
 
+// --- Completions by date (authenticated) ---
+
+app.MapGet("/habits/completions", async (HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(dateParam))
+        return Results.BadRequest(new { error = "date query parameter is required (YYYY-MM-DD)" });
+
+    if (!DateOnly.TryParse(dateParam, out var date))
+        return Results.BadRequest(new { error = $"Invalid date format: {dateParam}" });
+
+    var habits = await db.Habits
+        .Where(h => h.UserId == userId && h.ArchivedAt == null)
+        .OrderBy(h => h.CreatedAt)
+        .Select(h => new
+        {
+            h.Id,
+            h.Name,
+            h.Icon,
+            h.Color,
+            Completed = db.Completions.Any(c => c.HabitId == h.Id && c.LocalDate == date)
+        })
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        date = date.ToString("yyyy-MM-dd"),
+        habits = habits.Select(h => new
+        {
+            id = h.Id,
+            name = h.Name,
+            icon = h.Icon,
+            color = h.Color,
+            completed = h.Completed
+        })
+    });
+});
+
 // --- Internal endpoint (service-to-service, no auth check) ---
 
 app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) =>
@@ -361,6 +402,42 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
             completedAt = c.CompletedAt
         })
     }));
+});
+
+// --- Internal endpoint: range-specific consistency (service-to-service, no auth check) ---
+
+app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, HttpContext ctx, HabitDbContext db) =>
+{
+    var fromParam = ctx.Request.Query["from"].FirstOrDefault();
+    var toParam = ctx.Request.Query["to"].FirstOrDefault();
+
+    if (string.IsNullOrWhiteSpace(fromParam) || string.IsNullOrWhiteSpace(toParam))
+        return Results.BadRequest(new { error = "from and to query parameters are required (YYYY-MM-DD)" });
+
+    if (!DateOnly.TryParse(fromParam, out var from))
+        return Results.BadRequest(new { error = $"Invalid from date: {fromParam}" });
+
+    if (!DateOnly.TryParse(toParam, out var to))
+        return Results.BadRequest(new { error = $"Invalid to date: {toParam}" });
+
+    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == habitId && h.ArchivedAt == null);
+    if (habit is null)
+        return Results.NotFound();
+
+    var completedDates = await db.Completions
+        .Where(c => c.HabitId == habitId && c.LocalDate >= from && c.LocalDate <= to)
+        .Select(c => c.LocalDate)
+        .ToListAsync();
+
+    var consistency = ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to);
+
+    return Results.Ok(new
+    {
+        habitId,
+        from = from.ToString("yyyy-MM-dd"),
+        to = to.ToString("yyyy-MM-dd"),
+        consistency
+    });
 });
 
 // --- Public endpoint (no auth, used for shareable flame profiles) ---
