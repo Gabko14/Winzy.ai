@@ -155,6 +155,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:5000
       Jwt__Secret: winzy-dev-jwt-secret-minimum-32-characters-long!!
+      RateLimiting__AuthPermitLimit: 1000
       ReverseProxy__Clusters__auth-cluster__Destinations__destination1__Address: http://auth-service:5001
       ReverseProxy__Clusters__habit-cluster__Destinations__destination1__Address: http://habit-service:5002
       ReverseProxy__Clusters__social-cluster__Destinations__destination1__Address: http://social-service:5003
