@@ -8,12 +8,14 @@ using Winzy.Contracts;
 using Winzy.Contracts.Events;
 using Winzy.NotificationService.Data;
 using Winzy.NotificationService.Entities;
+using Winzy.NotificationService.Services;
 
 namespace Winzy.NotificationService.Subscribers;
 
 public sealed class ChallengeCompletedSubscriber(
     INatsConnection connection,
     IServiceProvider serviceProvider,
+    PushDeliveryService pushDelivery,
     ILogger<ChallengeCompletedSubscriber> logger)
     : NatsEventSubscriber<ChallengeCompletedEvent>(
         connection,
@@ -67,5 +69,12 @@ public sealed class ChallengeCompletedSubscriber(
         logger.LogInformation(
             "Created ChallengeCompleted notification {NotificationId} for UserId={UserId}",
             notification.Id, data.UserId);
+
+        await pushDelivery.DeliverAsync(
+            db, data.UserId,
+            "Challenge completed!",
+            $"You completed a challenge — time for: {data.Reward}",
+            "/challenges",
+            ct);
     }
 }

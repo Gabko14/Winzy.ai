@@ -8,12 +8,14 @@ using Winzy.Contracts;
 using Winzy.Contracts.Events;
 using Winzy.NotificationService.Data;
 using Winzy.NotificationService.Entities;
+using Winzy.NotificationService.Services;
 
 namespace Winzy.NotificationService.Subscribers;
 
 public sealed class FriendRequestSentSubscriber(
     INatsConnection connection,
     IServiceProvider serviceProvider,
+    PushDeliveryService pushDelivery,
     ILogger<FriendRequestSentSubscriber> logger)
     : NatsEventSubscriber<FriendRequestSentEvent>(
         connection,
@@ -63,5 +65,12 @@ public sealed class FriendRequestSentSubscriber(
         logger.LogInformation(
             "Created FriendRequestSent notification {NotificationId} for UserId={ToUserId}",
             notification.Id, data.ToUserId);
+
+        await pushDelivery.DeliverAsync(
+            db, data.ToUserId,
+            "New friend request",
+            "Someone sent you a friend request",
+            "/friends",
+            ct);
     }
 }

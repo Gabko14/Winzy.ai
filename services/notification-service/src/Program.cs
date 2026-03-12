@@ -13,7 +13,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddServiceDatabase<NotificationDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
-builder.Services.AddHttpClient("webpush");
 builder.Services.AddSingleton<PushDeliveryService>();
 builder.Services.AddHostedService<HabitCompletedSubscriber>();
 builder.Services.AddHostedService<FriendRequestSentSubscriber>();
