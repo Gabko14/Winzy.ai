@@ -37,10 +37,8 @@ async function openCreateModal(page: Page) {
   // Today empty CTA navigates to HabitListScreen
   await page.getByText("Create your first habit").click();
 
-  // HabitListScreen renders — either empty state or the list header
-  await expect(
-    page.getByText("My Habits").or(page.getByText("No habits yet")),
-  ).toBeVisible({ timeout: 10_000 });
+  // HabitListScreen renders
+  await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
 
   // If the habit list is empty, click the empty-state CTA to open the modal
   const emptyCta = page.getByText("Create your first habit");
