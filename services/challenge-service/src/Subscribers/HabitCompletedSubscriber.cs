@@ -60,7 +60,15 @@ public sealed class HabitCompletedSubscriber(
                 var challengeStart = DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);
                 if (completionDate >= challengeStart)
                 {
-                    challenge.CompletionCount++;
+                    var processedDates = challenge.GetProcessedDates();
+                    if (!processedDates.Add(completionDate))
+                    {
+                        logger.LogDebug(
+                            "Completion on {Date} already processed for challenge {ChallengeId}, skipping",
+                            completionDate, challenge.Id);
+                        continue;
+                    }
+                    challenge.SetProcessedDates(processedDates);
                 }
                 else
                 {
@@ -85,6 +93,16 @@ public sealed class HabitCompletedSubscriber(
                         data.Date, challenge.Id, rangeStart);
                     continue;
                 }
+
+                var processedDates = challenge.GetProcessedDates();
+                if (!processedDates.Add(completionDate))
+                {
+                    logger.LogDebug(
+                        "Completion on {Date} already processed for custom-range challenge {ChallengeId}, skipping",
+                        completionDate, challenge.Id);
+                    continue;
+                }
+                challenge.SetProcessedDates(processedDates);
             }
 
             // For improvement milestones, only process events on or after challenge creation
