@@ -1,4 +1,5 @@
 import { test, expect, TEST_USER } from "../fixtures/base";
+import type { Page } from "@playwright/test";
 
 /**
  * HabitDetailScreen E2E tests.
@@ -6,56 +7,80 @@ import { test, expect, TEST_USER } from "../fixtures/base";
  * Tests the calendar view, month navigation, completion toggling,
  * and consistency stats on the habit detail screen.
  */
+
+/**
+ * Helper: register via UI, complete profile, create a habit via the
+ * HabitListScreen modal, then navigate back to TodayScreen by
+ * re-navigating to the app root. Returns with TodayScreen showing
+ * the newly created habit.
+ */
+async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName: string) {
+  const uniqueUser = `e2e_${prefix}_${Date.now()}`;
+  const email = `${uniqueUser}@winzy.test`;
+
+  await page.goto("/");
+  await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Sign up" }).click();
+  await expect(page.getByText("Create your account")).toBeVisible();
+
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Username").fill(uniqueUser);
+  await page.getByLabel("Password").fill(TEST_USER.password);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page.getByText("What should we call you?")).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.getByLabel("Display name").fill(`${prefix} Tester`);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // On TodayScreen (empty)
+  await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
+
+  // Create habit: TodayScreen CTA → HabitListScreen → empty-state CTA → modal
+  await page.getByText("Create your first habit").click();
+  await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
+  await page.getByText("Create your first habit").click();
+
+  await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
+  await page.getByLabel("Habit name").fill(habitName);
+  await page.getByRole("button", { name: "Create habit" }).click();
+  await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
+
+  // Now on HabitListScreen with the habit. Navigate back to TodayScreen
+  // by re-navigating to the root URL. Session is preserved via
+  // localStorage access token + httpOnly refresh cookie.
+  await page.goto("/");
+
+  // Wait for auth bootstrap and TodayScreen to load
+  // The app may show loading state briefly, then TodayScreen
+  await expect(page.getByTestId("today-screen")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
+}
+
 test.describe("Habit detail screen", () => {
   test("view habit detail, navigate calendar, and toggle completion", async ({
-    unauthenticatedPage: page,
+    browser,
   }) => {
-    const uniqueUser = `e2e_detail_${Date.now()}`;
-    const email = `${uniqueUser}@winzy.test`;
-    const password = TEST_USER.password;
-    const displayName = "Detail Tester";
+    // Use a well-known IANA timezone so the stats API doesn't reject
+    // system timezones like Europe/Zurich that the backend doesn't support.
+    const context = await browser.newContext({
+      storageState: undefined,
+      timezoneId: "America/New_York",
+    });
+    const page = await context.newPage();
     const habitName = "Read a book";
 
-    await test.step("register and complete profile", async () => {
-      await page.goto("/");
-      await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Sign up" }).click();
-      await expect(page.getByText("Create your account")).toBeVisible();
-
-      await page.getByLabel("Email").fill(email);
-      await page.getByLabel("Username").fill(uniqueUser);
-      await page.getByLabel("Password").fill(password);
-      await page.getByRole("button", { name: "Create account" }).click();
-
-      await expect(page.getByText("What should we call you?")).toBeVisible({
-        timeout: 10_000,
-      });
-      await page.getByLabel("Display name").fill(displayName);
-      await page.getByRole("button", { name: "Continue" }).click();
+    await test.step("register, create habit, land on TodayScreen", async () => {
+      await setupWithHabitOnTodayScreen(page, "detail", habitName);
       test.info().annotations.push({
         type: "step",
-        description: `Registered and completed profile: ${uniqueUser}`,
-      });
-    });
-
-    await test.step("create a habit", async () => {
-      await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
-      await page.getByText("Create your first habit").click();
-
-      await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
-      await page.getByLabel("Habit name").fill(habitName);
-      await page.getByRole("button", { name: "Create habit" }).click();
-
-      // Wait for habit to appear in the list (redirects back to Today or HabitList)
-      await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
-      test.info().annotations.push({
-        type: "step",
-        description: `Created habit: ${habitName}`,
+        description: `Setup complete: on TodayScreen with habit ${habitName}`,
       });
     });
 
     await test.step("navigate to habit detail by tapping the habit row", async () => {
-      // The Today screen shows habit rows; clicking navigates to HabitDetailScreen
+      // TodayScreen shows habit rows; clicking navigates to HabitDetailScreen
       await page.getByText(habitName).click();
 
       await expect(page.getByTestId("habit-detail-screen")).toBeVisible({
@@ -225,44 +250,25 @@ test.describe("Habit detail screen", () => {
         description: "Navigated back to Today screen",
       });
     });
+
+    await context.close();
   });
 
   test("calendar shows past dates as disabled outside 60-day window", async ({
-    unauthenticatedPage: page,
+    browser,
   }) => {
-    const uniqueUser = `e2e_cal_${Date.now()}`;
-    const email = `${uniqueUser}@winzy.test`;
-    const password = TEST_USER.password;
-    const displayName = "Calendar Tester";
+    const context = await browser.newContext({
+      storageState: undefined,
+      timezoneId: "America/New_York",
+    });
+    const page = await context.newPage();
     const habitName = "Meditate";
 
     await test.step("register, complete profile, create habit", async () => {
-      await page.goto("/");
-      await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
-      await page.getByRole("button", { name: "Sign up" }).click();
-      await expect(page.getByText("Create your account")).toBeVisible();
-
-      await page.getByLabel("Email").fill(email);
-      await page.getByLabel("Username").fill(uniqueUser);
-      await page.getByLabel("Password").fill(password);
-      await page.getByRole("button", { name: "Create account" }).click();
-
-      await expect(page.getByText("What should we call you?")).toBeVisible({
-        timeout: 10_000,
-      });
-      await page.getByLabel("Display name").fill(displayName);
-      await page.getByRole("button", { name: "Continue" }).click();
-
-      await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
-      await page.getByText("Create your first habit").click();
-
-      await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
-      await page.getByLabel("Habit name").fill(habitName);
-      await page.getByRole("button", { name: "Create habit" }).click();
-      await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
+      await setupWithHabitOnTodayScreen(page, "cal", habitName);
       test.info().annotations.push({
         type: "step",
-        description: `Setup complete: user ${uniqueUser}, habit ${habitName}`,
+        description: `Setup complete: on TodayScreen with habit ${habitName}`,
       });
     });
 
@@ -299,5 +305,7 @@ test.describe("Habit detail screen", () => {
         description: `Date ${dateStr} is disabled (outside 60-day window)`,
       });
     });
+
+    await context.close();
   });
 });

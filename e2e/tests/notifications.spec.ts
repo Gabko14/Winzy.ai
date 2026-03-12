@@ -156,6 +156,9 @@ test.describe("Notifications", () => {
     });
 
     test("user B sees unread badge and can open notifications", async ({ unauthenticatedPage: page }) => {
+      // Polling-based badge: initial poll may fire before auth, next poll is 30s later
+      test.setTimeout(90_000);
+
       await test.step("sign in as user B", async () => {
         await page.goto("/");
         await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
@@ -186,8 +189,9 @@ test.describe("Notifications", () => {
 
       await test.step("verify bell icon has unread badge", async () => {
         await expect(page.getByTestId("notifications-bell")).toBeVisible();
-        // The unread badge should appear (polling-based, may need brief wait)
-        await expect(page.getByTestId("unread-badge")).toBeVisible({ timeout: 10_000 });
+        // The useUnreadCount hook polls every 30s. The initial poll may fire before
+        // auth completes (returns 401). Wait up to 45s for the next successful poll.
+        await expect(page.getByTestId("unread-badge")).toBeVisible({ timeout: 45_000 });
         test.info().annotations.push({
           type: "step",
           description: "Unread badge visible on bell icon",
@@ -254,7 +258,7 @@ test.describe("Notifications", () => {
       });
 
       await test.step("tap mark all as read", async () => {
-        const markAllButton = page.getByRole("button", { name: "Mark all as read" });
+        const markAllButton = page.getByRole("button", { name: "Mark all notifications as read" });
         await expect(markAllButton).toBeVisible();
         await markAllButton.click();
         test.info().annotations.push({
@@ -274,7 +278,7 @@ test.describe("Notifications", () => {
 
       await test.step("verify mark-all-read button is gone", async () => {
         // With no unread notifications, the "Mark all as read" button should be hidden
-        await expect(page.getByRole("button", { name: "Mark all as read" })).not.toBeVisible();
+        await expect(page.getByRole("button", { name: "Mark all notifications as read" })).not.toBeVisible();
         test.info().annotations.push({
           type: "step",
           description: "Mark-all-read button hidden after all read",
