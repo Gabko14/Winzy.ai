@@ -8,12 +8,14 @@ using Winzy.Contracts;
 using Winzy.Contracts.Events;
 using Winzy.NotificationService.Data;
 using Winzy.NotificationService.Entities;
+using Winzy.NotificationService.Services;
 
 namespace Winzy.NotificationService.Subscribers;
 
 public sealed class FriendRequestAcceptedSubscriber(
     INatsConnection connection,
     IServiceProvider serviceProvider,
+    PushDeliveryService pushDelivery,
     ILogger<FriendRequestAcceptedSubscriber> logger)
     : NatsEventSubscriber<FriendRequestAcceptedEvent>(
         connection,
@@ -103,9 +105,18 @@ public sealed class FriendRequestAcceptedSubscriber(
         {
             await db.SaveChangesAsync(ct);
             foreach (var n in created)
+            {
                 logger.LogInformation(
                     "Created FriendRequestAccepted notification {NotificationId} for UserId={UserId}",
                     n.Id, n.UserId);
+
+                await pushDelivery.DeliverAsync(
+                    db, n.UserId,
+                    "Friend request accepted",
+                    "Your friend request was accepted!",
+                    "/friends",
+                    ct);
+            }
         }
     }
 }

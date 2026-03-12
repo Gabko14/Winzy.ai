@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using WebPush;
 using Winzy.NotificationService.Data;
 using Winzy.NotificationService.Entities;
 
@@ -8,11 +9,10 @@ namespace Winzy.NotificationService.Services;
 
 /// <summary>
 /// Delivers push notifications to registered devices.
-/// Currently supports Web Push (via the Web Push protocol).
+/// Uses the Web Push protocol with VAPID signing and RFC 8291/8188 payload encryption.
 /// Expo push is stubbed for when native apps ship.
 /// </summary>
 public sealed class PushDeliveryService(
-    IHttpClientFactory httpClientFactory,
     IConfiguration configuration,
     ILogger<PushDeliveryService> logger)
 {
@@ -73,8 +73,8 @@ public sealed class PushDeliveryService(
     {
         try
         {
-            var subscription = JsonSerializer.Deserialize<WebPushSubscription>(token.Token);
-            if (subscription?.Endpoint is null)
+            var subscription = JsonSerializer.Deserialize<WebPushSubscriptionDto>(token.Token);
+            if (subscription?.Endpoint is null || subscription.Keys?.P256dh is null || subscription.Keys?.Auth is null)
             {
                 logger.LogWarning("Invalid web push subscription for TokenId={TokenId}", token.Id);
                 return false;
@@ -99,47 +99,38 @@ public sealed class PushDeliveryService(
                 badge = "/assets/favicon.png"
             });
 
-            // Use the Web Push protocol via HttpClient
-            // The actual VAPID signing and encryption would use a library like WebPush-NetCore.
-            // For now we send a plain POST to the subscription endpoint.
-            // In production, swap this with proper Web Push encryption (RFC 8291).
-            var client = httpClientFactory.CreateClient("webpush");
-            var request = new HttpRequestMessage(HttpMethod.Post, subscription.Endpoint)
-            {
-                Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
-            };
+            var pushSubscription = new PushSubscription(
+                subscription.Endpoint,
+                subscription.Keys.P256dh,
+                subscription.Keys.Auth);
 
-            // Add TTL header (required by Web Push protocol)
-            request.Headers.TryAddWithoutValidation("TTL", "86400");
+            var vapidDetails = new VapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
-            var response = await client.SendAsync(request, ct);
+            var client = new WebPushClient();
+            await client.SendNotificationAsync(pushSubscription, payload, vapidDetails, ct);
 
-            if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Created)
-            {
-                logger.LogDebug("Web push delivered to TokenId={TokenId}", token.Id);
-                return true;
-            }
-
-            // 404 or 410 = subscription expired, remove it
-            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
-                or System.Net.HttpStatusCode.Gone)
-            {
-                logger.LogInformation(
-                    "Web push subscription expired (HTTP {Status}) for TokenId={TokenId}",
-                    (int)response.StatusCode, token.Id);
-                return false;
-            }
-
-            // 429 = rate limited, keep token
-            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            {
-                logger.LogWarning("Web push rate limited for TokenId={TokenId}", token.Id);
-                return true;
-            }
-
+            logger.LogDebug("Web push delivered to TokenId={TokenId}", token.Id);
+            return true;
+        }
+        catch (WebPushException ex) when (
+            ex.StatusCode == System.Net.HttpStatusCode.NotFound ||
+            ex.StatusCode == System.Net.HttpStatusCode.Gone)
+        {
+            logger.LogInformation(
+                "Web push subscription expired (HTTP {Status}) for TokenId={TokenId}",
+                (int)ex.StatusCode, token.Id);
+            return false;
+        }
+        catch (WebPushException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            logger.LogWarning("Web push rate limited for TokenId={TokenId}", token.Id);
+            return true; // Keep token, rate limited
+        }
+        catch (WebPushException ex)
+        {
             logger.LogWarning(
-                "Web push delivery failed (HTTP {Status}) for TokenId={TokenId}",
-                (int)response.StatusCode, token.Id);
+                "Web push delivery failed (HTTP {Status}) for TokenId={TokenId}: {Message}",
+                (int)ex.StatusCode, token.Id, ex.Message);
             return true; // Keep token for transient errors
         }
         catch (Exception ex)
@@ -166,6 +157,6 @@ public sealed class PushDeliveryService(
         return true;
     }
 
-    private sealed record WebPushSubscription(string? Endpoint, WebPushKeys? Keys);
-    private sealed record WebPushKeys(string? P256dh, string? Auth);
+    private sealed record WebPushSubscriptionDto(string? Endpoint, WebPushKeysDto? Keys);
+    private sealed record WebPushKeysDto(string? P256dh, string? Auth);
 }
