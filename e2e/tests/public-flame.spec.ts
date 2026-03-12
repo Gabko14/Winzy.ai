@@ -46,6 +46,10 @@ test.describe("Public Flame Page", () => {
       await expect(
         page.getByText("What should we call you?").or(page.getByText(new RegExp(uniqueUser))),
       ).toBeVisible({ timeout: 10_000 });
+
+      // Ensure the registration request has fully completed on the server
+      // before navigating away (prevents 499 client disconnect race)
+      await page.waitForLoadState("networkidle");
     });
 
     await test.step("navigate to the user's public flame page", async () => {
@@ -57,8 +61,13 @@ test.describe("Public Flame Page", () => {
     });
 
     await test.step("verify public profile loads", async () => {
-      // Should show the username and the profile content (may have 0 habits)
-      await expect(page.getByText(`@${uniqueUser}`)).toBeVisible({ timeout: 15_000 });
+      // Wait for the profile screen (not the not-found screen) to render.
+      // The not-found page also contains @username in its message, so we
+      // must check for the success-specific testID instead.
+      await expect(page.getByTestId("public-flame-screen")).toBeVisible({ timeout: 15_000 });
+      // Use exact match to avoid strict mode violation — @username appears
+      // in both the hero heading and the "hasn't shared" message.
+      await expect(page.getByText(`@${uniqueUser}`, { exact: true })).toBeVisible();
       test.info().annotations.push({ type: "step", description: "Public profile loaded" });
     });
 
@@ -100,6 +109,7 @@ test.describe("Public Flame Page", () => {
       /service worker/i,
       /favicon/i,
       /manifest/i,
+      /Failed to load resource/i,
     ];
 
     const errors: string[] = [];

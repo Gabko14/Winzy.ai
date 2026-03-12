@@ -207,6 +207,7 @@ services:
       Nats__Url: nats://nats:4222
       ASPNETCORE_URLS: http://+:5002
       Services__AuthServiceUrl: http://auth-service:5001
+      Services__SocialServiceUrl: http://social-service:5003
     depends_on:
       habit-db:
         condition: service_healthy

@@ -30,6 +30,13 @@ builder.Services.AddHttpClient("AuthService", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient("SocialService", client =>
+{
+    var socialUrl = builder.Configuration["Services:SocialServiceUrl"] ?? "http://social-service:5003";
+    client.BaseAddress = new Uri(socialUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
@@ -322,9 +329,11 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
         flameLevel = flameLevel.ToString().ToLowerInvariant(),
         totalCompletions,
         completionsInWindow,
+        completedToday = completedDates.Contains(today),
         windowDays = ConsistencyCalculator.WindowDays,
         windowStart = windowStart.ToString("yyyy-MM-dd"),
-        today = today.ToString("yyyy-MM-dd")
+        today = today.ToString("yyyy-MM-dd"),
+        completedDates = completedDates.Select(d => d.ToString("yyyy-MM-dd"))
     });
 });
 
@@ -379,6 +388,32 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         return Results.NotFound();
     }
 
+    // Check visibility with Social Service (fail-safe: empty habits if unavailable)
+    HashSet<Guid> visibleHabitIds;
+    HashSet<Guid> excludedHabitIds;
+    bool defaultIsPublic;
+    try
+    {
+        var socialClient = httpClientFactory.CreateClient("SocialService");
+        using var visResponse = await socialClient.GetAsync(
+            $"/social/internal/visible-habits/{resolvedUserId}?viewer=public");
+        if (!visResponse.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Social service returned {StatusCode} for visibility check, failing safe", visResponse.StatusCode);
+            return Results.Ok(new { username, habits = Array.Empty<object>() });
+        }
+
+        var visData = await visResponse.Content.ReadFromJsonAsync<VisibilityResponse>();
+        visibleHabitIds = visData?.HabitIds?.ToHashSet() ?? [];
+        excludedHabitIds = visData?.ExcludedHabitIds?.ToHashSet() ?? [];
+        defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        logger.LogWarning(ex, "Failed to check visibility via social service for user {UserId}, failing safe", resolvedUserId);
+        return Results.Ok(new { username, habits = Array.Empty<object>() });
+    }
+
     var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
     TimeZoneInfo tz;
     try
@@ -398,7 +433,13 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         .OrderBy(h => h.CreatedAt)
         .ToListAsync();
 
-    var result = habits.Select(h =>
+    // When default is public, show all habits EXCEPT those explicitly marked non-public.
+    // When default is private, show only explicitly visible habits.
+    var filteredHabits = defaultIsPublic
+        ? habits.Where(h => !excludedHabitIds.Contains(h.Id)).ToList()
+        : habits.Where(h => visibleHabitIds.Contains(h.Id)).ToList();
+
+    var result = filteredHabits.Select(h =>
     {
         var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
         var consistency = ConsistencyCalculator.Calculate(h, completedDates, tz);
@@ -443,12 +484,48 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
         return Results.NotFound();
     }
 
-    var habits = await db.Habits
+    // Check visibility with Social Service (fail-safe: show "none" flame if unavailable)
+    HashSet<Guid> visibleHabitIds;
+    HashSet<Guid> excludedHabitIds;
+    bool defaultIsPublic;
+    try
+    {
+        var socialClient = httpClientFactory.CreateClient("SocialService");
+        using var visResponse = await socialClient.GetAsync(
+            $"/social/internal/visible-habits/{resolvedUserId}?viewer=public");
+        if (!visResponse.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Social service returned {StatusCode} for badge visibility check, failing safe", visResponse.StatusCode);
+            visibleHabitIds = [];
+            excludedHabitIds = [];
+            defaultIsPublic = false;
+        }
+        else
+        {
+            var visData = await visResponse.Content.ReadFromJsonAsync<VisibilityResponse>();
+            visibleHabitIds = visData?.HabitIds?.ToHashSet() ?? [];
+            excludedHabitIds = visData?.ExcludedHabitIds?.ToHashSet() ?? [];
+            defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        logger.LogWarning(ex, "Failed to check badge visibility via social service for user {UserId}, failing safe", resolvedUserId);
+        visibleHabitIds = [];
+        excludedHabitIds = [];
+        defaultIsPublic = false;
+    }
+
+    var allHabits = await db.Habits
         .Where(h => h.UserId == resolvedUserId && h.ArchivedAt == null)
         .Include(h => h.Completions)
         .ToListAsync();
 
-    // Calculate aggregate consistency across all habits
+    var habits = defaultIsPublic
+        ? allHabits.Where(h => !excludedHabitIds.Contains(h.Id)).ToList()
+        : allHabits.Where(h => visibleHabitIds.Contains(h.Id)).ToList();
+
+    // Calculate aggregate consistency across visible habits
     double aggregateConsistency = 0;
     if (habits.Count > 0)
     {
@@ -536,6 +613,7 @@ internal record CreateHabitRequest(string Name, string? Icon, string? Color, Fre
 internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays);
 internal record CompleteHabitRequest(string? Date, string Timezone);
 internal record ResolvedUserResponse(Guid UserId);
+internal record VisibilityResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

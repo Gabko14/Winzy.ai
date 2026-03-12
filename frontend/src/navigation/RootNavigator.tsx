@@ -11,9 +11,10 @@ import { ProfileScreen } from "../screens/ProfileScreen";
 import { EditProfileScreen } from "../screens/EditProfileScreen";
 import { HabitListScreen } from "../screens/HabitListScreen";
 import { TodayScreen } from "../screens/TodayScreen";
+import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
 
-type AppScreen = "home" | "habits" | "profile" | "editProfile";
+type AppScreen = "home" | "habits" | "profile" | "editProfile" | "habitDetail";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -45,11 +46,16 @@ export function RootNavigator() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
   const goToProfile = useCallback(() => setScreen("profile"), []);
   const goToEditProfile = useCallback(() => setScreen("editProfile"), []);
   const goToHome = useCallback(() => setScreen("home"), []);
   const goToHabits = useCallback(() => setScreen("habits"), []);
+  const handleHabitPress = useCallback((habitId: string) => {
+    setSelectedHabitId(habitId);
+    setScreen("habitDetail");
+  }, []);
 
   const handleProfileCompletion = useCallback(() => {
     setProfileCompleted(true);
@@ -125,6 +131,17 @@ export function RootNavigator() {
     );
   }
 
+  // Habit detail screen
+  if (screen === "habitDetail" && selectedHabitId) {
+    return (
+      <>
+        <OfflineIndicator />
+        <HabitDetailScreen habitId={selectedHabitId} onBack={goToHome} />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // Habits management screen
   if (screen === "habits") {
     return (
@@ -140,7 +157,7 @@ export function RootNavigator() {
   return (
     <>
       <OfflineIndicator />
-      <TodayScreen onCreateHabit={goToHabits} />
+      <TodayScreen onCreateHabit={goToHabits} onHabitPress={handleHabitPress} />
       <StatusBar style="auto" />
     </>
   );

@@ -34,14 +34,21 @@ public sealed class UserDeletedSubscriber(
 
         // Delete entries that reference the deleted user in JSONB data
         // (e.g. friend.request.accepted entries where the other user is the actor
-        // but the deleted user appears in the data payload)
+        // but the deleted user appears in the data payload).
+        // Uses JSONB operators on known fields to avoid false-positive LIKE matches.
         var userIdStr = data.UserId.ToString();
         var refDeleted = await db.Database.ExecuteSqlAsync(
             $"""
             DELETE FROM feed_entries
             WHERE actor_id != {data.UserId}
               AND data IS NOT NULL
-              AND (data::text LIKE '%' || {userIdStr} || '%')
+              AND (
+                   data->>'userId' = {userIdStr}
+                OR data->>'userId1' = {userIdStr}
+                OR data->>'userId2' = {userIdStr}
+                OR data->>'fromUserId' = {userIdStr}
+                OR data->>'toUserId' = {userIdStr}
+              )
             """, ct);
 
         logger.LogInformation(

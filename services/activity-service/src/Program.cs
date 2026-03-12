@@ -131,56 +131,71 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
         }
     }
 
-    // Over-fetch to compensate for visibility filtering
-    var fetchLimit = (limit + 1) * 2;
+    // Fetch in batches, applying visibility filtering until we have enough
+    // visible entries or exhaust the DB. This prevents returning fewer than
+    // `limit` items when many entries are filtered out.
+    const int maxIterations = 5;
+    var batchSize = (limit + 1) * 2;
+    var filtered = new List<FeedEntryDto>();
+    var pageCursor = cursor;
+    var exhausted = false;
 
-    var query = db.FeedEntries
-        .Where(e => actorIds.Contains(e.ActorId));
-
-    if (cursor.HasValue)
-        query = query.Where(e => e.CreatedAt < cursor.Value);
-
-    var rawEntries = await query
-        .OrderByDescending(e => e.CreatedAt)
-        .Take(fetchLimit)
-        .Select(e => new
-        {
-            e.Id,
-            actorId = e.ActorId,
-            eventType = e.EventType,
-            data = e.Data,
-            createdAt = e.CreatedAt
-        })
-        .ToListAsync();
-
-    // Apply visibility filtering: hide friend's habit events for non-visible habits
-    var filtered = rawEntries.Where(e =>
+    for (var iter = 0; iter < maxIterations && filtered.Count <= limit && !exhausted; iter++)
     {
-        // User's own entries are always visible
-        if (e.actorId == userId)
-            return true;
+        var batchQuery = db.FeedEntries
+            .Where(e => actorIds.Contains(e.ActorId));
 
-        // Non-habit events are always visible (friend accepted, challenge events, etc.)
-        if (!habitEventTypes.Contains(e.eventType))
-            return true;
+        if (pageCursor.HasValue)
+            batchQuery = batchQuery.Where(e => e.CreatedAt < pageCursor.Value);
 
-        // Check if the habit is visible to the requesting user
-        if (!visibleHabitsPerFriend.TryGetValue(e.actorId, out var visibleHabitIds) || visibleHabitIds is null)
-            return false;
+        var rawEntries = await batchQuery
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(batchSize)
+            .Select(e => new FeedEntryDto(e.Id, e.ActorId, e.EventType, e.Data, e.CreatedAt))
+            .ToListAsync();
 
-        // Extract habitId from the JSONB data
-        if (e.data is not null && e.data.RootElement.TryGetProperty("habitId", out var habitIdProp))
+        if (rawEntries.Count < batchSize)
+            exhausted = true;
+
+        if (rawEntries.Count == 0)
+            break;
+
+        // Advance cursor to the oldest entry in this batch
+        pageCursor = rawEntries[^1].CreatedAt;
+
+        // Apply visibility filtering: hide friend's habit events for non-visible habits
+        foreach (var e in rawEntries)
         {
-            if (Guid.TryParse(habitIdProp.GetString(), out var habitId))
-                return visibleHabitIds.Contains(habitId);
-        }
+            // User's own entries are always visible
+            if (e.ActorId == userId)
+            {
+                filtered.Add(e);
+                continue;
+            }
 
-        return false;
-    }).ToList();
+            // Non-habit events are always visible (friend accepted, challenge events, etc.)
+            if (!habitEventTypes.Contains(e.EventType))
+            {
+                filtered.Add(e);
+                continue;
+            }
+
+            // Check if the habit is visible to the requesting user
+            if (!visibleHabitsPerFriend.TryGetValue(e.ActorId, out var visibleHabitIds) || visibleHabitIds is null)
+                continue;
+
+            // Extract habitId from the JSONB data
+            if (e.Data is not null && e.Data.RootElement.TryGetProperty("habitId", out var habitIdProp))
+            {
+                if (Guid.TryParse(habitIdProp.GetString(), out var habitId) && visibleHabitIds.Contains(habitId))
+                    filtered.Add(e);
+            }
+        }
+    }
 
     var hasMore = filtered.Count > limit;
-    var page = hasMore ? filtered[..limit] : filtered;
-    var nextCursor = hasMore ? page[^1].createdAt.ToString("O") : null;
+    var page = hasMore ? filtered.GetRange(0, limit) : filtered;
+    var nextCursor = hasMore ? page[^1].CreatedAt.ToString("O") : null;
 
     return Results.Ok(new
     {
@@ -203,6 +218,7 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 
 // --- DTOs ---
 
+internal record FeedEntryDto(Guid Id, Guid ActorId, string EventType, JsonDocument? Data, DateTimeOffset CreatedAt);
 internal record FriendsListResponse(List<Guid> FriendIds);
 internal record VisibleHabitsResponse(List<Guid> HabitIds, string DefaultVisibility);
 

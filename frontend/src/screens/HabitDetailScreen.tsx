@@ -228,7 +228,6 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
 
   // Track completed dates locally for optimistic calendar updates
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set());
-  const [datesLoaded, setDatesLoaded] = useState(false);
 
   // Calendar month state — default to current month
   const now = new Date();
@@ -246,12 +245,12 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
     }, [refresh]),
   );
 
-  // Mark dates as loaded once stats arrive so we know the calendar is ready
+  // Populate completed dates from stats when they load or refresh
   useEffect(() => {
-    if (stats && !datesLoaded) {
-      setDatesLoaded(true);
+    if (stats) {
+      setCompletedDates(new Set(stats.completedDates));
     }
-  }, [stats, datesLoaded]);
+  }, [stats]);
 
   const handleToggleDate = useCallback(
     async (date: string) => {
@@ -299,28 +298,25 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
   );
 
   const handlePrevMonth = useCallback(() => {
-    setCalMonth((m) => {
-      if (m === 0) {
-        setCalYear((y) => y - 1);
-        return 11;
-      }
-      return m - 1;
-    });
-  }, []);
+    if (calMonth === 0) {
+      setCalMonth(11);
+      setCalYear((y) => y - 1);
+    } else {
+      setCalMonth((m) => m - 1);
+    }
+  }, [calMonth]);
 
   const handleNextMonth = useCallback(() => {
-    setCalMonth((m) => {
-      const today = new Date();
-      if (m === 11) {
-        setCalYear((y) => {
-          if (y + 1 > today.getFullYear()) return y;
-          return y + 1;
-        });
-        return 0;
+    const today = new Date();
+    if (calMonth === 11) {
+      if (calYear + 1 <= today.getFullYear()) {
+        setCalMonth(0);
+        setCalYear((y) => y + 1);
       }
-      return m + 1;
-    });
-  }, []);
+    } else {
+      setCalMonth((m) => m + 1);
+    }
+  }, [calMonth, calYear]);
 
   // --- Loading state ---
   if (loading && !habit) {

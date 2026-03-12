@@ -71,9 +71,7 @@ export function useTodayHabits() {
 
         return {
           habit,
-          // No endpoint to query today's completion; starts as false.
-          // The toggle handles 409 (already completed) gracefully.
-          completedToday: false,
+          completedToday: stats?.completedToday ?? false,
           flameLevel: (stats?.flameLevel ?? "none") as FlameLevel,
           consistency: stats?.consistency ?? 0,
         };

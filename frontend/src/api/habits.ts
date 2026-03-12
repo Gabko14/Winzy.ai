@@ -65,9 +65,11 @@ export type HabitStats = {
   flameLevel: FlameLevel;
   totalCompletions: number;
   completionsInWindow: number;
+  completedToday: boolean;
   windowDays: number;
   windowStart: string;
   today: string;
+  completedDates: string[];
 };
 
 export type HabitCompletion = {
