@@ -610,6 +610,189 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         Assert.Contains("#9CA3AF", svg);
     }
 
+    // --- GET /habits/completions?date=YYYY-MM-DD ---
+
+    [Fact]
+    public async Task GetCompletions_ReturnsCompletionStatusForAllHabits()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Create two habits
+        var r1 = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var h1 = (await r1.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        var r2 = await client.PostAsJsonAsync("/habits", new { name = "Read", frequency = 0 }, CT);
+        var h2 = (await r2.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        // Complete only the first habit today
+        await client.PostAsJsonAsync($"/habits/{h1}/complete", new
+        {
+            date = _today,
+            timezone = "America/New_York"
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(_today, body.GetProperty("date").GetString());
+
+        var habits = body.GetProperty("habits").EnumerateArray().ToList();
+        Assert.Equal(2, habits.Count);
+
+        var exerciseHabit = habits.First(h => h.GetProperty("id").GetGuid() == h1);
+        var readHabit = habits.First(h => h.GetProperty("id").GetGuid() == h2);
+
+        Assert.True(exerciseHabit.GetProperty("completed").GetBoolean());
+        Assert.False(readHabit.GetProperty("completed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetCompletions_MissingDate_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.GetAsync("/habits/completions", CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetCompletions_InvalidDate_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.GetAsync("/habits/completions?date=not-a-date", CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetCompletions_NoHabits_ReturnsEmptyList()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetCompletions_ExcludesArchivedHabits()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var r1 = await client.PostAsJsonAsync("/habits", new { name = "Archived", frequency = 0 }, CT);
+        var h1 = (await r1.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+        await client.DeleteAsync($"/habits/{h1}", CT);
+
+        await client.PostAsJsonAsync("/habits", new { name = "Active", frequency = 0 }, CT);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits").EnumerateArray().ToList();
+        Assert.Single(habits);
+        Assert.Equal("Active", habits[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task GetCompletions_OtherUsersHabits_NotReturned()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var otherClient = _fixture.CreateAuthenticatedClient(Guid.NewGuid());
+
+        await client.PostAsJsonAsync("/habits", new { name = "My Habit", frequency = 0 }, CT);
+        await otherClient.PostAsJsonAsync("/habits", new { name = "Other Habit", frequency = 0 }, CT);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits").EnumerateArray().ToList();
+        Assert.Single(habits);
+        Assert.Equal("My Habit", habits[0].GetProperty("name").GetString());
+    }
+
+    // --- GET /habits/internal/{habitId}/consistency ---
+
+    [Fact]
+    public async Task InternalConsistency_ReturnsRangeSpecificConsistency()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Complete today
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "America/New_York"
+        }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync(
+            $"/habits/internal/{habitId}/consistency?from={_today}&to={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(100, body.GetProperty("consistency").GetDouble());
+        Assert.Equal(_today, body.GetProperty("from").GetString());
+        Assert.Equal(_today, body.GetProperty("to").GetString());
+    }
+
+    [Fact]
+    public async Task InternalConsistency_MissingParams_Returns400()
+    {
+        using var internalClient = _fixture.Factory.CreateClient();
+        var habitId = Guid.NewGuid();
+
+        var response = await internalClient.GetAsync($"/habits/internal/{habitId}/consistency", CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InternalConsistency_NonExistentHabit_Returns404()
+    {
+        using var internalClient = _fixture.Factory.CreateClient();
+
+        var response = await internalClient.GetAsync(
+            $"/habits/internal/{Guid.NewGuid()}/consistency?from=2025-02-01&to=2025-02-14", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task InternalConsistency_NoCompletionsInRange_Returns0()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Complete today
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "America/New_York"
+        }, CT);
+
+        // Query a range that doesn't include today
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync(
+            $"/habits/internal/{habitId}/consistency?from=2025-01-01&to=2025-01-31", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("consistency").GetDouble());
+    }
+
     // --- GET /health ---
 
     [Fact]

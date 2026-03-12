@@ -193,6 +193,46 @@ public static class ConsistencyCalculator
     }
 
     /// <summary>
+    /// Calculates consistency within an arbitrary date range (not locked to the 60-day rolling window).
+    /// Used by the challenge service for CustomDateRange milestones.
+    /// </summary>
+    /// <param name="habit">The habit with its frequency configuration.</param>
+    /// <param name="completedLocalDates">Set of local dates where the habit was completed.</param>
+    /// <param name="rangeStart">Start of the custom date range (inclusive).</param>
+    /// <param name="rangeEnd">End of the custom date range (inclusive).</param>
+    /// <returns>Consistency percentage from 0 to 100.</returns>
+    public static double CalculateForDateRange(
+        Habit habit,
+        HashSet<DateOnly> completedLocalDates,
+        DateOnly rangeStart,
+        DateOnly rangeEnd)
+    {
+        if (rangeStart > rangeEnd)
+            return 0;
+
+        if (habit.Frequency == FrequencyType.Weekly)
+            return CalculateWeekly(rangeStart, rangeEnd, completedLocalDates);
+
+        var applicableDays = 0;
+        var completedDays = 0;
+
+        for (var date = rangeStart; date <= rangeEnd; date = date.AddDays(1))
+        {
+            if (!IsApplicableDay(habit, date))
+                continue;
+
+            applicableDays++;
+            if (completedLocalDates.Contains(date))
+                completedDays++;
+        }
+
+        if (applicableDays == 0)
+            return 0;
+
+        return Math.Round((double)completedDays / applicableDays * 100, 1);
+    }
+
+    /// <summary>
     /// Determines whether a given date is an "applicable" day for this habit
     /// based on its frequency type. Used for Daily and Custom frequencies.
     /// </summary>
