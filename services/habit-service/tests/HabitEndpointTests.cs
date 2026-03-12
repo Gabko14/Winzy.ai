@@ -10,7 +10,9 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 {
     private readonly HabitServiceFixture _fixture;
     private readonly Guid _userId = Guid.NewGuid();
-    private static readonly string _today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+    private static readonly string _today = DateOnly.FromDateTime(
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
+            TimeZoneInfo.FindSystemTimeZoneById("America/New_York"))).ToString("yyyy-MM-dd");
 
     private CancellationToken CT => TestContext.Current.CancellationToken;
 
