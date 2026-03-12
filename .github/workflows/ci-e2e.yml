@@ -39,6 +39,24 @@ jobs:
             frontend/package-lock.json
             e2e/package-lock.json
 
+      - name: Start backend services
+        run: docker compose -f docker-compose.yml up -d --build --wait
+        timeout-minutes: 5
+
+      - name: Wait for gateway health
+        run: |
+          echo "Waiting for API gateway to report healthy..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5050/health > /dev/null 2>&1; then
+              echo "Gateway is healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Gateway failed to become healthy within 60s"
+          docker compose -f docker-compose.yml logs --tail=50
+          exit 1
+
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
@@ -52,6 +70,11 @@ jobs:
         run: cd e2e && npx playwright test --config=playwright.config.ts
         env:
           CI: true
+          API_URL: http://localhost:5050
+
+      - name: Docker compose logs
+        if: failure()
+        run: docker compose -f docker-compose.yml logs --tail=100
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -68,3 +91,7 @@ jobs:
           name: playwright-traces
           path: e2e/test-results/
           retention-days: 7
+
+      - name: Stop backend services
+        if: always()
+        run: docker compose -f docker-compose.yml down
