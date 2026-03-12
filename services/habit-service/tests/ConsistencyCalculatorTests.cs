@@ -583,7 +583,8 @@ public class CalculateForDateRangeTests
 {
     private static Habit MakeHabit(
         FrequencyType frequency = FrequencyType.Daily,
-        List<DayOfWeek>? customDays = null)
+        List<DayOfWeek>? customDays = null,
+        DateTimeOffset? createdAt = null)
     {
         return new Habit
         {
@@ -592,7 +593,7 @@ public class CalculateForDateRangeTests
             Name = "Test Habit",
             Frequency = frequency,
             CustomDays = customDays,
-            CreatedAt = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
+            CreatedAt = createdAt ?? new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
         };
     }
 
@@ -732,6 +733,123 @@ public class CalculateForDateRangeTests
 
         // 1 of 7 days = 14.3%
         Assert.Equal(14.3, result);
+    }
+
+    // --- Creation-date clamping ---
+
+    [Fact]
+    public void Daily_HabitCreatedMidRange_ClampsToCreationDate()
+    {
+        // Range is Feb 1-14 but habit was created Feb 8 — only 7 applicable days
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 8, 0, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        // Complete all days from Feb 8 onwards
+        var completed = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2025, 2, 8); d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        // 7 of 7 applicable days = 100% (not 7/14 = 50%)
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_HabitCreatedAfterRangeEnd_Returns0()
+    {
+        // Range is Feb 1-14 but habit was created Mar 1 — no applicable days
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 1, 0, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var completed = new HashSet<DateOnly>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Daily_HabitCreatedMidRange_WithExplicitLocalDate()
+    {
+        // Habit created at UTC midnight = Feb 7 23:00 EST — local creation date is Feb 7
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 8, 0, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var completed = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2025, 2, 7); d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        // Passing explicit local creation date (Feb 7 in EST)
+        var localCreated = new DateOnly(2025, 2, 7);
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end, localCreated);
+
+        // 8 of 8 applicable days (Feb 7-14) = 100%
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_TimezoneOverload_ClampsWithTimezoneAwareCreationDate()
+    {
+        // Habit created at UTC midnight Feb 8 = Feb 7 19:00 in EST (UTC-5)
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 8, 0, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+        var est = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+
+        // Complete Feb 7-14
+        var completed = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2025, 2, 7); d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end, est);
+
+        // EST: creation date resolves to Feb 7, so 8 applicable days (Feb 7-14), all completed = 100%
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_TimezoneOverload_PositiveOffset_ClampsCorrectly()
+    {
+        // Habit created at UTC 23:00 Feb 7 = Feb 8 08:00 in Tokyo (UTC+9)
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 7, 23, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+        var tokyo = TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo");
+
+        // Complete Feb 8-14
+        var completed = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2025, 2, 8); d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end, tokyo);
+
+        // Tokyo: creation date resolves to Feb 8, so 7 applicable days (Feb 8-14), all completed = 100%
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Weekly_HabitCreatedMidRange_ClampsToCreationDate()
+    {
+        // Range is two full weeks (Feb 3-16) but habit was created Feb 10 (start of 2nd week)
+        var habit = MakeHabit(
+            frequency: FrequencyType.Weekly,
+            createdAt: new DateTimeOffset(2025, 2, 10, 0, 0, 0, TimeSpan.Zero));
+        var start = new DateOnly(2025, 2, 3);
+        var end = new DateOnly(2025, 2, 16);
+
+        // Complete one day in the second week
+        var completed = new HashSet<DateOnly> { new DateOnly(2025, 2, 12) };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+
+        // Only 1 week is applicable (Feb 10-16), and it has a completion = 100%
+        Assert.Equal(100, result);
     }
 }
 

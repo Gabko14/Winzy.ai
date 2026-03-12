@@ -429,7 +429,24 @@ app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, H
         .Select(c => c.LocalDate)
         .ToListAsync();
 
-    var consistency = ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to);
+    // Use timezone-aware creation date clamping when timezone is provided
+    var tzParam = ctx.Request.Query["tz"].FirstOrDefault();
+    TimeZoneInfo? tz = null;
+    if (!string.IsNullOrWhiteSpace(tzParam))
+    {
+        try
+        {
+            tz = TimeZoneInfo.FindSystemTimeZoneById(tzParam);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            // fall back to UTC conversion
+        }
+    }
+
+    var consistency = tz is not null
+        ? ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to, tz)
+        : ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to);
 
     return Results.Ok(new
     {
