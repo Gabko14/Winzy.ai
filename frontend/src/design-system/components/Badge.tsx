@@ -9,6 +9,7 @@ type BadgeVariant = "default" | "success" | "warning" | "error" | "info";
 export type BadgeProps = {
   label: string;
   variant?: BadgeVariant;
+  testID?: string;
 };
 
 const variantColors: Record<BadgeVariant, { bg: string; text: string }> = {
@@ -19,11 +20,11 @@ const variantColors: Record<BadgeVariant, { bg: string; text: string }> = {
   info: { bg: semantic.infoLight, text: semantic.info },
 };
 
-export function Badge({ label, variant = "default" }: BadgeProps) {
+export function Badge({ label, variant = "default", testID }: BadgeProps) {
   const colors = variantColors[variant];
 
   return (
-    <View style={[styles.badge, { backgroundColor: colors.bg }]} accessibilityRole="text">
+    <View style={[styles.badge, { backgroundColor: colors.bg }]} accessibilityRole="text" testID={testID}>
       <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
     </View>
   );

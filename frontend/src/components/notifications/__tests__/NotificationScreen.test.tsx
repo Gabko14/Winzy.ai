@@ -138,7 +138,7 @@ describe("NotificationScreen", () => {
     });
   });
 
-  it("rolls back onUnreadCountChange when markAllRead fails", async () => {
+  it("rolls back onUnreadCountChange when markAllRead fails (no onMarkAllReadFailed)", async () => {
     const onUnreadCountChange = jest.fn();
     mockUseNotifications.markAllRead.mockResolvedValue(false);
     mockUseNotifications.items = [
@@ -156,6 +156,59 @@ describe("NotificationScreen", () => {
     await waitFor(() => {
       expect(onUnreadCountChange).toHaveBeenCalledWith(-2);
       expect(onUnreadCountChange).toHaveBeenCalledWith(2);
+    });
+  });
+
+  it("calls onMarkAllReadFailed instead of manual delta rollback when markAllRead fails", async () => {
+    const onMarkAllRead = jest.fn();
+    const onMarkAllReadFailed = jest.fn();
+    const onUnreadCountChange = jest.fn();
+    mockUseNotifications.markAllRead.mockResolvedValue(false);
+    mockUseNotifications.items = [
+      makeNotification({ id: "n1", readAt: null }),
+      makeNotification({ id: "n2", readAt: null }),
+    ];
+    mockUseNotifications.total = 2;
+
+    const { getByText } = render(
+      <NotificationScreen
+        onMarkAllRead={onMarkAllRead}
+        onMarkAllReadFailed={onMarkAllReadFailed}
+        onUnreadCountChange={onUnreadCountChange}
+      />,
+    );
+
+    fireEvent.press(getByText("Mark all as read"));
+
+    await waitFor(() => {
+      expect(onMarkAllRead).toHaveBeenCalled();
+      expect(onMarkAllReadFailed).toHaveBeenCalled();
+      // Should NOT fall back to manual delta when onMarkAllReadFailed is provided
+      expect(onUnreadCountChange).not.toHaveBeenCalledWith(2);
+    });
+  });
+
+  it("does not call onMarkAllReadFailed when markAllRead succeeds", async () => {
+    const onMarkAllRead = jest.fn();
+    const onMarkAllReadFailed = jest.fn();
+    mockUseNotifications.markAllRead.mockResolvedValue(true);
+    mockUseNotifications.items = [
+      makeNotification({ id: "n1", readAt: null }),
+    ];
+    mockUseNotifications.total = 1;
+
+    const { getByText } = render(
+      <NotificationScreen
+        onMarkAllRead={onMarkAllRead}
+        onMarkAllReadFailed={onMarkAllReadFailed}
+      />,
+    );
+
+    fireEvent.press(getByText("Mark all as read"));
+
+    await waitFor(() => {
+      expect(onMarkAllRead).toHaveBeenCalled();
+      expect(onMarkAllReadFailed).not.toHaveBeenCalled();
     });
   });
 
