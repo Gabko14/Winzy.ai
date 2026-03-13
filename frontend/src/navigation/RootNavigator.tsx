@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { AuthNavigator } from "./AuthNavigator";
-import { LoadingState } from "../design-system";
+import { LoadingState, EmptyState } from "../design-system";
 import { spacing, lightTheme } from "../design-system";
 import { StatusBar } from "expo-status-bar";
 import { OfflineIndicator } from "../components/OfflineIndicator";
@@ -210,8 +210,12 @@ export function RootNavigator() {
       break;
     case "feed":
       tabContent = (
-        <View style={styles.placeholder} testID="feed-tab-content">
-          {/* Activity feed will be wired by winzy.ai-uut */}
+        <View style={styles.center} testID="feed-tab-content">
+          <EmptyState
+            title="Activity feed coming soon"
+            message="You'll see your friends' progress here."
+            hideIllustration
+          />
         </View>
       );
       break;

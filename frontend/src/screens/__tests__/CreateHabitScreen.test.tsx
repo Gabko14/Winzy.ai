@@ -283,7 +283,7 @@ describe("CreateHabitScreen", () => {
     await waitFor(() => {
       expect(screen.getByTestId("server-error")).toBeTruthy();
       expect(
-        screen.getByText("Habit created, but visibility could not be set. It defaults to private."),
+        screen.getByText("Habit created! Visibility defaulted to private — you can change it anytime."),
       ).toBeTruthy();
     });
 

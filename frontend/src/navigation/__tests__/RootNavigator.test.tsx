@@ -11,7 +11,7 @@ jest.mock("../../screens/TodayScreen", () => ({
       <RN.View testID="today-screen">
         <RN.Text>TodayScreen</RN.Text>
         {props.onHabitPress && (
-          <RN.Pressable testID="habit-press" onPress={() => (props.onHabitPress as (_id: string) => void)("h1")}>
+          <RN.Pressable testID="habit-press" onPress={() => (props.onHabitPress as (mockId: string) => void)("h1")}>
             <RN.Text>Habit</RN.Text>
           </RN.Pressable>
         )}
