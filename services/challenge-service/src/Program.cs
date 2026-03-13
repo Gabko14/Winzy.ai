@@ -31,7 +31,7 @@ builder.Services.AddHttpClient("SocialService", client =>
 
 builder.Services.AddHttpClient("HabitService", client =>
 {
-    var habitUrl = builder.Configuration["Services:HabitServiceUrl"] ?? "http://habit-service:5001";
+    var habitUrl = builder.Configuration["Services:HabitServiceUrl"] ?? "http://habit-service:5002";
     client.BaseAddress = new Uri(habitUrl);
     client.Timeout = TimeSpan.FromSeconds(5);
 });
