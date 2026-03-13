@@ -287,6 +287,95 @@ test.describe("Notifications", () => {
     });
   });
 
+  test.describe("Error state", () => {
+    test("shows error state with retry when notifications API fails", async ({ unauthenticatedPage: page }) => {
+      const uniqueUser = `e2e_notif_err_${Date.now()}`;
+      const email = `${uniqueUser}@winzy.test`;
+      const password = TEST_USER.password;
+
+      await test.step("register and complete profile", async () => {
+        await page.goto("/");
+        await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
+        await page.getByRole("button", { name: "Sign up" }).click();
+        await expect(page.getByText("Create your account")).toBeVisible();
+
+        await page.getByLabel("Email").fill(email);
+        await page.getByLabel("Username").fill(uniqueUser);
+        await page.getByLabel("Password").fill(password);
+        await page.getByRole("button", { name: "Create account" }).click();
+
+        await expect(page.getByText("What should we call you?")).toBeVisible({ timeout: 10_000 });
+        await page.getByLabel("Display name").fill("Error Tester");
+        await page.getByRole("button", { name: "Continue" }).click();
+      });
+
+      await test.step("wait for Today screen", async () => {
+        await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
+        test.info().annotations.push({
+          type: "step",
+          description: "Today screen loaded",
+        });
+      });
+
+      await test.step("intercept notifications API with 500 error", async () => {
+        await page.route(`${API_BASE}/notifications?*`, (route) => {
+          route.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Internal Server Error" }),
+          });
+        });
+        test.info().annotations.push({
+          type: "step",
+          description: "Route intercept active for GET /notifications",
+        });
+      });
+
+      await test.step("tap bell to open notifications", async () => {
+        await page.getByTestId("notifications-bell").click();
+        test.info().annotations.push({
+          type: "step",
+          description: "Tapped bell icon to open notifications",
+        });
+      });
+
+      await test.step("verify ErrorState renders with error message", async () => {
+        await expect(page.getByText("Something went wrong")).toBeVisible({ timeout: 10_000 });
+        test.info().annotations.push({
+          type: "step",
+          description: "ErrorState title 'Something went wrong' visible",
+        });
+      });
+
+      await test.step("verify retry button is visible", async () => {
+        await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+        test.info().annotations.push({
+          type: "step",
+          description: "Retry button 'Try again' visible",
+        });
+      });
+
+      await test.step("remove intercept and tap retry", async () => {
+        await page.unroute(`${API_BASE}/notifications?*`);
+        await page.getByRole("button", { name: "Try again" }).click();
+        test.info().annotations.push({
+          type: "step",
+          description: "Removed intercept and tapped retry",
+        });
+      });
+
+      await test.step("verify recovery — error state gone, empty state shown", async () => {
+        // After retry with real API, new user has no notifications → empty state
+        await expect(page.getByText("Something went wrong")).not.toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("All caught up")).toBeVisible({ timeout: 10_000 });
+        test.info().annotations.push({
+          type: "step",
+          description: "Recovery successful — empty state shown after retry",
+        });
+      });
+    });
+  });
+
   test.describe("API contract", () => {
     test("notifications endpoints require authentication", async ({ request }) => {
       const endpoints = [
