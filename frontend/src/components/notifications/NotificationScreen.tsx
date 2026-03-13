@@ -14,6 +14,8 @@ export type NotificationScreenProps = {
   onUnreadCountChange?: (delta: number) => void;
   /** Called when all notifications are marked read — resets badge to zero. */
   onMarkAllRead?: () => void;
+  /** Called when mark-all-read fails — should refresh from server to restore true count. */
+  onMarkAllReadFailed?: () => void;
   /** Called to navigate back (e.g., to Today screen). */
   onBack?: () => void;
 };
@@ -30,6 +32,7 @@ export function NotificationScreen({
   onNotificationPress,
   onUnreadCountChange,
   onMarkAllRead,
+  onMarkAllReadFailed,
   onBack,
 }: NotificationScreenProps) {
   const {
@@ -75,9 +78,15 @@ export function NotificationScreen({
     }
     const ok = await markAllRead();
     if (!ok) {
-      onUnreadCountChange?.(pageUnread);
+      // On failure, refresh from server to get true count instead of
+      // restoring a partial page-local delta that may diverge from server truth.
+      if (onMarkAllReadFailed) {
+        onMarkAllReadFailed();
+      } else {
+        onUnreadCountChange?.(pageUnread);
+      }
     }
-  }, [items, markAllRead, onMarkAllRead, onUnreadCountChange]);
+  }, [items, markAllRead, onMarkAllRead, onMarkAllReadFailed, onUnreadCountChange]);
 
   const backHeader = onBack ? (
     <View style={[styles.header, { borderBottomColor: colors.border }]}>

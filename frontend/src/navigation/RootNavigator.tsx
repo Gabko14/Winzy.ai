@@ -15,8 +15,10 @@ import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
 import { NotificationScreen } from "../components/notifications";
 import { useUnreadCount } from "../hooks/useUnreadCount";
+import { TabBar, type TabId } from "./TabBar";
 
-type AppScreen = "home" | "habits" | "profile" | "editProfile" | "habitDetail" | "notifications";
+/** Screens that overlay on top of a tab's content */
+type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -37,29 +39,36 @@ function getPublicFlameUsername(): string | null {
 /**
  * Root navigator that switches between auth and main app.
  *
- * - loading: full-screen spinner while session bootstraps
- * - unauthenticated: auth navigator (sign in / sign up)
- * - authenticated + no displayName: profile completion
- * - authenticated: main app with profile navigation
+ * Authenticated shell has a bottom tab bar with:
+ *   Today | Friends | Feed | Profile
+ *
+ * Overlay screens (habit detail, notifications, edit profile, habits list)
+ * render on top of the current tab.
  */
 export function RootNavigator() {
   const auth = useAuth();
   const colors = lightTheme;
-  const [screen, setScreen] = useState<AppScreen>("home");
+  const [activeTab, setActiveTab] = useState<TabId>("today");
+  const [overlay, setOverlay] = useState<OverlayScreen | null>(null);
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
 
-  const goToProfile = useCallback(() => setScreen("profile"), []);
-  const goToEditProfile = useCallback(() => setScreen("editProfile"), []);
-  const goToHome = useCallback(() => setScreen("home"), []);
-  const goToHabits = useCallback(() => setScreen("habits"), []);
-  const goToNotifications = useCallback(() => setScreen("notifications"), []);
-
   const unreadCount = useUnreadCount();
+
+  const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);
+  const goToNotifications = useCallback(() => setOverlay("notifications"), []);
+  const goToHabits = useCallback(() => setOverlay("habits"), []);
+  const dismissOverlay = useCallback(() => setOverlay(null), []);
+
+  const handleTabPress = useCallback((tabId: TabId) => {
+    setOverlay(null);
+    setActiveTab(tabId);
+  }, []);
+
   const handleHabitPress = useCallback((habitId: string) => {
     setSelectedHabitId(habitId);
-    setScreen("habitDetail");
+    setOverlay("habitDetail");
   }, []);
 
   const handleProfileCompletion = useCallback(() => {
@@ -114,56 +123,44 @@ export function RootNavigator() {
     );
   }
 
-  // Profile screen
-  if (screen === "profile") {
+  // --- Overlay screens (render on top of tabs, no tab bar) ---
+
+  if (overlay === "editProfile") {
     return (
       <>
         <OfflineIndicator />
-        <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToHome} />
+        <EditProfileScreen onBack={() => { setOverlay(null); setActiveTab("profile"); }} />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  // Edit profile screen
-  if (screen === "editProfile") {
+  if (overlay === "habitDetail" && selectedHabitId) {
     return (
       <>
         <OfflineIndicator />
-        <EditProfileScreen onBack={goToProfile} />
+        <HabitDetailScreen habitId={selectedHabitId} onBack={dismissOverlay} />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  // Habit detail screen
-  if (screen === "habitDetail" && selectedHabitId) {
-    return (
-      <>
-        <OfflineIndicator />
-        <HabitDetailScreen habitId={selectedHabitId} onBack={goToHome} />
-        <StatusBar style="auto" />
-      </>
-    );
-  }
-
-  // Notifications screen
-  if (screen === "notifications") {
+  if (overlay === "notifications") {
     return (
       <>
         <OfflineIndicator />
         <NotificationScreen
           onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
           onMarkAllRead={() => unreadCount.resetToZero()}
-          onBack={goToHome}
+          onMarkAllReadFailed={() => unreadCount.refresh()}
+          onBack={dismissOverlay}
         />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  // Habits management screen
-  if (screen === "habits") {
+  if (overlay === "habits") {
     return (
       <>
         <OfflineIndicator />
@@ -173,16 +170,59 @@ export function RootNavigator() {
     );
   }
 
-  // Authenticated — Today screen (daily habit dashboard)
+  // --- Tab content ---
+
+  const tabs = [
+    { id: "today" as TabId, label: "Today", icon: "\u2600\uFE0F" },
+    { id: "friends" as TabId, label: "Friends", icon: "\uD83D\uDC65" },
+    { id: "feed" as TabId, label: "Feed", icon: "\uD83D\uDCE3" },
+    { id: "profile" as TabId, label: "Profile", icon: "\uD83D\uDC64" },
+  ];
+
+  let tabContent: React.ReactNode;
+
+  switch (activeTab) {
+    case "friends":
+      tabContent = (
+        <View style={styles.placeholder} testID="friends-tab-content">
+          {/* Friends screen will be wired by winzy.ai-78l */}
+        </View>
+      );
+      break;
+    case "feed":
+      tabContent = (
+        <View style={styles.placeholder} testID="feed-tab-content">
+          {/* Activity feed will be wired by winzy.ai-uut */}
+        </View>
+      );
+      break;
+    case "profile":
+      tabContent = (
+        <ProfileScreen onEditProfile={goToEditProfile} onSettings={dismissOverlay} />
+      );
+      break;
+    case "today":
+    default:
+      tabContent = (
+        <TodayScreen
+          onCreateHabit={goToHabits}
+          onHabitPress={handleHabitPress}
+          onNotifications={goToNotifications}
+          unreadNotificationCount={unreadCount.count}
+        />
+      );
+      break;
+  }
+
   return (
     <>
       <OfflineIndicator />
-      <TodayScreen
-        onCreateHabit={goToHabits}
-        onHabitPress={handleHabitPress}
-        onNotifications={goToNotifications}
-        unreadNotificationCount={unreadCount.count}
-      />
+      <View style={[styles.shell, { backgroundColor: colors.background }]} testID="app-shell">
+        <View style={styles.content}>
+          {tabContent}
+        </View>
+        <TabBar tabs={tabs} activeTab={activeTab} onTabPress={handleTabPress} />
+      </View>
       <StatusBar style="auto" />
     </>
   );
@@ -194,5 +234,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: spacing["3xl"],
+  },
+  shell: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  placeholder: {
+    flex: 1,
   },
 });
