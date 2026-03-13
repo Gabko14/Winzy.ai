@@ -289,7 +289,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
     }
 
     [Fact]
-    public async Task DeleteHabit_AlreadyArchived_Returns404()
+    public async Task DeleteHabit_AlreadyArchived_Returns204_Idempotent()
     {
         using var client = _fixture.CreateAuthenticatedClient(_userId);
 

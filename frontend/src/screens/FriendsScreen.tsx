@@ -30,9 +30,9 @@ function friendDisplayName(friend: Friend): string {
 
 function friendInitials(friend: Friend): string {
   if (friend.displayName) {
-    const parts = friend.displayName.split(/\s+/);
+    const parts = friend.displayName.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return friend.displayName.slice(0, 2).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   }
   if (friend.username) return friend.username.slice(0, 2).toUpperCase();
   return friend.friendId.slice(0, 2).toUpperCase();
@@ -45,7 +45,11 @@ function incomingDisplayName(request: IncomingRequest): string {
 }
 
 function incomingInitials(request: IncomingRequest): string {
-  if (request.fromDisplayName) return request.fromDisplayName.slice(0, 2).toUpperCase();
+  if (request.fromDisplayName) {
+    const parts = request.fromDisplayName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  }
   if (request.fromUsername) return request.fromUsername.slice(0, 2).toUpperCase();
   return request.fromUserId.slice(0, 2).toUpperCase();
 }
@@ -57,7 +61,11 @@ function outgoingDisplayName(request: OutgoingRequest): string {
 }
 
 function outgoingInitials(request: OutgoingRequest): string {
-  if (request.toDisplayName) return request.toDisplayName.slice(0, 2).toUpperCase();
+  if (request.toDisplayName) {
+    const parts = request.toDisplayName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  }
   if (request.toUsername) return request.toUsername.slice(0, 2).toUpperCase();
   return request.toUserId.slice(0, 2).toUpperCase();
 }
@@ -88,14 +96,25 @@ export function FriendsScreen({ onAddFriend, onFriendPress }: Props) {
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
   const withProcessing = useCallback(
-    async (id: string, action: () => Promise<boolean>) => {
+    async (
+      id: string,
+      action: () => Promise<boolean>,
+      onError?: () => void,
+    ) => {
       setProcessingIds((s) => new Set(s).add(id));
-      await action();
+      const ok = await action();
       setProcessingIds((s) => {
         const next = new Set(s);
         next.delete(id);
         return next;
       });
+      if (!ok) {
+        if (onError) {
+          onError();
+        } else {
+          Alert.alert("Something went wrong", "Please try again.");
+        }
+      }
     },
     [],
   );

@@ -340,7 +340,7 @@ test.describe("Notifications", () => {
       });
 
       await test.step("verify ErrorState renders with error message", async () => {
-        await expect(page.getByText("Something went wrong")).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Something went wrong", { exact: true })).toBeVisible({ timeout: 10_000 });
         test.info().annotations.push({
           type: "step",
           description: "ErrorState title 'Something went wrong' visible",
@@ -366,7 +366,7 @@ test.describe("Notifications", () => {
 
       await test.step("verify recovery — error state gone, empty state shown", async () => {
         // After retry with real API, new user has no notifications → empty state
-        await expect(page.getByText("Something went wrong")).not.toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Something went wrong", { exact: true })).not.toBeVisible({ timeout: 10_000 });
         await expect(page.getByText("All caught up")).toBeVisible({ timeout: 10_000 });
         test.info().annotations.push({
           type: "step",
