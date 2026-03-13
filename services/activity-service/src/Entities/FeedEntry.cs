@@ -14,4 +14,10 @@ public sealed class FeedEntry : BaseEntity
     /// Format: "{eventType}:{actorId}:{event-specific-key}"
     /// </summary>
     public string? IdempotencyKey { get; set; }
+
+    /// <summary>
+    /// Soft-delete timestamp. Set when privacy changes invalidate the entry
+    /// (e.g. visibility narrowed, friend removed). Null means active.
+    /// </summary>
+    public DateTimeOffset? DeletedAt { get; set; }
 }

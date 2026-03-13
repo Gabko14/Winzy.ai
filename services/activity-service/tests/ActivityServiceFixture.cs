@@ -74,7 +74,9 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
                             d.ImplementationType == typeof(FriendRequestAcceptedSubscriber) ||
                             d.ImplementationType == typeof(ChallengeCreatedSubscriber) ||
                             d.ImplementationType == typeof(ChallengeCompletedSubscriber) ||
-                            d.ImplementationType == typeof(UserDeletedSubscriber))
+                            d.ImplementationType == typeof(UserDeletedSubscriber) ||
+                            d.ImplementationType == typeof(VisibilityChangedSubscriber) ||
+                            d.ImplementationType == typeof(FriendRemovedSubscriber))
                         .ToList();
 
                     foreach (var descriptor in natsDescriptors)
@@ -93,6 +95,8 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
                     services.AddHostedService<ChallengeCreatedSubscriber>();
                     services.AddHostedService<ChallengeCompletedSubscriber>();
                     services.AddHostedService<UserDeletedSubscriber>();
+                    services.AddHostedService<VisibilityChangedSubscriber>();
+                    services.AddHostedService<FriendRemovedSubscriber>();
 
                     // Replace SocialService HttpClient with mock handler
                     services.AddHttpClient("SocialService")

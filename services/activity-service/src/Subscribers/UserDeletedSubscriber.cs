@@ -27,8 +27,9 @@ public sealed class UserDeletedSubscriber(
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ActivityDbContext>();
 
-        // Delete entries where the deleted user is the actor
+        // Delete entries where the deleted user is the actor (including soft-deleted)
         var actorDeleted = await db.FeedEntries
+            .IgnoreQueryFilters()
             .Where(e => e.ActorId == data.UserId)
             .ExecuteDeleteAsync(ct);
 

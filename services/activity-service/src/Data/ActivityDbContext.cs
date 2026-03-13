@@ -12,6 +12,8 @@ public sealed class ActivityDbContext(DbContextOptions<ActivityDbContext> option
     {
         modelBuilder.Entity<FeedEntry>(b =>
         {
+            b.HasQueryFilter(e => e.DeletedAt == null);
+
             b.HasIndex(e => e.ActorId);
             b.HasIndex(e => e.CreatedAt);
             b.HasIndex(e => new { e.ActorId, e.CreatedAt });
