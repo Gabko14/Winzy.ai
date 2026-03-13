@@ -35,6 +35,19 @@ function getTodayDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Check if a habit is due today based on its frequency schedule.
+ * - daily: always due
+ * - weekly: due if today's day-of-week (0=Sun..6=Sat) is in customDays
+ * - custom: due if today's day-of-week is in customDays
+ */
+function isDueToday(habit: Habit): boolean {
+  if (habit.frequency === "daily") return true;
+  if (!habit.customDays || habit.customDays.length === 0) return true;
+  const todayDow = new Date().getDay();
+  return habit.customDays.includes(todayDow);
+}
+
 export function useTodayHabits() {
   const [state, setState] = useState<TodayState>({
     items: [],
@@ -56,8 +69,11 @@ export function useTodayHabits() {
     const tz = getUserTimezone();
 
     try {
-      const habits = await fetchHabits();
+      const allHabits = await fetchHabits();
       if (!mountedRef.current) return;
+
+      // Filter to only habits that are due today based on frequency schedule
+      const habits = allHabits.filter(isDueToday);
 
       // Fetch stats for all habits in parallel (for flame levels)
       const statsResults = await Promise.allSettled(

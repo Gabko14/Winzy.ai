@@ -16,6 +16,9 @@
 # Beadspace generated data (pipeline regenerates from .beads/issues.jsonl)
 .beadspace/*.json
 
+# Environment files (keep .env.example tracked)
+.env
+
 # IDE / editor
 .idea/
 .vs/

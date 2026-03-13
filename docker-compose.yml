@@ -154,7 +154,7 @@ services:
       - "5050:5000"
     environment:
       ASPNETCORE_URLS: http://+:5000
-      Jwt__Secret: winzy-dev-jwt-secret-minimum-32-characters-long!!
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example}
       RateLimiting__AuthPermitLimit: 1000
       ReverseProxy__Clusters__auth-cluster__Destinations__destination1__Address: http://auth-service:5001
       ReverseProxy__Clusters__habit-cluster__Destinations__destination1__Address: http://habit-service:5002
@@ -187,7 +187,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
-      Jwt__Secret: winzy-dev-jwt-secret-minimum-32-characters-long!!
+      Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example}
       ASPNETCORE_URLS: http://+:5001
     depends_on:
       auth-db:
