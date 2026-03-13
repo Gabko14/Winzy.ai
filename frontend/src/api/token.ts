@@ -53,4 +53,15 @@ export const tokenStore = {
     await storage.removeItem(ACCESS_KEY);
     await storage.removeItem(REFRESH_KEY);
   },
+
+  /**
+   * Remove legacy refresh tokens from localStorage on web.
+   * Previous code stored refresh tokens in localStorage; now web uses httpOnly cookies.
+   * Call during session bootstrap to clean up upgraded users.
+   */
+  clearLegacyWebRefreshToken: async () => {
+    if (Platform.OS === "web" && typeof localStorage !== "undefined") {
+      localStorage.removeItem(REFRESH_KEY);
+    }
+  },
 };

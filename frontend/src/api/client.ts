@@ -66,7 +66,9 @@ async function refreshTokens(): Promise<boolean> {
  * Used by both the 401-refresh path and session bootstrap.
  */
 async function fetchRefreshAndStore(): Promise<AuthResponse | null> {
-  const refreshToken = await tokenStore.getRefreshToken();
+  // On web, refresh token lives in an httpOnly cookie — don't read from localStorage.
+  // On native, read from local storage (will be SecureStore later).
+  const refreshToken = Platform.OS === "web" ? null : await tokenStore.getRefreshToken();
   try {
     const res = await fetch(`${baseUrl}/auth/refresh`, {
       method: "POST",
@@ -282,6 +284,10 @@ function delay(ms: number): Promise<void> {
  * Returns the new AuthResponse on success, null on failure.
  */
 export async function bootstrapSession(): Promise<AuthResponse | null> {
+  // Clear any legacy refresh tokens left in localStorage from pre-httpOnly code.
+  // Safe to call every bootstrap — it's a no-op if nothing is stored.
+  await tokenStore.clearLegacyWebRefreshToken();
+
   const refreshToken = await tokenStore.getRefreshToken();
   const hasToken = !!refreshToken;
 

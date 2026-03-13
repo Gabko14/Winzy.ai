@@ -1,4 +1,4 @@
-import { apiRequest, setBaseUrl } from "../client";
+import { apiRequest, bootstrapSession, setBaseUrl } from "../client";
 import { tokenStore } from "../token";
 import type { ApiError } from "../types";
 
@@ -262,6 +262,48 @@ describe("apiRequest", () => {
       expect(error.code).toBe("server_error");
     }
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Legacy token cleanup ---
+
+  it("bootstrapSession clears legacy web refresh tokens", async () => {
+    const clearSpy = jest.spyOn(tokenStore, "clearLegacyWebRefreshToken");
+
+    // No token stored + non-web platform → bootstrapSession returns null early
+    // without calling fetch. Cleanup still runs.
+    await bootstrapSession();
+
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+
+  it("bootstrapSession clears legacy token before attempting refresh", async () => {
+    const callOrder: string[] = [];
+    const clearSpy = jest.spyOn(tokenStore, "clearLegacyWebRefreshToken").mockImplementation(async () => {
+      callOrder.push("clearLegacy");
+    });
+    const getRefreshSpy = jest.spyOn(tokenStore, "getRefreshToken").mockImplementation(async () => {
+      callOrder.push("getRefresh");
+      return "stale-token";
+    });
+
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(200, {
+        accessToken: "new-access",
+        refreshToken: "new-refresh",
+        user: { id: "1", email: "a@b.com", username: "test" },
+      }),
+    );
+
+    await bootstrapSession();
+
+    // clearLegacy must happen before getRefresh
+    expect(callOrder[0]).toBe("clearLegacy");
+    expect(callOrder[1]).toBe("getRefresh");
+
+    clearSpy.mockRestore();
+    getRefreshSpy.mockRestore();
+    mockFetch.mockReset();
   });
 
   // --- Concurrent refresh queue ---
