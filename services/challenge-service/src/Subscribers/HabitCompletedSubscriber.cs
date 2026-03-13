@@ -131,7 +131,7 @@ public sealed class HabitCompletedSubscriber(
             if (challenge.MilestoneType == MilestoneType.CustomDateRange)
             {
                 var rangeConsistency = await FetchRangeConsistencyAsync(
-                    httpClientFactory, data.HabitId, challenge, ct);
+                    httpClientFactory, data.HabitId, challenge, data.Timezone, ct);
                 if (rangeConsistency.HasValue)
                     effectiveConsistency = rangeConsistency.Value;
             }
@@ -178,7 +178,7 @@ public sealed class HabitCompletedSubscriber(
     }
 
     private async Task<double?> FetchRangeConsistencyAsync(
-        IHttpClientFactory httpClientFactory, Guid habitId, Challenge challenge, CancellationToken ct)
+        IHttpClientFactory httpClientFactory, Guid habitId, Challenge challenge, string? timezone, CancellationToken ct)
     {
         var from = challenge.CustomStartDate is not null
             ? DateOnly.FromDateTime(challenge.CustomStartDate.Value.UtcDateTime)
@@ -190,8 +190,10 @@ public sealed class HabitCompletedSubscriber(
         try
         {
             var habitClient = httpClientFactory.CreateClient("HabitService");
-            using var response = await habitClient.GetAsync(
-                $"/habits/internal/{habitId}/consistency?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", ct);
+            var url = $"/habits/internal/{habitId}/consistency?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+            if (!string.IsNullOrWhiteSpace(timezone))
+                url += $"&tz={Uri.EscapeDataString(timezone)}";
+            using var response = await habitClient.GetAsync(url, ct);
 
             if (response.IsSuccessStatusCode)
             {
