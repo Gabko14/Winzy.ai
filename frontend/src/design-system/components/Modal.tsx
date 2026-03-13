@@ -30,7 +30,7 @@ export function Modal({ visible, onClose, title, children }: ModalProps) {
       >
         <Pressable
           style={[styles.content, shadows.lg, { backgroundColor: colors.surface }]}
-          onPress={(e) => e.stopPropagation()}
+          onPress={(e) => e?.stopPropagation()}
         >
           {title && (
             <View style={styles.header}>

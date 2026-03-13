@@ -14,3 +14,17 @@ export {
   type UpdateHabitRequest,
   type FrequencyType,
 } from "./habits";
+export {
+  type HabitVisibility,
+  type VisibilityEntry,
+  type BatchVisibilityResponse,
+} from "./visibility";
+export {
+  type Friend,
+  type FriendsPage,
+  type IncomingRequest,
+  type OutgoingRequest,
+  type FriendRequestsResponse,
+  type FriendRequestResult,
+  type UserSearchResult,
+} from "./social";

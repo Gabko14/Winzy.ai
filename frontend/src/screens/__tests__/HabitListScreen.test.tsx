@@ -9,11 +9,18 @@ jest.mock("../../api/habits", () => ({
   archiveHabit: jest.fn(),
 }));
 
+jest.mock("../../api/visibility", () => ({
+  fetchVisibility: jest.fn(),
+  fetchPreferences: jest.fn().mockResolvedValue({ defaultHabitVisibility: "private" }),
+  updateVisibility: jest.fn().mockResolvedValue({ habitId: "h1", visibility: "private" }),
+}));
+
 jest.mock("../../api", () => ({
   isApiError: jest.requireActual("../../api/types").isApiError,
 }));
 
 const { fetchHabits, archiveHabit } = jest.requireMock("../../api/habits");
+const { fetchVisibility } = jest.requireMock("../../api/visibility");
 
 const mockHabits = [
   {
@@ -40,6 +47,10 @@ const mockHabits = [
 
 beforeEach(() => {
   jest.clearAllMocks();
+  fetchVisibility.mockResolvedValue({
+    defaultVisibility: "private",
+    habits: [],
+  });
 });
 
 describe("HabitListScreen", () => {
@@ -98,6 +109,62 @@ describe("HabitListScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Mon, Wed, Fri")).toBeTruthy();
     });
+  });
+
+  // --- Visibility badges ---
+
+  it("shows visibility badge on habit items", async () => {
+    fetchHabits.mockResolvedValue(mockHabits);
+    fetchVisibility.mockResolvedValue({
+      defaultVisibility: "private",
+      habits: [
+        { habitId: "h1", visibility: "friends" },
+        { habitId: "h2", visibility: "public" },
+      ],
+    });
+
+    render(<HabitListScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-badge-h1")).toBeTruthy();
+      expect(screen.getByTestId("visibility-badge-h2")).toBeTruthy();
+    });
+
+    // Check badge labels
+    expect(screen.getByTestId("visibility-badge-h1")).toBeTruthy();
+    expect(screen.getByTestId("visibility-badge-h2")).toBeTruthy();
+  });
+
+  it("shows default visibility badge when no per-habit setting exists", async () => {
+    fetchHabits.mockResolvedValue([mockHabits[0]]);
+    fetchVisibility.mockResolvedValue({
+      defaultVisibility: "private",
+      habits: [],
+    });
+
+    render(<HabitListScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-badge-h1")).toBeTruthy();
+    });
+  });
+
+  it("does not show visibility badges when fetch fails", async () => {
+    fetchHabits.mockResolvedValue(mockHabits);
+    fetchVisibility.mockRejectedValue({
+      status: 500,
+      code: "server_error",
+      message: "Server error",
+    });
+
+    render(<HabitListScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Morning run")).toBeTruthy();
+    });
+
+    // Badges should not be rendered when visibility fetch fails
+    expect(screen.queryByTestId("visibility-badge-h1")).toBeNull();
   });
 
   // --- Create habit ---

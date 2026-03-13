@@ -8,15 +8,18 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { Button, Card, EmptyState, LoadingState, ErrorState } from "../design-system";
+import { Button, Card, Badge, EmptyState, LoadingState, ErrorState } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useHabits, useArchiveHabit } from "../hooks/useHabits";
+import { useVisibility } from "../hooks/useVisibility";
+import { visibilityLabel } from "../components/VisibilityPicker";
 import { CreateHabitScreen } from "./CreateHabitScreen";
 import type { Habit } from "../api/habits";
 
 export function HabitListScreen() {
   const colors = lightTheme;
   const { habits, loading, error, refresh } = useHabits();
+  const { getVisibility, loading: visibilityLoading, error: visibilityError, refresh: refreshVisibility } = useVisibility();
   const [showCreate, setShowCreate] = useState(false);
   const [editHabit, setEditHabit] = useState<Habit | undefined>(undefined);
 
@@ -62,8 +65,9 @@ export function HabitListScreen() {
 
   const handleSaved = useCallback(() => {
     refresh();
+    refreshVisibility();
     setShowCreate(false);
-  }, [refresh]);
+  }, [refresh, refreshVisibility]);
 
   const handleCloseModal = useCallback(() => {
     setShowCreate(false);
@@ -88,9 +92,18 @@ export function HabitListScreen() {
             <Text style={[styles.habitName, { color: colors.textPrimary }]} numberOfLines={1}>
               {item.name}
             </Text>
-            <Text style={[styles.habitFrequency, { color: colors.textSecondary }]}>
-              {formatFrequency(item)}
-            </Text>
+            <View style={styles.habitMeta}>
+              <Text style={[styles.habitFrequency, { color: colors.textSecondary }]}>
+                {formatFrequency(item)}
+              </Text>
+              {!visibilityLoading && !visibilityError && (
+                <Badge
+                  label={visibilityLabel(getVisibility(item.id))}
+                  variant={getVisibility(item.id) === "public" ? "info" : getVisibility(item.id) === "friends" ? "success" : "default"}
+                  testID={`visibility-badge-${item.id}`}
+                />
+              )}
+            </View>
           </View>
           <Pressable
             onPress={() => handleArchive(item)}
@@ -104,7 +117,7 @@ export function HabitListScreen() {
         </Pressable>
       </Card>
     ),
-    [colors, handleEdit, handleArchive],
+    [colors, handleEdit, handleArchive, getVisibility, visibilityLoading, visibilityError],
   );
 
   // Loading state
@@ -165,6 +178,7 @@ export function HabitListScreen() {
         onClose={handleCloseModal}
         onSaved={handleSaved}
         editHabit={editHabit}
+        editVisibility={editHabit ? getVisibility(editHabit.id) : undefined}
       />
     </View>
   );
@@ -232,6 +246,11 @@ const styles = StyleSheet.create({
   habitInfo: {
     flex: 1,
     gap: 2,
+  },
+  habitMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   habitName: {
     ...typography.body,
