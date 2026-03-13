@@ -23,6 +23,8 @@ import {
   lightTheme,
 } from "../design-system";
 import { useHabitDetail, useToggleCompletion } from "../hooks/useHabitDetail";
+import { useVisibility } from "../hooks/useVisibility";
+import { visibilityLabel } from "../components/VisibilityPicker";
 import { isApiError } from "../api";
 import type { FlameLevel } from "../api/habits";
 
@@ -225,6 +227,7 @@ function Calendar({
 export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props) {
   const colors = lightTheme;
   const { habit, stats, loading, error, refresh, timezone } = useHabitDetail(habitId);
+  const { getVisibility, loading: visibilityLoading, error: visibilityError } = useVisibility();
 
   // Track completed dates locally for optimistic calendar updates
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set());
@@ -385,6 +388,13 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
                   label={getConsistencyLabel(consistency)}
                   variant={getConsistencyVariant(consistency)}
                 />
+                {!visibilityLoading && !visibilityError && (
+                  <Badge
+                    label={visibilityLabel(getVisibility(habitId))}
+                    variant={getVisibility(habitId) === "public" ? "info" : getVisibility(habitId) === "friends" ? "success" : "default"}
+                    testID="visibility-badge"
+                  />
+                )}
               </View>
             </View>
           </View>

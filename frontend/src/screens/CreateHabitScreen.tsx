@@ -10,7 +10,10 @@ import { Button, TextInput, Modal } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { isApiError } from "../api";
 import { useCreateHabit, useUpdateHabit } from "../hooks/useHabits";
+import { useDefaultVisibility, useUpdateVisibility } from "../hooks/useVisibility";
 import { validateHabitName, validateCustomDays } from "../utils/habitValidation";
+import { VisibilityPicker } from "../components/VisibilityPicker";
+import type { HabitVisibility } from "../api/visibility";
 import type { Habit, FrequencyType, CreateHabitRequest, UpdateHabitRequest } from "../api/habits";
 
 // --- Preset options ---
@@ -41,9 +44,11 @@ type Props = {
   onClose: () => void;
   onSaved: (habit: Habit) => void;
   editHabit?: Habit;
+  /** Current visibility when editing (looked up from Social Service) */
+  editVisibility?: HabitVisibility;
 };
 
-export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Props) {
+export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVisibility }: Props) {
   const colors = lightTheme;
   const isEditing = !!editHabit;
 
@@ -53,6 +58,10 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
   const [color, setColor] = useState(editHabit?.color ?? HABIT_COLORS[0]);
   const [frequency, setFrequency] = useState<FrequencyType>(editHabit?.frequency ?? "daily");
   const [customDays, setCustomDays] = useState<number[]>(editHabit?.customDays ?? []);
+  const [visibility, setVisibility] = useState<HabitVisibility>(editVisibility ?? "private");
+
+  // Fetch default visibility from Social Service for new habits
+  const { defaultVisibility, loading: loadingDefault } = useDefaultVisibility();
 
   const [errors, setErrors] = useState<{ name?: string; customDays?: string }>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -64,14 +73,17 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
     setColor(editHabit?.color ?? HABIT_COLORS[0]);
     setFrequency(editHabit?.frequency ?? "daily");
     setCustomDays(editHabit?.customDays ?? []);
+    setVisibility(editVisibility ?? defaultVisibility);
     setErrors({});
     setServerError(null);
-  }, [editHabit]);
+  }, [editHabit, editVisibility, defaultVisibility]);
 
   // Reset when modal becomes visible
   React.useEffect(() => {
     if (visible) resetForm();
   }, [visible, resetForm]);
+
+  const { update: updateVisibility } = useUpdateVisibility();
 
   const handleSaved = useCallback(
     (habit: Habit) => {
@@ -81,8 +93,8 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
     [onSaved, onClose],
   );
 
-  const { loading: creating, create } = useCreateHabit(handleSaved);
-  const { loading: updating, update } = useUpdateHabit(handleSaved);
+  const { loading: creating, create } = useCreateHabit();
+  const { loading: updating, update } = useUpdateHabit();
   const loading = creating || updating;
 
   // --- Validation ---
@@ -102,6 +114,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
     if (!validateForm()) return;
 
     try {
+      let savedHabit: Habit;
       if (isEditing && editHabit) {
         const request: UpdateHabitRequest = {
           name: name.trim(),
@@ -110,7 +123,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
           frequency,
           ...(frequency === "custom" ? { customDays } : {}),
         };
-        await update(editHabit.id, request);
+        savedHabit = await update(editHabit.id, request);
       } else {
         const request: CreateHabitRequest = {
           name: name.trim(),
@@ -119,8 +132,23 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
           frequency,
           ...(frequency === "custom" ? { customDays } : {}),
         };
-        await create(request);
+        savedHabit = await create(request);
       }
+
+      // Save visibility through Social Service
+      try {
+        await updateVisibility(savedHabit.id, visibility);
+      } catch {
+        // Visibility save failed — show error, don't close modal so user can retry
+        if (isEditing) {
+          setServerError("Habit saved, but visibility could not be updated. Please try again.");
+        } else {
+          setServerError("Habit created, but visibility could not be set. It defaults to private.");
+        }
+        return;
+      }
+
+      handleSaved(savedHabit);
     } catch (err) {
       if (isApiError(err)) {
         if (err.code === "validation" && err.validationErrors) {
@@ -136,7 +164,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
         setServerError("Something went wrong. Please try again.");
       }
     }
-  }, [name, icon, color, frequency, customDays, isEditing, editHabit, create, update, validateForm]);
+  }, [name, icon, color, frequency, customDays, visibility, isEditing, editHabit, create, update, updateVisibility, validateForm, handleSaved]);
 
   // --- Custom day toggle ---
   const toggleDay = useCallback((day: number) => {
@@ -312,6 +340,13 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit }: Prop
             )}
           </View>
         )}
+
+        {/* Visibility picker */}
+        <VisibilityPicker
+          value={visibility}
+          onChange={setVisibility}
+          disabled={loadingDefault}
+        />
 
         {/* Submit */}
         <View style={styles.submitSection}>

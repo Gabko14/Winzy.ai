@@ -9,28 +9,38 @@ jest.mock("../../api/habits", () => ({
   archiveHabit: jest.fn(),
 }));
 
+jest.mock("../../api/visibility", () => ({
+  fetchPreferences: jest.fn().mockResolvedValue({ defaultHabitVisibility: "private" }),
+  updateVisibility: jest.fn().mockResolvedValue({ habitId: "h1", visibility: "private" }),
+  fetchVisibility: jest.fn().mockResolvedValue({ defaultVisibility: "private", habits: [] }),
+}));
+
 jest.mock("../../api", () => ({
   isApiError: jest.requireActual("../../api/types").isApiError,
 }));
 
 const { createHabit, updateHabit } = jest.requireMock("../../api/habits");
+const { fetchPreferences, updateVisibility } = jest.requireMock("../../api/visibility");
 
 const onClose = jest.fn();
 const onSaved = jest.fn();
 
-function renderCreate(editHabit?: Parameters<typeof CreateHabitScreen>[0]["editHabit"]) {
+function renderCreate(props?: Partial<Parameters<typeof CreateHabitScreen>[0]>) {
   return render(
     <CreateHabitScreen
       visible={true}
       onClose={onClose}
       onSaved={onSaved}
-      editHabit={editHabit}
+      {...props}
     />,
   );
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Reset default mocks
+  fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "private" });
+  updateVisibility.mockResolvedValue({ habitId: "h1", visibility: "private" });
 });
 
 describe("CreateHabitScreen", () => {
@@ -45,14 +55,16 @@ describe("CreateHabitScreen", () => {
 
   it("renders as edit form when editHabit is provided", () => {
     renderCreate({
-      id: "h1",
-      name: "Morning run",
-      icon: "\uD83C\uDFC3",
-      color: "#F97316",
-      frequency: "daily",
-      customDays: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      archivedAt: null,
+      editHabit: {
+        id: "h1",
+        name: "Morning run",
+        icon: "\uD83C\uDFC3",
+        color: "#F97316",
+        frequency: "daily",
+        customDays: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        archivedAt: null,
+      },
     });
     expect(screen.getByText("Edit Habit")).toBeTruthy();
     expect(screen.getByText("Save changes")).toBeTruthy();
@@ -105,7 +117,7 @@ describe("CreateHabitScreen", () => {
     const updatedHabit = { ...existingHabit, name: "Evening run" };
     updateHabit.mockResolvedValue(updatedHabit);
 
-    renderCreate(existingHabit);
+    renderCreate({ editHabit: existingHabit });
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Evening run");
 
     await act(async () => {
@@ -122,12 +134,212 @@ describe("CreateHabitScreen", () => {
     expect(onSaved).toHaveBeenCalledWith(updatedHabit);
   });
 
+  // --- Visibility picker ---
+
+  it("shows visibility picker with private/friends/public options", () => {
+    renderCreate();
+    expect(screen.getByTestId("visibility-picker")).toBeTruthy();
+    expect(screen.getByTestId("visibility-private")).toBeTruthy();
+    expect(screen.getByTestId("visibility-friends")).toBeTruthy();
+    expect(screen.getByTestId("visibility-public")).toBeTruthy();
+  });
+
+  it("defaults visibility from Social Service user preferences", async () => {
+    fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "friends" });
+
+    renderCreate();
+
+    // Wait for the preference to load and apply via resetForm
+    await waitFor(() => {
+      const friendsBtn = screen.getByTestId("visibility-friends");
+      expect(friendsBtn.props.accessibilityState.selected).toBe(true);
+    });
+  });
+
+  it("calls PUT /social/visibility/{habitId} on edit submit", async () => {
+    const existingHabit = {
+      id: "h1",
+      name: "Morning run",
+      icon: "\uD83C\uDFC3",
+      color: "#F97316",
+      frequency: "daily" as const,
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    updateHabit.mockResolvedValue(existingHabit);
+
+    renderCreate({ editHabit: existingHabit, editVisibility: "private" });
+
+    // Wait for preferences to load so picker is enabled
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-friends").props.accessibilityState.disabled).toBeFalsy();
+    });
+
+    // Change visibility to friends
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("visibility-friends"));
+    });
+
+    // Verify the state change took effect
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-friends").props.accessibilityState.selected).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Save changes"));
+    });
+
+    await waitFor(() => {
+      expect(updateVisibility).toHaveBeenCalledWith("h1", "friends");
+    });
+  });
+
+  it("saves visibility after creating a new habit", async () => {
+    const newHabit = {
+      id: "new-h1",
+      name: "Test",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+
+    renderCreate();
+
+    // Wait for preferences to load so picker is enabled
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-public").props.accessibilityState.disabled).toBeFalsy();
+    });
+
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
+
+    // Set visibility to public
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("visibility-public"));
+    });
+
+    // Verify the state change took effect
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-public").props.accessibilityState.selected).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(updateVisibility).toHaveBeenCalledWith("new-h1", "public");
+    });
+  });
+
+  it("shows correct visibility icon/text on each option", () => {
+    renderCreate();
+    expect(screen.getByText("Private")).toBeTruthy();
+    expect(screen.getByText("Friends")).toBeTruthy();
+    expect(screen.getByText("Public")).toBeTruthy();
+    expect(screen.getByText("Only you")).toBeTruthy();
+    expect(screen.getByText("Approved friends")).toBeTruthy();
+    expect(screen.getByText("Anyone with link")).toBeTruthy();
+  });
+
+  // --- Edge case: Social Service down ---
+
+  it("creates habit as private when Social Service is down during create", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Test",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+    updateVisibility.mockRejectedValue({
+      status: 0,
+      code: "network",
+      message: "Network error",
+    });
+
+    renderCreate();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
+    fireEvent.press(screen.getByTestId("visibility-friends"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    // Habit should still be created
+    await waitFor(() => {
+      expect(createHabit).toHaveBeenCalled();
+    });
+
+    // Modal stays open with error — user is informed
+    await waitFor(() => {
+      expect(screen.getByTestId("server-error")).toBeTruthy();
+      expect(
+        screen.getByText("Habit created, but visibility could not be set. It defaults to private."),
+      ).toBeTruthy();
+    });
+
+    // onSaved is NOT called — modal stays open so user can see the error
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("shows visibility change failed error on PUT 404", async () => {
+    const existingHabit = {
+      id: "h1",
+      name: "Morning run",
+      icon: "\uD83C\uDFC3",
+      color: "#F97316",
+      frequency: "daily" as const,
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    updateHabit.mockResolvedValue(existingHabit);
+    updateVisibility.mockRejectedValue({
+      status: 404,
+      code: "not_found",
+      message: "Not found",
+    });
+
+    renderCreate({ editHabit: existingHabit, editVisibility: "private" });
+    fireEvent.press(screen.getByTestId("visibility-public"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Save changes"));
+    });
+
+    // Modal stays open with error message — visibility failure blocks close
+    await waitFor(() => {
+      expect(screen.getByTestId("server-error")).toBeTruthy();
+      expect(
+        screen.getByText("Habit saved, but visibility could not be updated. Please try again."),
+      ).toBeTruthy();
+    });
+
+    // onSaved is NOT called — user needs to retry or close manually
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("habit with no visibility row defaults to private correctly", () => {
+    // When editVisibility is not provided, should default to private
+    renderCreate();
+    const privateBtn = screen.getByTestId("visibility-private");
+    expect(privateBtn.props.accessibilityState.selected).toBe(true);
+  });
+
   // --- Validation ---
 
   it("shows validation error for empty name on submit", async () => {
     renderCreate();
 
-    // Clear the default name (empty by default)
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "");
 
     await act(async () => {
@@ -186,10 +398,8 @@ describe("CreateHabitScreen", () => {
 
   it("shows day picker when custom frequency is selected", () => {
     renderCreate();
-    // Days picker should not be visible initially (daily frequency)
     expect(screen.queryByTestId("days-picker")).toBeNull();
 
-    // Select custom frequency
     fireEvent.press(screen.getByTestId("freq-custom"));
     expect(screen.getByTestId("days-picker")).toBeTruthy();
   });
