@@ -276,7 +276,251 @@ public class SubscriberTests : IAsyncLifetime
         Assert.Equal(2, count);
     }
 
+    // --- Visibility Changed ---
+
+    [Fact]
+    public async Task VisibilityChanged_NarrowingDeletesEntries()
+    {
+        var userId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create a habit entry first
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Meditate"), CT);
+        await WaitForEntryAsync(userId, Subjects.HabitCreated);
+
+        // Narrow visibility: public -> private
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "public", "private"), CT);
+
+        // Wait for soft-delete
+        await WaitForSoftDeletedAsync(userId, Subjects.HabitCreated);
+
+        // Entry should not appear in normal queries (global query filter)
+        using var db = _fixture.CreateDbContext();
+        var visibleCount = await db.FeedEntries.CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(0, visibleCount);
+
+        // But should still exist as soft-deleted
+        var totalCount = await db.FeedEntries.IgnoreQueryFilters().CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, totalCount);
+    }
+
+    [Fact]
+    public async Task VisibilityChanged_WideningDoesNotDelete()
+    {
+        var userId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create a habit entry
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Read"), CT);
+        await WaitForEntryAsync(userId, Subjects.HabitCreated);
+
+        // Widen visibility: private -> public (should NOT delete)
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "private", "public"), CT);
+
+        // Give time for event to be processed
+        await Task.Delay(500, CT);
+
+        // Entry should still be visible
+        using var db = _fixture.CreateDbContext();
+        var count = await db.FeedEntries.CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task VisibilityChanged_IdempotentUnderRedelivery()
+    {
+        var userId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create a habit entry
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Exercise"), CT);
+        await WaitForEntryAsync(userId, Subjects.HabitCreated);
+
+        // Narrow visibility twice (simulating redelivery)
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "public", "private"), CT);
+        await WaitForSoftDeletedAsync(userId, Subjects.HabitCreated);
+
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "public", "private"), CT);
+        await Task.Delay(500, CT);
+
+        // Should still have exactly 1 soft-deleted entry
+        using var db = _fixture.CreateDbContext();
+        var totalCount = await db.FeedEntries.IgnoreQueryFilters().CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, totalCount);
+    }
+
+    [Fact]
+    public async Task VisibilityChanged_OnlyDeletesTargetHabit()
+    {
+        var userId = Guid.NewGuid();
+        var habitId1 = Guid.NewGuid();
+        var habitId2 = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create two habit entries
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId1, "Habit1"), CT);
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId2, "Habit2"), CT);
+        await WaitForCountAsync(userId, 2);
+
+        // Narrow visibility for habit1 only
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId1, "public", "private"), CT);
+        await WaitForSoftDeletedAsync(userId, Subjects.HabitCreated);
+
+        // habit2 should still be visible
+        using var db = _fixture.CreateDbContext();
+        var visibleEntries = await db.FeedEntries
+            .Where(e => e.ActorId == userId && e.EventType == Subjects.HabitCreated)
+            .ToListAsync(CT);
+        Assert.Single(visibleEntries);
+        Assert.Equal(habitId2, visibleEntries[0].Data!.RootElement.GetProperty("habitId").GetGuid());
+    }
+
+    // --- Friend Removed ---
+
+    [Fact]
+    public async Task FriendRemoved_SoftDeletesFriendshipEntries()
+    {
+        var userId1 = Guid.NewGuid();
+        var userId2 = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create friendship entries
+        await publisher.PublishAsync(Subjects.FriendRequestAccepted,
+            new FriendRequestAcceptedEvent(userId1, userId2), CT);
+        await WaitForEntryAsync(userId1, Subjects.FriendRequestAccepted);
+        await WaitForEntryAsync(userId2, Subjects.FriendRequestAccepted);
+
+        // Remove friendship
+        await publisher.PublishAsync(Subjects.FriendRemoved,
+            new FriendRemovedEvent(userId1, userId2), CT);
+
+        // Wait for soft-delete of friendship entries
+        await WaitForSoftDeletedFriendshipAsync(userId1, userId2);
+
+        // Entries should not appear in normal queries
+        using var db = _fixture.CreateDbContext();
+        var visibleCount = await db.FeedEntries.CountAsync(
+            e => e.EventType == Subjects.FriendRequestAccepted
+                && (e.ActorId == userId1 || e.ActorId == userId2), CT);
+        Assert.Equal(0, visibleCount);
+
+        // But should still exist as soft-deleted
+        var totalCount = await db.FeedEntries.IgnoreQueryFilters().CountAsync(
+            e => e.EventType == Subjects.FriendRequestAccepted
+                && (e.ActorId == userId1 || e.ActorId == userId2), CT);
+        Assert.Equal(2, totalCount);
+    }
+
+    [Fact]
+    public async Task FriendRemoved_PublicHabitsRemainVisible()
+    {
+        var userId1 = Guid.NewGuid();
+        var userId2 = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create a habit entry for userId1
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId1, habitId, "PublicHabit"), CT);
+        await WaitForEntryAsync(userId1, Subjects.HabitCreated);
+
+        // Remove friendship
+        await publisher.PublishAsync(Subjects.FriendRemoved,
+            new FriendRemovedEvent(userId1, userId2), CT);
+
+        // Give time for event processing
+        await Task.Delay(500, CT);
+
+        // Habit entry should still be visible (public habits remain visible)
+        using var db = _fixture.CreateDbContext();
+        var count = await db.FeedEntries.CountAsync(
+            e => e.ActorId == userId1 && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task FriendRemoved_IdempotentUnderRedelivery()
+    {
+        var userId1 = Guid.NewGuid();
+        var userId2 = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create friendship entries
+        await publisher.PublishAsync(Subjects.FriendRequestAccepted,
+            new FriendRequestAcceptedEvent(userId1, userId2), CT);
+        await WaitForEntryAsync(userId1, Subjects.FriendRequestAccepted);
+        await WaitForEntryAsync(userId2, Subjects.FriendRequestAccepted);
+
+        // Remove friendship twice (simulating redelivery)
+        await publisher.PublishAsync(Subjects.FriendRemoved,
+            new FriendRemovedEvent(userId1, userId2), CT);
+        await WaitForSoftDeletedFriendshipAsync(userId1, userId2);
+
+        await publisher.PublishAsync(Subjects.FriendRemoved,
+            new FriendRemovedEvent(userId1, userId2), CT);
+        await Task.Delay(500, CT);
+
+        // Should still have exactly 2 soft-deleted entries
+        using var db = _fixture.CreateDbContext();
+        var totalCount = await db.FeedEntries.IgnoreQueryFilters().CountAsync(
+            e => e.EventType == Subjects.FriendRequestAccepted
+                && (e.ActorId == userId1 || e.ActorId == userId2), CT);
+        Assert.Equal(2, totalCount);
+    }
+
     // --- Helpers ---
+
+    private async Task WaitForSoftDeletedAsync(Guid actorId, string eventType, int timeoutMs = 10000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var db = _fixture.CreateDbContext();
+            if (await db.FeedEntries.IgnoreQueryFilters().AnyAsync(
+                e => e.ActorId == actorId && e.EventType == eventType && e.DeletedAt != null, CT))
+                return;
+            await Task.Delay(100, CT);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for soft-deleted entry with ActorId={actorId}, EventType={eventType}");
+    }
+
+    private async Task WaitForSoftDeletedFriendshipAsync(Guid userId1, Guid userId2, int timeoutMs = 10000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var db = _fixture.CreateDbContext();
+            var softDeleted = await db.FeedEntries.IgnoreQueryFilters().CountAsync(
+                e => e.EventType == Subjects.FriendRequestAccepted
+                    && (e.ActorId == userId1 || e.ActorId == userId2)
+                    && e.DeletedAt != null, CT);
+            if (softDeleted >= 2)
+                return;
+            await Task.Delay(100, CT);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for soft-deleted friendship entries between {userId1} and {userId2}");
+    }
 
     private async Task WaitForEntryAsync(Guid actorId, string eventType, int timeoutMs = 10000)
     {

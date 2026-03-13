@@ -20,6 +20,8 @@ builder.Services.AddHostedService<FriendRequestAcceptedSubscriber>();
 builder.Services.AddHostedService<ChallengeCreatedSubscriber>();
 builder.Services.AddHostedService<ChallengeCompletedSubscriber>();
 builder.Services.AddHostedService<UserDeletedSubscriber>();
+builder.Services.AddHostedService<VisibilityChangedSubscriber>();
+builder.Services.AddHostedService<FriendRemovedSubscriber>();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ActivityDbContext>()
