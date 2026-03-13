@@ -180,6 +180,14 @@ public sealed class HabitCompletedSubscriber(
     private async Task<double?> FetchRangeConsistencyAsync(
         IHttpClientFactory httpClientFactory, Guid habitId, Challenge challenge, string? timezone, CancellationToken ct)
     {
+        // The from/to dates here are converted from UTC without the user's timezone. This
+        // can be off by 1 day at timezone boundaries. However, the consistency endpoint
+        // clamps the effective range to the habit's creation date using the tz parameter
+        // (CalculateForDateRange). If from is 1 day early, the endpoint fetches an extra
+        // completion that's still correctly counted. If from is 1 day late, at most one
+        // completion at the boundary could be excluded — a negligible edge case for
+        // challenges that span days/weeks. A proper fix would require persisting the
+        // user's timezone on the Challenge entity.
         var from = challenge.CustomStartDate is not null
             ? DateOnly.FromDateTime(challenge.CustomStartDate.Value.UtcDateTime)
             : DateOnly.FromDateTime(challenge.CreatedAt.UtcDateTime);

@@ -18,6 +18,7 @@ export function useUserSearch(debounceMs = 300) {
 
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seqRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -37,14 +38,15 @@ export function useUserSearch(debounceMs = 300) {
     }
 
     setState((s) => ({ ...s, loading: true, error: null }));
+    const seq = ++seqRef.current;
 
     timerRef.current = setTimeout(async () => {
       try {
         const results = await searchUsers(trimmed);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || seq !== seqRef.current) return;
         setState({ results, loading: false, error: null });
       } catch (err) {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || seq !== seqRef.current) return;
         setState({ results: [], loading: false, error: err as ApiError });
       }
     }, debounceMs);

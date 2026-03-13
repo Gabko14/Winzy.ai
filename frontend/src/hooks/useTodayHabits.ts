@@ -43,7 +43,7 @@ function getTodayDate(): string {
  */
 function isDueToday(habit: Habit): boolean {
   if (habit.frequency === "daily") return true;
-  if (!habit.customDays || habit.customDays.length === 0) return true;
+  if (!habit.customDays || habit.customDays.length === 0) return false;
   const todayDow = new Date().getDay();
   return habit.customDays.includes(todayDow);
 }

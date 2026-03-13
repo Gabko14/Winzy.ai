@@ -221,7 +221,7 @@ export function RootNavigator() {
       break;
     case "profile":
       tabContent = (
-        <ProfileScreen onEditProfile={goToEditProfile} onSettings={dismissOverlay} />
+        <ProfileScreen onEditProfile={goToEditProfile} onSettings={() => handleTabPress("today")} />
       );
       break;
     case "today":

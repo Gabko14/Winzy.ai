@@ -336,6 +336,50 @@ public class SubscriberTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task VisibilityChanged_WideningRestoresSoftDeletedEntries()
+    {
+        var userId = Guid.NewGuid();
+        var habitId = Guid.NewGuid();
+        var publisher = _fixture.GetPublisher();
+
+        // Create a habit entry
+        await publisher.PublishAsync(Subjects.HabitCreated,
+            new HabitCreatedEvent(userId, habitId, "Meditate"), CT);
+        await WaitForEntryAsync(userId, Subjects.HabitCreated);
+
+        // Narrow: public -> private (soft-deletes)
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "public", "private"), CT);
+        await WaitForSoftDeletedAsync(userId, Subjects.HabitCreated);
+
+        // Confirm entry is soft-deleted (invisible to normal queries)
+        {
+            using var db = _fixture.CreateDbContext();
+            var visibleCount = await db.FeedEntries.CountAsync(
+                e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+            Assert.Equal(0, visibleCount);
+        }
+
+        // Widen: private -> public (should restore)
+        await publisher.PublishAsync(Subjects.VisibilityChanged,
+            new VisibilityChangedEvent(userId, habitId, "private", "public"), CT);
+
+        // Wait for restore
+        await WaitForRestoredAsync(userId, Subjects.HabitCreated);
+
+        // Entry should be visible again
+        using var dbAfter = _fixture.CreateDbContext();
+        var restoredCount = await dbAfter.FeedEntries.CountAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Equal(1, restoredCount);
+
+        // And deleted_at should be null
+        var entry = await dbAfter.FeedEntries.FirstAsync(
+            e => e.ActorId == userId && e.EventType == Subjects.HabitCreated, CT);
+        Assert.Null(entry.DeletedAt);
+    }
+
+    [Fact]
     public async Task VisibilityChanged_IdempotentUnderRedelivery()
     {
         var userId = Guid.NewGuid();
@@ -486,6 +530,23 @@ public class SubscriberTests : IAsyncLifetime
     }
 
     // --- Helpers ---
+
+    private async Task WaitForRestoredAsync(Guid actorId, string eventType, int timeoutMs = 10000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var db = _fixture.CreateDbContext();
+            // Entry exists AND deleted_at is null (restored from soft-delete)
+            if (await db.FeedEntries.AnyAsync(
+                e => e.ActorId == actorId && e.EventType == eventType, CT))
+                return;
+            await Task.Delay(100, CT);
+        }
+
+        throw new TimeoutException(
+            $"Timed out waiting for restored entry with ActorId={actorId}, EventType={eventType}");
+    }
 
     private async Task WaitForSoftDeletedAsync(Guid actorId, string eventType, int timeoutMs = 10000)
     {
