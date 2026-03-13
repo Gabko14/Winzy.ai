@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
  * Habit CRUD E2E tests.
  *
  * Covers: create, edit, archive, validation, custom frequency,
- * and multi-habit list behavior.
+ * multi-habit list behavior, and error/offline recovery.
  *
  * Each test registers a fresh user to avoid cross-test state pollution.
  */
@@ -313,6 +313,120 @@ test.describe("Habit CRUD", () => {
       test.info().annotations.push({
         type: "step",
         description: "Both habits visible in the list",
+      });
+    });
+  });
+
+  test("error recovery — network failure then successful retry", async ({ unauthenticatedPage: page }) => {
+    const habitName = "Resilient habit";
+
+    await test.step("register and open create modal", async () => {
+      await registerAndSetup(page, "error");
+      await openCreateModal(page);
+      test.info().annotations.push({
+        type: "step",
+        description: "Create habit modal opened",
+      });
+    });
+
+    await test.step("intercept POST /habits to simulate network error", async () => {
+      // Block the first POST to /habits with a network-level failure
+      let blocked = true;
+      await page.route("**/habits", (route) => {
+        if (route.request().method() === "POST" && blocked) {
+          blocked = false;
+          route.abort("connectionrefused");
+        } else {
+          route.continue();
+        }
+      });
+      test.info().annotations.push({
+        type: "step",
+        description: "Route interception set up — first POST will fail",
+      });
+    });
+
+    await test.step("submit and verify error banner", async () => {
+      await page.getByLabel("Habit name").fill(habitName);
+      await page.getByRole("button", { name: "Create habit" }).click();
+
+      // The CreateHabitScreen shows a server error banner for network errors
+      await expect(page.getByTestId("server-error")).toBeVisible({ timeout: 10_000 });
+      await expect(
+        page.getByText("Unable to reach the server. Please check your connection."),
+      ).toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: "Network error banner displayed after failed create",
+      });
+    });
+
+    await test.step("retry — submit again and verify success", async () => {
+      // The route intercept only blocks the first POST; subsequent ones pass through
+      await page.getByRole("button", { name: "Create habit" }).click();
+
+      // Modal should close and habit should appear in the list
+      await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
+      // Error banner should be gone (modal closed)
+      await expect(page.getByTestId("server-error")).not.toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: `Habit "${habitName}" created successfully on retry`,
+      });
+    });
+  });
+
+  test("habit list error state with retry", async ({ unauthenticatedPage: page }) => {
+    await test.step("register and navigate to habit list", async () => {
+      await registerAndSetup(page, "listerr");
+      await page.getByText("Create your first habit").click();
+      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
+      test.info().annotations.push({
+        type: "step",
+        description: "Landed on HabitListScreen",
+      });
+    });
+
+    await test.step("intercept GET /habits to simulate server error", async () => {
+      await page.route("**/habits", (route) => {
+        if (route.request().method() === "GET") {
+          route.fulfill({ status: 500, body: "Internal Server Error" });
+        } else {
+          route.continue();
+        }
+      });
+      test.info().annotations.push({
+        type: "step",
+        description: "Route interception set up — GET /habits returns 500",
+      });
+    });
+
+    await test.step("trigger reload and verify error state", async () => {
+      // Reload the page to trigger a fresh GET /habits that will hit the 500
+      await page.reload();
+
+      // Wait for auth to re-bootstrap and the error state to render
+      await expect(page.getByTestId("habits-error")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText("Could not load your habits.")).toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: "Error state displayed with retry option",
+      });
+    });
+
+    await test.step("unblock route and retry", async () => {
+      // Remove the intercepted route so GET /habits succeeds
+      await page.unroute("**/habits");
+
+      // Click the retry button in the ErrorState component
+      await page.getByRole("button", { name: "Try again" }).click();
+
+      // Should show the habit list (empty state since no habits were created)
+      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("No habits yet")).toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: "Retry succeeded — habit list empty state displayed",
       });
     });
   });
