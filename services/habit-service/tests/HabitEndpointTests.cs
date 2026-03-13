@@ -2,6 +2,13 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using NATS.Client.Core;
+using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
+using NATS.Client.Serializers.Json;
+using Winzy.Contracts;
+using Winzy.Contracts.Events;
 using Xunit;
 
 namespace Winzy.HabitService.Tests;
@@ -244,6 +251,59 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == habitId, CT);
         Assert.NotNull(habit);
         Assert.NotNull(habit!.ArchivedAt);
+    }
+
+    [Fact]
+    public async Task DeleteHabit_PublishesHabitArchivedEvent()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Event Test", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Set up an ephemeral JetStream consumer with DeliverPolicy.New to ignore stale messages
+        var natsConn = _fixture.Factory.Services.GetRequiredService<INatsConnection>();
+        var js = new NatsJSContext(natsConn);
+        var consumerName = $"test-habit-archived-{Guid.NewGuid():N}";
+        var consumer = await js.CreateOrUpdateConsumerAsync("HABITS",
+            new ConsumerConfig(consumerName)
+            {
+                FilterSubject = Subjects.HabitArchived,
+                DeliverPolicy = ConsumerConfigDeliverPolicy.New
+            },
+            CT);
+
+        var response = await client.DeleteAsync($"/habits/{habitId}", CT);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Consume the published event
+        var msg = await consumer.NextAsync<HabitArchivedEvent>(
+            serializer: NatsJsonSerializer<HabitArchivedEvent>.Default,
+            cancellationToken: new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+
+        Assert.NotNull(msg);
+        Assert.Equal(_userId, msg!.Data!.UserId);
+        Assert.Equal(habitId, msg.Data!.HabitId);
+        await msg.AckAsync(cancellationToken: CT);
+    }
+
+    [Fact]
+    public async Task DeleteHabit_AlreadyArchived_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Archive Twice", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // First delete succeeds
+        var response1 = await client.DeleteAsync($"/habits/{habitId}", CT);
+        Assert.Equal(HttpStatusCode.NoContent, response1.StatusCode);
+
+        // Second delete: the habit still exists in DB (soft-delete) so it returns 204 again (idempotent)
+        var response2 = await client.DeleteAsync($"/habits/{habitId}", CT);
+        Assert.Equal(HttpStatusCode.NoContent, response2.StatusCode);
     }
 
     // --- POST /habits/{id}/complete ---

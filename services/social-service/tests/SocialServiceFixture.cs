@@ -66,7 +66,8 @@ public sealed class SocialServiceFixture : IAsyncLifetime
                             d.ImplementationType == typeof(JetStreamSetup) ||
                             d.ImplementationType == typeof(NatsEventPublisher) ||
                             d.ImplementationType == typeof(UserDeletedSubscriber) ||
-                            d.ImplementationType == typeof(HabitCreatedSubscriber))
+                            d.ImplementationType == typeof(HabitCreatedSubscriber) ||
+                            d.ImplementationType == typeof(HabitArchivedSubscriber))
                         .ToList();
 
                     foreach (var descriptor in natsDescriptors)
@@ -78,6 +79,7 @@ public sealed class SocialServiceFixture : IAsyncLifetime
                     services.AddSingleton<NatsEventPublisher>();
                     services.AddHostedService<UserDeletedSubscriber>();
                     services.AddHostedService<HabitCreatedSubscriber>();
+                    services.AddHostedService<HabitArchivedSubscriber>();
 
                     // Replace HabitService HttpClient with mock handler
                     services.AddHttpClient("HabitService")
