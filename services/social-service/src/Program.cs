@@ -17,6 +17,7 @@ builder.Services.AddServiceDatabase<SocialDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddHostedService<UserDeletedSubscriber>();
 builder.Services.AddHostedService<HabitCreatedSubscriber>();
+builder.Services.AddHostedService<HabitArchivedSubscriber>();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<SocialDbContext>()

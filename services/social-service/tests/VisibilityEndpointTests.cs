@@ -2,6 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using NATS.Client.Core;
+using Winzy.Common.Messaging;
+using Winzy.Contracts;
+using Winzy.Contracts.Events;
 using Winzy.SocialService.Entities;
 using Xunit;
 
@@ -370,5 +375,86 @@ public class VisibilityEndpointTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.Equal("private", body.GetProperty("defaultVisibility").GetString());
         Assert.Equal(0, body.GetProperty("habitIds").GetArrayLength());
+    }
+
+    // --- HabitArchivedSubscriber integration tests ---
+
+    [Fact]
+    public async Task HabitArchivedEvent_DeletesVisibilitySetting()
+    {
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Create a visibility setting
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "friends" }, CT);
+
+        // Verify it exists
+        using (var db = _fixture.CreateDbContext())
+        {
+            var exists = await db.VisibilitySettings
+                .AnyAsync(v => v.UserId == _userId && v.HabitId == _habitId1, CT);
+            Assert.True(exists);
+        }
+
+        // Publish habit.archived event
+        var nats = _fixture.Factory.Services.GetRequiredService<NatsEventPublisher>();
+        await nats.PublishAsync(Subjects.HabitArchived, new HabitArchivedEvent(_userId, _habitId1), CT);
+
+        // Wait for subscriber to process
+        await Task.Delay(1000, CT);
+
+        // Verify the visibility setting was deleted
+        using (var db = _fixture.CreateDbContext())
+        {
+            var exists = await db.VisibilitySettings
+                .AnyAsync(v => v.UserId == _userId && v.HabitId == _habitId1, CT);
+            Assert.False(exists);
+        }
+    }
+
+    [Fact]
+    public async Task HabitArchivedEvent_NoVisibilitySetting_DoesNotFail()
+    {
+        // Publish habit.archived event for a habit with no visibility setting (idempotent / redelivery)
+        var nats = _fixture.Factory.Services.GetRequiredService<NatsEventPublisher>();
+        var nonExistentHabitId = Guid.NewGuid();
+        await nats.PublishAsync(Subjects.HabitArchived,
+            new HabitArchivedEvent(_userId, nonExistentHabitId), CT);
+
+        // Wait for subscriber to process — should not throw
+        await Task.Delay(1000, CT);
+
+        // Verify no error occurred (test would have timed out or failed if subscriber threw)
+        using var db = _fixture.CreateDbContext();
+        var count = await db.VisibilitySettings
+            .CountAsync(v => v.UserId == _userId && v.HabitId == nonExistentHabitId, CT);
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    public async Task HabitArchivedEvent_OnlyDeletesTargetHabit()
+    {
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Create visibility settings for both habits
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "friends" }, CT);
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId2}", new { visibility = "public" }, CT);
+
+        // Archive only habit1
+        var nats = _fixture.Factory.Services.GetRequiredService<NatsEventPublisher>();
+        await nats.PublishAsync(Subjects.HabitArchived, new HabitArchivedEvent(_userId, _habitId1), CT);
+
+        await Task.Delay(1000, CT);
+
+        // habit1 visibility deleted, habit2 still exists
+        using var db = _fixture.CreateDbContext();
+        var habit1Exists = await db.VisibilitySettings
+            .AnyAsync(v => v.UserId == _userId && v.HabitId == _habitId1, CT);
+        var habit2Exists = await db.VisibilitySettings
+            .AnyAsync(v => v.UserId == _userId && v.HabitId == _habitId2, CT);
+
+        Assert.False(habit1Exists);
+        Assert.True(habit2Exists);
     }
 }

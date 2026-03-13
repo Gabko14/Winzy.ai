@@ -161,7 +161,7 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     return Results.Ok(MapToResponse(habit));
 });
 
-app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext db) =>
+app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext db, NatsEventPublisher nats, ILogger<Program> logger) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -173,6 +173,15 @@ app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbConte
     // Soft-delete via archiving
     habit.ArchivedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
+
+    try
+    {
+        await nats.PublishAsync(Subjects.HabitArchived, new HabitArchivedEvent(userId, id));
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to publish habit.archived event for habit {HabitId}", id);
+    }
 
     return Results.NoContent();
 });
@@ -247,7 +256,7 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
     try
     {
         await nats.PublishAsync(Subjects.HabitCompleted,
-            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency));
+            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone));
     }
     catch (Exception ex)
     {
