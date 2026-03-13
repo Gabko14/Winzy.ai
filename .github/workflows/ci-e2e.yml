@@ -42,6 +42,8 @@ jobs:
       - name: Start backend services
         run: docker compose -f docker-compose.yml up -d --build --wait
         timeout-minutes: 5
+        env:
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
       - name: Wait for gateway health
         run: |
@@ -56,6 +58,8 @@ jobs:
           echo "Gateway failed to become healthy within 60s"
           docker compose -f docker-compose.yml logs --tail=50
           exit 1
+        env:
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
       - name: Install frontend and E2E dependencies
         run: |
@@ -87,6 +91,8 @@ jobs:
       - name: Docker compose logs
         if: failure()
         run: docker compose -f docker-compose.yml logs --tail=100
+        env:
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -107,3 +113,5 @@ jobs:
       - name: Stop backend services
         if: always()
         run: docker compose -f docker-compose.yml down
+        env:
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
