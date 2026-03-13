@@ -83,7 +83,7 @@ export async function subscribeToWebPush(
     }
 
     const subscriptionJson = JSON.stringify(subscription.toJSON());
-    const deviceId = deriveDeviceId(subscription.endpoint);
+    const deviceId = await deriveDeviceId(subscription.endpoint);
 
     // Register with backend
     await registerDevice({
@@ -111,7 +111,7 @@ export async function unsubscribeFromWebPush(): Promise<boolean> {
     const subscription = await registration.pushManager.getSubscription();
 
     if (subscription) {
-      const deviceId = deriveDeviceId(subscription.endpoint);
+      const deviceId = await deriveDeviceId(subscription.endpoint);
       await subscription.unsubscribe();
       await unregisterDevice({ deviceId });
       console.info("[Push] Web push subscription removed");
@@ -158,13 +158,24 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 /**
  * Derive a stable device ID from the push subscription endpoint URL.
- * Uses a simple hash of the endpoint to avoid storing the full URL as an ID.
+ * Uses SHA-256 via Web Crypto (48-bit prefix). Falls back to a simple
+ * 32-bit hash when crypto.subtle is unavailable (non-secure contexts).
  */
-function deriveDeviceId(endpoint: string): string {
+async function deriveDeviceId(endpoint: string): Promise<string> {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const data = new TextEncoder().encode(endpoint);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = new Uint8Array(hashBuffer);
+    const hex = Array.from(hashArray.slice(0, 6))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return `web_${hex}`;
+  }
+
+  // Fallback: simple 32-bit hash for non-secure contexts
   let hash = 0;
   for (let i = 0; i < endpoint.length; i++) {
-    const char = endpoint.charCodeAt(i);
-    hash = ((hash << 5) - hash + char) | 0;
+    hash = ((hash << 5) - hash + endpoint.charCodeAt(i)) | 0;
   }
   return `web_${Math.abs(hash).toString(36)}`;
 }
