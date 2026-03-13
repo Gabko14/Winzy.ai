@@ -77,19 +77,7 @@ Every test module must cover three areas:
 
 ## Agent Teams (Claude Code-specific)
 
-- **All teammates share one working directory.** `isolation: "worktree"` does NOT work with team agents. Don't try to work around this — shared filesystem enables collaboration on overlapping files.
-- **Only the lead runs git operations.** Teammates never `git add`/`git commit`. They report changed files; lead commits.
-- **Workers report their file plan before implementing.** After exploring the codebase but before writing code, each worker messages the team with a concise list of files it will touch. This lets other agents know who to contact when they need the same file. The lead can spot conflicts before any code is written.
-- **Agent needs a file outside its plan → messages the team.** Other agents working on that file coordinate directly. One goes first, lead commits between handoffs.
-- **Commit per worker-reviewer pair, not batched.** Reviewer approves → worker/reviewer verify build and tests pass → lead commits → both shut down. Nothing is committed until the pair is done. Batching all commits at the end risks agents overwriting each other's work.
-- **Review inline, not after all work.** Each worker gets a paired reviewer. Keep the worker alive until review is done. Reviewer messages worker directly with issues → worker fixes → reviewer approves. Optimize for quality, not token cost.
-- **Review loop until clean.** After a worker fixes reviewer feedback, the reviewer MUST re-review the changed files and re-run quality gates. This loop continues until the reviewer has zero issues. Only then does the reviewer message the lead with "approved."
-- **Workers must fully test before submitting for review.** Don't just write code and hand it off — run every quality gate yourself first. Backend: `dotnet build`, `dotnet test`, `dotnet format --verify-no-changes`. Frontend: `npx tsc --noEmit`, `npm test -- --watchAll=false`. Only submit to your reviewer when everything passes.
-- **Features with user journeys need E2E tests, not just unit tests.** Jest tests mock everything — they prove components render, not that the app works. If your feature adds a screen or flow a user navigates through (auth, notifications inbox, habit CRUD), write Playwright E2E specs in `e2e/tests/`. Pure components and utilities (design system, hooks, validators) only need Jest. When the stack is running (`docker compose up -d`), use the **Playwright MCP** to interact with the live app, visually verify changes, and catch integration bugs that mocks hide.
-- **The lead must start the Docker stack before launching workers.** Run `docker compose up -d` and verify health before the team begins. This ensures E2E tests can run throughout the session.
-- **Reviewers must test, not just read code.** Run the quality gates yourself (`dotnet test`, `npm test`, `tsc --noEmit`). Reviewers MUST run E2E tests (`npx playwright test` in `e2e/`) for any track that adds or modifies user-facing screens or flows. "Stack not running" is not an acceptable reason to skip E2E — if it's down, fix it or flag it to the lead. A review that only reads code misses runtime bugs.
-- **Don't duplicate issue content in prompts.** Teammates run `br show <id>` themselves.
-- **`br update --claim` and `br comments add` are safe per-teammate.** `br close` and `br sync` go through the lead only.
+See [`.claude/agents/team-rules.md`](.claude/agents/team-rules.md) for the full agent team workflow rules (shared directory, file coordination, review process, quality gates, beads integration).
 
 ## Agent Instructions
 
