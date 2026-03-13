@@ -851,6 +851,108 @@ public class CalculateForDateRangeTests
         // Only 1 week is applicable (Feb 10-16), and it has a completion = 100%
         Assert.Equal(100, result);
     }
+
+    // --- Timezone boundary: habit created at 11 PM UTC-5 on March 1 ---
+
+    [Fact]
+    public void Daily_TimezoneBoundary_CreatedAt11pmEst_RangeStartsMarch1()
+    {
+        // User in UTC-5 creates habit at 11 PM local time on March 1.
+        // In UTC that's March 2 04:00 AM.
+        // Without timezone-aware clamping, UTC fallback would see creation = March 2,
+        // excluding March 1 from the range and undercounting.
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 2, 4, 0, 0, TimeSpan.Zero));
+        var est = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+
+        var start = new DateOnly(2025, 3, 1);
+        var end = new DateOnly(2025, 3, 7); // 7-day range
+
+        // Complete all days March 1-7
+        var completed = new HashSet<DateOnly>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            completed.Add(d);
+
+        // With timezone: creation date = March 1 (local), all 7 days applicable
+        var resultWithTz = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end, est);
+        Assert.Equal(100, resultWithTz);
+
+        // Without timezone: creation date = March 2 (UTC), only 6 days applicable
+        var resultWithoutTz = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+        // Still 100% (all completed), but denominator is 6 instead of 7
+        Assert.Equal(100, resultWithoutTz);
+    }
+
+    [Fact]
+    public void Daily_TimezoneBoundary_CreatedAt11pmEst_PartialCompletions()
+    {
+        // Same timezone boundary scenario, but with partial completions to show the undercount.
+        // Habit created at 11 PM EST on March 1 = March 2 04:00 UTC.
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 2, 4, 0, 0, TimeSpan.Zero));
+        var est = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+
+        var start = new DateOnly(2025, 3, 1);
+        var end = new DateOnly(2025, 3, 7);
+
+        // Complete only March 1 — the day that UTC fallback would exclude
+        var completed = new HashSet<DateOnly> { new DateOnly(2025, 3, 1) };
+
+        // With timezone: creation date = March 1, 7 applicable days, 1 completed = 14.3%
+        var resultWithTz = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end, est);
+        Assert.Equal(14.3, resultWithTz);
+
+        // Without timezone: creation date = March 2 (UTC), March 1 excluded from range.
+        // 6 applicable days, 0 completed (March 1 is before effectiveStart) = 0%
+        var resultWithoutTz = ConsistencyCalculator.CalculateForDateRange(habit, completed, start, end);
+        Assert.Equal(0, resultWithoutTz);
+    }
+
+    // --- Range spans exactly one day ---
+
+    [Fact]
+    public void Daily_SingleDayRange_HabitExisted_Completed()
+    {
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero));
+        var date = new DateOnly(2025, 2, 10);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [date], date, date);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_SingleDayRange_HabitExisted_NotCompleted()
+    {
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero));
+        var date = new DateOnly(2025, 2, 10);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], date, date);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Daily_SingleDayRange_HabitCreatedThatDay()
+    {
+        // Habit created on the same day as the single-day range
+        var date = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 1, 10, 0, 0, TimeSpan.Zero));
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [date], date, date);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_SingleDayRange_HabitNotYetCreated()
+    {
+        // Habit created after the single-day range
+        var date = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 2, 0, 0, 0, TimeSpan.Zero));
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, [date], date, date);
+
+        Assert.Equal(0, result);
+    }
 }
 
 // --- Flame level mapping tests ---
