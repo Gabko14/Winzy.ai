@@ -128,6 +128,7 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
         using var db = CreateDbContext();
         await db.Challenges.ExecuteDeleteAsync();
         MockHabitHandler.HabitConsistency.Clear();
+        MockSocialHandler.Reset();
     }
 }
 
@@ -138,14 +139,37 @@ internal class MockSocialHandler : HttpMessageHandler
     /// </summary>
     public static readonly ConcurrentDictionary<string, bool> FriendPairs = new();
 
+    /// <summary>
+    /// When set, all requests return this status code instead of normal logic.
+    /// </summary>
+    public static HttpStatusCode? ForceStatusCode;
+
+    /// <summary>
+    /// When true, all requests throw TaskCanceledException (simulates timeout).
+    /// </summary>
+    public static bool ForceTimeout;
+
     public static void AddFriendship(Guid userId1, Guid userId2)
     {
         FriendPairs[$"{userId1}|{userId2}"] = true;
         FriendPairs[$"{userId2}|{userId1}"] = true;
     }
 
+    public static void Reset()
+    {
+        FriendPairs.Clear();
+        ForceStatusCode = null;
+        ForceTimeout = false;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (ForceTimeout)
+            throw new TaskCanceledException("The request was canceled due to the configured timeout.");
+
+        if (ForceStatusCode is { } statusCode)
+            return Task.FromResult(new HttpResponseMessage(statusCode));
+
         var path = request.RequestUri?.AbsolutePath ?? "";
         var prefix = "/social/internal/friends/";
 

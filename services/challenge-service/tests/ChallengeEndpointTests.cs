@@ -1137,6 +1137,234 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // --- Friendship check error handling (winzy.ai-35k) ---
+
+    [Fact]
+    public async Task CreateChallenge_SocialServiceReturns500_Returns503()
+    {
+        MockSocialHandler.ForceStatusCode = HttpStatusCode.InternalServerError;
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_SocialServiceReturns502_Returns503()
+    {
+        MockSocialHandler.ForceStatusCode = HttpStatusCode.BadGateway;
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_SocialServiceTimeout_Returns503()
+    {
+        MockSocialHandler.ForceTimeout = true;
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_NotFriends404_Returns400WithValidationError()
+    {
+        // Do NOT add friendship — MockSocialHandler returns 404 by default for unknown pairs
+        var strangerId = Guid.NewGuid();
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = strangerId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        // 404 from Social Service = validation error (not friends), NOT 503
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("You can only challenge friends", body.GetProperty("error").GetString());
+    }
+
+    // --- Expired vs cancelled status preservation (winzy.ai-25m) ---
+
+    [Fact]
+    public async Task CreateChallenge_ReplacingExpired_PreservesExpiredStatus()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Seed an expired challenge (Active but EndsAt in the past)
+        Guid oldChallengeId;
+        {
+            using var db = _fixture.CreateDbContext();
+            var old = new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 1,
+                RewardDescription = "Old expired challenge",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1)
+            };
+            db.Challenges.Add(old);
+            await db.SaveChangesAsync(CT);
+            oldChallengeId = old.Id;
+        }
+
+        // Create replacement
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "New replacement challenge"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        // Verify the old challenge is Expired (not Cancelled)
+        using var verifyDb = _fixture.CreateDbContext();
+        var verifiedOld = await verifyDb.Challenges.FindAsync([oldChallengeId], CT);
+        Assert.NotNull(verifiedOld);
+        Assert.Equal(ChallengeStatus.Expired, verifiedOld.Status);
+    }
+
+    [Fact]
+    public async Task CreateChallenge_CancelledChallengeRetainsStatus_AfterNewCreation()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Seed a cancelled challenge
+        Guid cancelledId;
+        {
+            using var db = _fixture.CreateDbContext();
+            var cancelled = new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Cancelled challenge",
+                Status = ChallengeStatus.Cancelled,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(10)
+            };
+            db.Challenges.Add(cancelled);
+            await db.SaveChangesAsync(CT);
+            cancelledId = cancelled.Id;
+        }
+
+        // Create a new challenge for the same triple — should succeed (cancelled doesn't block unique index)
+        var response = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 90.0,
+            periodDays = 30,
+            rewardDescription = "New challenge"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        // Verify the cancelled challenge still has Cancelled status (not overwritten)
+        using var verifyDb = _fixture.CreateDbContext();
+        var verifiedCancelled = await verifyDb.Challenges.FindAsync([cancelledId], CT);
+        Assert.NotNull(verifiedCancelled);
+        Assert.Equal(ChallengeStatus.Cancelled, verifiedCancelled.Status);
+    }
+
+    [Fact]
+    public async Task GetChallenge_ExpiredVsCancelled_ShowsCorrectStatus()
+    {
+        // Seed both an expired and a cancelled challenge
+        Guid expiredId, cancelledId;
+        {
+            using var db = _fixture.CreateDbContext();
+            var expired = new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 1,
+                RewardDescription = "Expired one",
+                Status = ChallengeStatus.Expired,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1)
+            };
+            var cancelled = new Challenge
+            {
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = Guid.NewGuid(), // different habit to avoid unique constraint
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Cancelled one",
+                Status = ChallengeStatus.Cancelled,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(10)
+            };
+            db.Challenges.AddRange(expired, cancelled);
+            await db.SaveChangesAsync(CT);
+            expiredId = expired.Id;
+            cancelledId = cancelled.Id;
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Verify expired challenge shows "expired" status
+        var expiredResponse = await client.GetAsync($"/challenges/{expiredId}", CT);
+        Assert.Equal(HttpStatusCode.OK, expiredResponse.StatusCode);
+        var expiredBody = await expiredResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("expired", expiredBody.GetProperty("status").GetString());
+
+        // Verify cancelled challenge shows "cancelled" status
+        var cancelledResponse = await client.GetAsync($"/challenges/{cancelledId}", CT);
+        Assert.Equal(HttpStatusCode.OK, cancelledResponse.StatusCode);
+        var cancelledBody = await cancelledResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("cancelled", cancelledBody.GetProperty("status").GetString());
+    }
+
     // --- GET /health ---
 
     [Fact]
