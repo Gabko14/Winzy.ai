@@ -124,8 +124,8 @@ export function FriendsScreen({ onAddFriend, onFriendPress }: Props) {
   const handleRemoveFriend = useCallback(
     (friend: Friend) => {
       Alert.alert(
-        "Remove friend",
-        "Are you sure you want to remove this friend?",
+        "Remove friend?",
+        "You won't see each other's flames anymore. You can always reconnect later.",
         [
           { text: "Cancel", style: "cancel" },
           {

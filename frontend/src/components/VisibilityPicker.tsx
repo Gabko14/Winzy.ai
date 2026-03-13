@@ -27,7 +27,7 @@ export function VisibilityPicker({ value, onChange, disabled }: VisibilityPicker
   return (
     <View style={styles.section} testID="visibility-picker">
       <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Visibility</Text>
-      <View style={styles.optionsRow}>
+      <View style={styles.optionsRow} accessibilityRole="radiogroup">
         {VISIBILITY_OPTIONS.map((opt) => {
           const isSelected = value === opt.value;
           return (

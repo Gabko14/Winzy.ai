@@ -288,6 +288,8 @@ export async function bootstrapSession(): Promise<AuthResponse | null> {
   // Safe to call every bootstrap — it's a no-op if nothing is stored.
   await tokenStore.clearLegacyWebRefreshToken();
 
+  // On web, hasToken will be false after legacy cleanup above — that's expected.
+  // The httpOnly cookie path on line 296 handles session restoration.
   const refreshToken = await tokenStore.getRefreshToken();
   const hasToken = !!refreshToken;
 

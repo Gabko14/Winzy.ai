@@ -593,7 +593,7 @@ echo -e "  ${RED}Failed:${NC} $FAIL"
 echo ""
 echo "  Users:"
 for user in alice bob charlie diana; do
-    echo "    @$user  id=${USER_IDS[$user]:-unknown}  password=$PASSWORD"
+    echo "    @$user  id=${USER_IDS[$user]:-unknown}  password=<see script header>"
 done
 echo ""
 echo "  Habits:"

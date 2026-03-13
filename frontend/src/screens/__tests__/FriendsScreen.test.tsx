@@ -237,8 +237,8 @@ describe("FriendsScreen", () => {
     fireEvent(getByTestId("friend-remove-me"), "longPress");
 
     expect(Alert.alert).toHaveBeenCalledWith(
-      "Remove friend",
-      "Are you sure you want to remove this friend?",
+      "Remove friend?",
+      "You won't see each other's flames anymore. You can always reconnect later.",
       expect.arrayContaining([
         expect.objectContaining({ text: "Cancel" }),
         expect.objectContaining({ text: "Remove", style: "destructive" }),

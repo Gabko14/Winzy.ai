@@ -143,7 +143,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         if (isEditing) {
           setServerError("Habit saved, but visibility could not be updated. Please try again.");
         } else {
-          setServerError("Habit created, but visibility could not be set. It defaults to private.");
+          setServerError("Habit created! Visibility defaulted to private — you can change it anytime.");
         }
         return;
       }

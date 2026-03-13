@@ -37,7 +37,7 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
   const handleSendRequest = useCallback(
     async (user: UserSearchResult) => {
       if (currentUserId && user.id === currentUserId) {
-        Alert.alert("Oops", "You can't send a friend request to yourself.");
+        Alert.alert("That's you!", "You can't send a friend request to yourself.");
         return;
       }
 
