@@ -130,6 +130,38 @@ jest.mock("../../screens/ProfileCompletionScreen", () => ({
   },
 }));
 
+jest.mock("../../screens/FriendsScreen", () => ({
+  FriendsScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="friends-screen">
+        <RN.Text>FriendsScreen</RN.Text>
+        {props.onAddFriend && (
+          <RN.Pressable testID="add-friend-press" onPress={props.onAddFriend as () => void}>
+            <RN.Text>Add Friend</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
+jest.mock("../../screens/AddFriendScreen", () => ({
+  AddFriendScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="add-friend-screen">
+        <RN.Text>AddFriendScreen</RN.Text>
+        {props.onBack && (
+          <RN.Pressable testID="add-friend-back" onPress={props.onBack as () => void}>
+            <RN.Text>Back</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
 jest.mock("../../screens/PublicFlameScreen", () => ({
   PublicFlameScreen: () => {
     const RN = require("react-native");
@@ -242,7 +274,7 @@ describe("RootNavigator", () => {
   it("switches to Friends tab", () => {
     const { getByTestId } = render(<RootNavigator />);
     fireEvent.press(getByTestId("tab-friends"));
-    expect(getByTestId("friends-tab-content")).toBeTruthy();
+    expect(getByTestId("friends-screen")).toBeTruthy();
   });
 
   it("switches to Feed tab", () => {

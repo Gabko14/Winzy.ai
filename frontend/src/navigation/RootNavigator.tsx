@@ -14,11 +14,13 @@ import { TodayScreen } from "../screens/TodayScreen";
 import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
 import { NotificationScreen } from "../components/notifications";
+import { FriendsScreen } from "../screens/FriendsScreen";
+import { AddFriendScreen } from "../screens/AddFriendScreen";
 import { useUnreadCount } from "../hooks/useUnreadCount";
 import { TabBar, type TabId } from "./TabBar";
 
 /** Screens that overlay on top of a tab's content */
-type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits";
+type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits" | "addFriend";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -59,6 +61,7 @@ export function RootNavigator() {
   const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);
   const goToNotifications = useCallback(() => setOverlay("notifications"), []);
   const goToHabits = useCallback(() => setOverlay("habits"), []);
+  const goToAddFriend = useCallback(() => setOverlay("addFriend"), []);
   const dismissOverlay = useCallback(() => setOverlay(null), []);
 
   const handleTabPress = useCallback((tabId: TabId) => {
@@ -170,6 +173,19 @@ export function RootNavigator() {
     );
   }
 
+  if (overlay === "addFriend") {
+    return (
+      <>
+        <OfflineIndicator />
+        <AddFriendScreen
+          currentUserId={auth.user.id}
+          onBack={() => { setOverlay(null); setActiveTab("friends"); }}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // --- Tab content ---
 
   const tabs = [
@@ -184,9 +200,12 @@ export function RootNavigator() {
   switch (activeTab) {
     case "friends":
       tabContent = (
-        <View style={styles.placeholder} testID="friends-tab-content">
-          {/* Friends screen will be wired by winzy.ai-78l */}
-        </View>
+        <FriendsScreen
+          onAddFriend={goToAddFriend}
+          onFriendPress={(_friendId) => {
+            // TODO: navigate to FriendProfileScreen (winzy.ai-ekw)
+          }}
+        />
       );
       break;
     case "feed":
