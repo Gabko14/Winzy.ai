@@ -42,3 +42,11 @@ export function updateVisibility(
 export function fetchPreferences(): Promise<PreferencesResponse> {
   return api.get<PreferencesResponse>("/social/preferences");
 }
+
+export function updateDefaultVisibility(
+  visibility: HabitVisibility,
+): Promise<PreferencesResponse> {
+  return api.put<PreferencesResponse>("/social/preferences", {
+    defaultHabitVisibility: visibility,
+  });
+}
