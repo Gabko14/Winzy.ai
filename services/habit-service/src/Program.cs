@@ -387,6 +387,48 @@ app.MapGet("/habits/completions", async (HttpContext ctx, HabitDbContext db) =>
     });
 });
 
+// --- Internal export endpoint (service-to-service, per export-contracts.md) ---
+
+app.MapGet("/habits/internal/export/{userId:guid}", async (Guid userId, HabitDbContext db) =>
+{
+    var habits = await db.Habits
+        .Where(h => h.UserId == userId)
+        .Include(h => h.Completions)
+        .OrderBy(h => h.CreatedAt)
+        .ToListAsync();
+
+    if (habits.Count == 0)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.Ok(new
+    {
+        service = "habit",
+        data = new
+        {
+            habits = habits.Select(h => new
+            {
+                habitId = h.Id,
+                name = h.Name,
+                icon = h.Icon,
+                color = h.Color,
+                frequency = h.Frequency.ToString(),
+                customDays = h.CustomDays,
+                archivedAt = h.ArchivedAt,
+                createdAt = h.CreatedAt,
+                completions = h.Completions.OrderBy(c => c.LocalDate).Select(c => new
+                {
+                    completionId = c.Id,
+                    completedAt = c.CompletedAt,
+                    localDate = c.LocalDate.ToString("yyyy-MM-dd"),
+                    note = c.Note
+                })
+            })
+        }
+    });
+});
+
 // --- Internal endpoint (service-to-service, no auth check) ---
 
 app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) =>

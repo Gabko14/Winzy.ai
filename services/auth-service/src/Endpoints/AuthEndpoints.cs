@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Winzy.AuthService.Data;
 using Winzy.AuthService.Entities;
@@ -26,8 +27,10 @@ public static class AuthEndpoints
         group.MapPut("/profile", UpdateProfile);
         group.MapPut("/password", ChangePassword);
         group.MapDelete("/account", DeleteAccount);
+        group.MapGet("/export", ExportData);
         group.MapGet("/users/search", SearchUsers);
         group.MapGet("/internal/resolve/{username}", ResolveUsername);
+        group.MapGet("/internal/export/{userId:guid}", InternalExport);
     }
 
     private static async Task<IResult> Register(
@@ -343,6 +346,121 @@ public static class AuthEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(results);
+    }
+
+    private static async Task<IResult> ExportData(
+        AuthDbContext db,
+        IHttpClientFactory httpClientFactory,
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        var userId = GetUserId(httpContext);
+        if (userId is null)
+            return Results.Unauthorized();
+
+        var user = await db.Users.FindAsync([userId.Value], ct);
+        if (user is null)
+            return Results.NotFound();
+
+        // Auth service's own export data
+        var authExport = new
+        {
+            service = "auth",
+            data = new
+            {
+                userId = user.Id,
+                email = user.Email,
+                username = user.Username,
+                displayName = user.DisplayName,
+                avatarUrl = user.AvatarUrl,
+                createdAt = user.CreatedAt,
+                lastLoginAt = user.LastLoginAt
+            }
+        };
+
+        // Fan out to downstream services in parallel
+        var serviceExports = new List<object> { authExport };
+
+        var serviceCalls = new (string Name, string Path)[]
+        {
+            ("HabitService", $"/habits/internal/export/{userId}"),
+            ("SocialService", $"/social/internal/export/{userId}"),
+            ("ChallengeService", $"/challenges/internal/export/{userId}"),
+            ("NotificationService", $"/notifications/internal/export/{userId}"),
+            ("ActivityService", $"/activity/internal/export/{userId}"),
+        };
+
+        var warnings = new List<string>();
+
+        var tasks = serviceCalls.Select(async svc =>
+        {
+            try
+            {
+                var client = httpClientFactory.CreateClient(svc.Name);
+                using var response = await client.GetAsync(svc.Path, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+                    return (svc.Name, Data: (object?)json, Failed: false);
+                }
+
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    logger.LogWarning("Export from {Service} returned {StatusCode} for UserId={UserId}",
+                        svc.Name, (int)response.StatusCode, userId);
+                    return (svc.Name, Data: null, Failed: true);
+                }
+
+                return (svc.Name, Data: null, Failed: false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to fetch export from {Service} for UserId={UserId}", svc.Name, userId);
+                return (svc.Name, Data: null, Failed: true);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+        foreach (var (name, data, failed) in results)
+        {
+            if (data is not null)
+                serviceExports.Add(data);
+            if (failed)
+                warnings.Add($"Failed to export data from {name}");
+        }
+
+        return Results.Ok(new
+        {
+            exportedAt = DateTimeOffset.UtcNow,
+            services = serviceExports,
+            warnings
+        });
+    }
+
+    private static async Task<IResult> InternalExport(
+        Guid userId,
+        AuthDbContext db,
+        CancellationToken ct)
+    {
+        var user = await db.Users.FindAsync([userId], ct);
+        if (user is null)
+            return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            service = "auth",
+            data = new
+            {
+                userId = user.Id,
+                email = user.Email,
+                username = user.Username,
+                displayName = user.DisplayName,
+                avatarUrl = user.AvatarUrl,
+                createdAt = user.CreatedAt,
+                lastLoginAt = user.LastLoginAt
+            }
+        });
     }
 
     private static async Task<IResult> ResolveUsername(
