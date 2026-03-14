@@ -16,7 +16,12 @@ import { visibilityLabel } from "../components/VisibilityPicker";
 import { CreateHabitScreen } from "./CreateHabitScreen";
 import type { Habit } from "../api/habits";
 
-export function HabitListScreen() {
+type Props = {
+  onHabitCreated?: () => void;
+  onBack?: () => void;
+};
+
+export function HabitListScreen({ onHabitCreated, onBack }: Props) {
   const colors = lightTheme;
   const { habits, loading, error, refresh } = useHabits();
   const { getVisibility, loading: visibilityLoading, error: visibilityError, refresh: refreshVisibility } = useVisibility();
@@ -67,7 +72,10 @@ export function HabitListScreen() {
     refresh();
     refreshVisibility();
     setShowCreate(false);
-  }, [refresh, refreshVisibility]);
+    if (!editHabit) {
+      onHabitCreated?.();
+    }
+  }, [refresh, refreshVisibility, editHabit, onHabitCreated]);
 
   const handleCloseModal = useCallback(() => {
     setShowCreate(false);
@@ -112,7 +120,7 @@ export function HabitListScreen() {
             accessibilityLabel={`Archive ${item.name}`}
             testID={`archive-${item.id}`}
           >
-            <Text style={[styles.archiveIcon, { color: colors.textTertiary }]}>{"\u2715"}</Text>
+            <Text style={[styles.archiveLabel, { color: colors.textTertiary }]}>Archive</Text>
           </Pressable>
         </Pressable>
       </Card>
@@ -141,6 +149,11 @@ export function HabitListScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="habit-list-screen">
       <View style={styles.header}>
+        {onBack && (
+          <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton}>
+            <Text style={[styles.backArrow, { color: colors.textPrimary }]}>←</Text>
+          </Pressable>
+        )}
         <Text style={[styles.title, { color: colors.textPrimary }]}>My Habits</Text>
         {habits.length > 0 && (
           <Button
@@ -214,6 +227,14 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h2,
+    flex: 1,
+  },
+  backButton: {
+    padding: spacing.sm,
+    marginRight: spacing.sm,
+  },
+  backArrow: {
+    fontSize: 24,
   },
   emptyContainer: {
     flex: 1,
@@ -259,8 +280,8 @@ const styles = StyleSheet.create({
   habitFrequency: {
     ...typography.caption,
   },
-  archiveIcon: {
-    fontSize: 16,
+  archiveLabel: {
+    ...typography.caption,
     padding: spacing.xs,
   },
 });
