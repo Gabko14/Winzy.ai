@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 
 const API_BASE = "http://localhost:5050";
 
@@ -36,6 +36,7 @@ test.describe("Notifications", () => {
       });
 
       await test.step("verify Today screen has bell icon", async () => {
+        await dismissWelcomeIfPresent(page);
         await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId("notifications-bell")).toBeVisible();
         test.info().annotations.push({
@@ -172,12 +173,16 @@ test.describe("Notifications", () => {
         // User B was registered with displayName, but check just in case
         const result = await Promise.race([
           page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile-completion"),
+          page.getByText("Welcome to Winzy").waitFor({ timeout: 5_000 }).then(() => "welcome"),
           page.getByTestId("today-empty").or(page.getByTestId("today-screen")).waitFor({ timeout: 5_000 }).then(() => "today"),
         ]);
 
         if (result === "profile-completion") {
           await page.getByLabel("Display name").fill("User B");
           await page.getByRole("button", { name: "Continue" }).click();
+          await dismissWelcomeIfPresent(page);
+        } else if (result === "welcome") {
+          await dismissWelcomeIfPresent(page);
         }
       });
 
@@ -191,7 +196,9 @@ test.describe("Notifications", () => {
         await expect(page.getByTestId("notifications-bell")).toBeVisible();
         // The useUnreadCount hook polls every 30s. The initial poll may fire before
         // auth completes (returns 401). Wait up to 45s for the next successful poll.
-        await expect(page.getByTestId("unread-badge")).toBeVisible({ timeout: 45_000 });
+        // Scope to the bell's parent to avoid strict mode violation from the Friends tab badge.
+        const bellBadge = page.getByTestId("notifications-bell").getByTestId("unread-badge");
+        await expect(bellBadge).toBeVisible({ timeout: 45_000 });
         test.info().annotations.push({
           type: "step",
           description: "Unread badge visible on bell icon",
@@ -240,12 +247,16 @@ test.describe("Notifications", () => {
       await test.step("navigate past profile completion if needed", async () => {
         const result = await Promise.race([
           page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile-completion"),
+          page.getByText("Welcome to Winzy").waitFor({ timeout: 5_000 }).then(() => "welcome"),
           page.getByTestId("today-empty").or(page.getByTestId("today-screen")).waitFor({ timeout: 5_000 }).then(() => "today"),
         ]);
 
         if (result === "profile-completion") {
           await page.getByLabel("Display name").fill("User B");
           await page.getByRole("button", { name: "Continue" }).click();
+          await dismissWelcomeIfPresent(page);
+        } else if (result === "welcome") {
+          await dismissWelcomeIfPresent(page);
         }
       });
 
@@ -310,6 +321,7 @@ test.describe("Notifications", () => {
       });
 
       await test.step("wait for Today screen", async () => {
+        await dismissWelcomeIfPresent(page);
         await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
         test.info().annotations.push({
           type: "step",

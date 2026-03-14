@@ -1,6 +1,22 @@
 import { test as base, expect, type Page, type BrowserContext } from "@playwright/test";
 
 /**
+ * Dismisses the post-auth welcome screen if present.
+ * After registration or first login, RootNavigator shows WelcomeScreen
+ * when the onboarding welcome flag is not set. Call this after profile
+ * completion / login, before asserting on the Today screen.
+ */
+export async function dismissWelcomeIfPresent(page: Page) {
+  const letsGo = page.getByRole("button", { name: "Continue to the app" });
+  try {
+    await letsGo.waitFor({ state: "visible", timeout: 5_000 });
+    await letsGo.click();
+  } catch {
+    // Welcome screen not shown
+  }
+}
+
+/**
  * Test data for a standard test user.
  * In the future, this will be populated from seeded DB fixtures.
  * For now, tests that need auth use the setup project's storageState.

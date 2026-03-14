@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 
 test.describe("Auth flow", () => {
   test("sign up, land in app, and verify session", async ({ unauthenticatedPage: page }) => {
@@ -72,6 +72,7 @@ test.describe("Auth flow", () => {
     // This test requires a running backend with the test user seeded.
     // It must FAIL if authentication doesn't actually succeed.
     await test.step("verify authenticated landing", async () => {
+      await dismissWelcomeIfPresent(page);
       await expect(
         page.getByTestId("today-empty").or(page.getByTestId("today-screen")),
       ).toBeVisible({ timeout: 10_000 });

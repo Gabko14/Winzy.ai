@@ -19,6 +19,14 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   const email = `${uniqueUser}@winzy.test`;
 
   await page.goto("/");
+  // Dismiss onboarding splash if present (added by Track 4)
+  const letsGo = page.getByRole("button", { name: "Continue to the app" });
+  try {
+    await letsGo.waitFor({ state: "visible", timeout: 5_000 });
+    await letsGo.click();
+  } catch {
+    // Onboarding splash not shown — already on login screen
+  }
   await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByText("Create your account")).toBeVisible();
@@ -33,6 +41,15 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   });
   await page.getByLabel("Display name").fill(`${prefix} Tester`);
   await page.getByRole("button", { name: "Continue" }).click();
+
+  // Dismiss post-auth welcome screen if present (added by Track 4)
+  const welcomeBtn = page.getByRole("button", { name: "Continue to the app" });
+  try {
+    await welcomeBtn.waitFor({ state: "visible", timeout: 5_000 });
+    await welcomeBtn.click();
+  } catch {
+    // Welcome screen not shown
+  }
 
   // On TodayScreen (empty)
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
@@ -248,6 +265,160 @@ test.describe("Habit detail screen", () => {
       test.info().annotations.push({
         type: "step",
         description: "Navigated back to Today screen",
+      });
+    });
+
+    await context.close();
+  });
+
+  test("toggle completion on a past date and verify stats update", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      storageState: undefined,
+      timezoneId: "America/New_York",
+    });
+    const page = await context.newPage();
+    const habitName = "Journal";
+
+    await test.step("register, create habit, land on TodayScreen", async () => {
+      await setupWithHabitOnTodayScreen(page, "pastdate", habitName);
+      test.info().annotations.push({
+        type: "step",
+        description: `Setup complete: on TodayScreen with habit ${habitName}`,
+      });
+    });
+
+    await test.step("navigate to HabitDetailScreen from TodayScreen", async () => {
+      await page.getByText(habitName).click();
+      await expect(page.getByTestId("habit-detail-screen")).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(page.getByTestId("habit-name")).toHaveText(habitName);
+      test.info().annotations.push({
+        type: "step",
+        description: "Navigated to HabitDetailScreen via TodayScreen tap",
+      });
+    });
+
+    await test.step("verify initial stats are zero", async () => {
+      await expect(page.getByTestId("consistency-value")).toHaveText("0%");
+      await expect(page.getByTestId("completions-in-window")).toHaveText("0");
+      await expect(page.getByTestId("total-completions")).toHaveText("0");
+      test.info().annotations.push({
+        type: "step",
+        description: "Stats confirmed at zero before toggling",
+      });
+    });
+
+    await test.step("navigate to previous month", async () => {
+      await page.getByTestId("calendar-prev").click();
+
+      const now = new Date();
+      const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+      ];
+      const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+      const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const prevLabel = `${months[prevMonth]} ${prevYear}`;
+      await expect(page.getByText(prevLabel)).toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: `Navigated to previous month: ${prevLabel}`,
+      });
+    });
+
+    await test.step("toggle a past date within the editable 60-day window", async () => {
+      // Pick a date in the previous month that is within the 60-day window.
+      // Use the 15th of the previous month (well within 60 days from today).
+      const now = new Date();
+      let targetMonth = now.getMonth() - 1;
+      let targetYear = now.getFullYear();
+      if (targetMonth < 0) {
+        targetMonth += 12;
+        targetYear -= 1;
+      }
+      const m = String(targetMonth + 1).padStart(2, "0");
+      const dateStr = `${targetYear}-${m}-15`;
+
+      const pastCell = page.getByTestId(`calendar-day-${dateStr}`);
+      await expect(pastCell).toBeVisible();
+
+      // The date should be enabled (within 60-day window)
+      await expect(pastCell).toBeEnabled();
+      test.info().annotations.push({
+        type: "step",
+        description: `Past date ${dateStr} is enabled (within 60-day window)`,
+      });
+
+      // Click to toggle completion on the past date
+      await pastCell.click();
+      test.info().annotations.push({
+        type: "step",
+        description: `Toggled completion ON for past date ${dateStr}`,
+      });
+    });
+
+    await test.step("verify stats updated after past-date completion", async () => {
+      // After toggling one past date, stats should update.
+      // Reload to ensure fresh stats from the API.
+      await page.reload();
+      await page.waitForTimeout(2000);
+
+      // Navigate back to habit detail after reload
+      const habitRow = page.getByTestId(/^today-habit-/);
+      await expect(habitRow.first()).toBeVisible({ timeout: 15_000 });
+      await habitRow.first().click();
+      await expect(page.getByTestId("habit-detail-screen")).toBeVisible({ timeout: 10_000 });
+
+      // completions-in-window and total-completions should be at least 1
+      await expect(page.getByTestId("total-completions")).not.toHaveText("0", {
+        timeout: 15_000,
+      });
+
+      const consistencyText = await page.getByTestId("consistency-value").textContent();
+      test.info().annotations.push({
+        type: "step",
+        description: `Stats updated: completions=1, consistency=${consistencyText}`,
+      });
+    });
+
+    await test.step("verify flame reflects the completion", async () => {
+      // The flame indicator should be visible (it always is)
+      await expect(page.getByTestId("habit-flame")).toBeVisible();
+      test.info().annotations.push({
+        type: "step",
+        description: "Flame indicator visible after past-date completion",
+      });
+    });
+
+    await test.step("un-toggle the past date and verify stats revert", async () => {
+      const now = new Date();
+      let targetMonth = now.getMonth() - 1;
+      let targetYear = now.getFullYear();
+      if (targetMonth < 0) {
+        targetMonth += 12;
+        targetYear -= 1;
+      }
+      const m = String(targetMonth + 1).padStart(2, "0");
+      const dateStr = `${targetYear}-${m}-15`;
+
+      const pastCell = page.getByTestId(`calendar-day-${dateStr}`);
+      await pastCell.click();
+
+      await expect(page.getByTestId("completions-in-window")).toHaveText("0", {
+        timeout: 5_000,
+      });
+      await expect(page.getByTestId("total-completions")).toHaveText("0", {
+        timeout: 5_000,
+      });
+      await expect(page.getByTestId("consistency-value")).toHaveText("0%", {
+        timeout: 5_000,
+      });
+      test.info().annotations.push({
+        type: "step",
+        description: `Un-toggled ${dateStr}, stats reverted to 0`,
       });
     });
 

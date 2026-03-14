@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 
 test.describe("Profile flow", () => {
   test("new user completes profile after sign-up", async ({ unauthenticatedPage: page }) => {
@@ -46,6 +46,7 @@ test.describe("Profile flow", () => {
 
     await test.step("verify landing in Today screen", async () => {
       // After profile completion, user lands on the Today screen (empty for new users)
+      await dismissWelcomeIfPresent(page);
       await expect(page.getByTestId("today-empty")).toBeVisible({
         timeout: 10_000,
       });
@@ -92,6 +93,7 @@ test.describe("Profile flow", () => {
 
     await test.step("verify landing in Today screen", async () => {
       // After skip, user lands on the Today screen (empty for new users)
+      await dismissWelcomeIfPresent(page);
       await expect(page.getByTestId("today-empty")).toBeVisible({
         timeout: 10_000,
       });

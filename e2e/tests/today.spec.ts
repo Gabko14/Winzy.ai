@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 
 test.describe("Today screen", () => {
   test("first habit completion journey", async ({ unauthenticatedPage: page }) => {
@@ -37,6 +37,7 @@ test.describe("Today screen", () => {
     });
 
     await test.step("verify Today screen empty state", async () => {
+      await dismissWelcomeIfPresent(page);
       await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText("Ready to build a habit?")).toBeVisible();
       await expect(
