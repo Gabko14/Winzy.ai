@@ -37,6 +37,11 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     {
         await Task.WhenAll(_postgres.StartAsync(), _nats.StartAsync());
 
+        // Wait for NATS to be fully ready (not just port-open).
+        // Testcontainers considers the container started when the port is reachable,
+        // but JetStream may not be initialized yet — causes flaky failures on CI.
+        await WaitForNatsReadyAsync();
+
         Factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
@@ -121,6 +126,30 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     public NatsEventPublisher GetPublisher()
     {
         return Factory.Services.GetRequiredService<NatsEventPublisher>();
+    }
+
+    private async Task WaitForNatsReadyAsync()
+    {
+        const int maxAttempts = 20;
+        const int delayMs = 250;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await using var conn = new NatsConnection(new NatsOpts { Url = NatsUrl });
+                await conn.ConnectAsync();
+                await conn.PingAsync();
+                return;
+            }
+            catch
+            {
+                if (attempt == maxAttempts)
+                    throw new InvalidOperationException(
+                        $"NATS container not ready after {maxAttempts * delayMs}ms at {NatsUrl}");
+                await Task.Delay(delayMs);
+            }
+        }
     }
 
     public async Task ResetDataAsync()

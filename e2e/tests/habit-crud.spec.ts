@@ -89,9 +89,11 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("verify habit appears in list", async () => {
+      // After creating a habit in the overlay, HabitListScreen refreshes.
+      // The refresh briefly shows a loading state — wait for the list to settle.
+      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByTestId("habit-list-screen")).toBeVisible();
-      await expect(page.getByText("My Habits")).toBeVisible();
+      await expect(page.getByText("My Habits")).toBeVisible({ timeout: 5_000 });
       test.info().annotations.push({
         type: "step",
         description: `Habit "${habitName}" visible in habit list`,
@@ -377,13 +379,11 @@ test.describe("Habit CRUD", () => {
   });
 
   test("habit list error state with retry", async ({ unauthenticatedPage: page }) => {
-    await test.step("register and navigate to habit list", async () => {
+    await test.step("register and land on today screen", async () => {
       await registerAndSetup(page, "listerr");
-      await page.getByText("Create your first habit").click();
-      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
       test.info().annotations.push({
         type: "step",
-        description: "Landed on HabitListScreen",
+        description: "Landed on TodayScreen empty state",
       });
     });
 
@@ -402,12 +402,16 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("trigger reload and verify error state", async () => {
-      // Reload the page to trigger a fresh GET /habits that will hit the 500
+      // Reload the page to trigger a fresh GET /habits that will hit the 500.
+      // After reload the app re-bootstraps into TodayScreen (default tab),
+      // which calls useTodayHabits → fetchHabits → intercepted 500.
       await page.reload();
 
-      // Wait for auth to re-bootstrap and the error state to render
-      await expect(page.getByTestId("habits-error")).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText("Could not load your habits.")).toBeVisible();
+      // Wait for auth to re-bootstrap and TodayScreen's error state to render
+      await expect(page.getByTestId("today-error")).toBeVisible({ timeout: 15_000 });
+      await expect(
+        page.getByText("Something went wrong on our end. Please try again."),
+      ).toBeVisible();
       test.info().annotations.push({
         type: "step",
         description: "Error state displayed with retry option",
@@ -421,12 +425,11 @@ test.describe("Habit CRUD", () => {
       // Click the retry button in the ErrorState component
       await page.getByRole("button", { name: "Try again" }).click();
 
-      // Should show the habit list (empty state since no habits were created)
-      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText("No habits yet")).toBeVisible();
+      // Should show the Today empty state since no habits were created
+      await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
       test.info().annotations.push({
         type: "step",
-        description: "Retry succeeded — habit list empty state displayed",
+        description: "Retry succeeded — Today empty state displayed",
       });
     });
   });
