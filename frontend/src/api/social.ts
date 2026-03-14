@@ -10,6 +10,9 @@ export type Friend = {
   username?: string;
   displayName?: string | null;
   avatarUrl?: string | null;
+  // Optional flame/consistency fields — populated when habit-service enrichment is available (winzy.ai-779)
+  flameLevel?: "none" | "ember" | "steady" | "strong" | "blazing";
+  consistency?: number;
 };
 
 export type FriendsPage = {
@@ -52,6 +55,23 @@ export type FriendRequestResult = {
   createdAt: string;
 };
 
+// --- Friend profile types ---
+// Keep in sync with: services/social-service/src/Program.cs (GET /social/friends/{id}/profile)
+
+export type FriendHabit = {
+  id: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
+  consistency: number;
+  flameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
+};
+
+export type FriendProfileResponse = {
+  friendId: string;
+  habits: FriendHabit[];
+};
+
 // --- User search types ---
 // Keep in sync with: services/auth-service/src/Endpoints/AuthEndpoints.cs (SearchUsers)
 
@@ -90,4 +110,8 @@ export function removeFriend(friendId: string): Promise<void> {
 
 export function searchUsers(query: string): Promise<UserSearchResult[]> {
   return api.get<UserSearchResult[]>(`/auth/users/search?q=${encodeURIComponent(query)}`);
+}
+
+export function fetchFriendProfile(friendId: string): Promise<FriendProfileResponse> {
+  return api.get<FriendProfileResponse>(`/social/friends/${friendId}/profile`);
 }

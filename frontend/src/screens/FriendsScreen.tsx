@@ -15,6 +15,7 @@ import {
   ErrorState,
   Badge,
   Button,
+  Flame,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useFriends } from "../hooks/useFriends";
@@ -135,7 +136,18 @@ export function FriendsScreen({ onAddFriend, onFriendPress }: Props) {
 
   const handleCancelOutgoing = useCallback(
     (request: OutgoingRequest) => {
-      withProcessing(request.id, () => cancelRequest(request.id));
+      Alert.alert(
+        "Cancel friend request?",
+        "This will withdraw your friend request. You can always send a new one later.",
+        [
+          { text: "Keep", style: "cancel" },
+          {
+            text: "Cancel request",
+            style: "destructive",
+            onPress: () => withProcessing(request.id, () => cancelRequest(request.id)),
+          },
+        ],
+      );
     },
     [cancelRequest, withProcessing],
   );
@@ -156,6 +168,26 @@ export function FriendsScreen({ onAddFriend, onFriendPress }: Props) {
       );
     },
     [removeFriend, withProcessing],
+  );
+
+  const handleFriendOptions = useCallback(
+    (friend: Friend) => {
+      const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [];
+      if (onFriendPress) {
+        buttons.push({
+          text: "View Profile",
+          onPress: () => onFriendPress(friend.friendId),
+        });
+      }
+      buttons.push({
+        text: "Remove Friend",
+        style: "destructive",
+        onPress: () => handleRemoveFriend(friend),
+      });
+      buttons.push({ text: "Cancel", style: "cancel" });
+      Alert.alert("Friend options", undefined, buttons);
+    },
+    [onFriendPress, handleRemoveFriend],
   );
 
   // Initial loading state
@@ -212,7 +244,7 @@ export function FriendsScreen({ onAddFriend, onFriendPress }: Props) {
           <FriendRow
             friend={item}
             onPress={onFriendPress}
-            onRemove={() => handleRemoveFriend(item)}
+            onOptions={() => handleFriendOptions(item)}
             processing={processingIds.has(item.friendId)}
           />
         )}
@@ -386,24 +418,25 @@ function PendingRequestsSection({
 type FriendRowProps = {
   friend: Friend;
   onPress?: (friendId: string) => void;
-  onRemove: () => void;
+  onOptions: () => void;
   processing: boolean;
 };
 
-function FriendRow({ friend, onPress, onRemove, processing }: FriendRowProps) {
+function FriendRow({ friend, onPress, onOptions, processing }: FriendRowProps) {
   const colors = lightTheme;
   const name = friendDisplayName(friend);
   const initials = friendInitials(friend);
+  const flameLevel = friend.flameLevel ?? "none";
 
   return (
     <Card style={styles.friendCard}>
       <Pressable
         style={styles.friendRow}
         onPress={() => onPress?.(friend.friendId)}
-        onLongPress={onRemove}
+        onLongPress={onOptions}
         accessibilityRole="button"
         accessibilityLabel={`Friend ${name}`}
-        accessibilityHint="Tap to view profile, long press to remove"
+        accessibilityHint="Tap to view profile"
         testID={`friend-${friend.friendId}`}
         disabled={processing}
       >
@@ -426,6 +459,24 @@ function FriendRow({ friend, onPress, onRemove, processing }: FriendRowProps) {
             Friends since {new Date(friend.since).toLocaleDateString()}
           </Text>
         </View>
+
+        <View style={styles.flameContainer} testID={`flame-${friend.friendId}`}>
+          <Flame flameLevel={flameLevel} size="sm" consistency={friend.consistency} />
+        </View>
+
+        <Pressable
+          onPress={onOptions}
+          accessibilityRole="button"
+          accessibilityLabel={`Options for ${name}`}
+          hitSlop={8}
+          style={styles.menuButton}
+          testID={`menu-${friend.friendId}`}
+          disabled={processing}
+        >
+          <Text style={[styles.menuIcon, { color: colors.textSecondary }]}>
+            {"\u2026"}
+          </Text>
+        </Pressable>
       </Pressable>
     </Card>
   );
@@ -557,6 +608,23 @@ const styles = StyleSheet.create({
   },
   friendInfo: {
     flex: 1,
+  },
+  flameContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.xs,
+  },
+  menuButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.full,
+  },
+  menuIcon: {
+    fontSize: 20,
+    fontWeight: "600",
+    letterSpacing: 1,
   },
   friendName: {
     ...typography.body,
