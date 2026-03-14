@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 import type { Page } from "@playwright/test";
 
 /**
@@ -16,6 +16,8 @@ async function registerAndSetup(page: Page, prefix: string) {
   const email = `${uniqueUser}@winzy.test`;
 
   await page.goto("/");
+  // Dismiss onboarding splash if present
+  await dismissWelcomeIfPresent(page);
   await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByText("Create your account")).toBeVisible();
@@ -29,6 +31,7 @@ async function registerAndSetup(page: Page, prefix: string) {
   await page.getByLabel("Display name").fill(`${prefix} Tester`);
   await page.getByRole("button", { name: "Continue" }).click();
 
+  await dismissWelcomeIfPresent(page);
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
 }
 
@@ -55,7 +58,21 @@ async function createHabit(page: Page, name: string) {
   await page.getByLabel("Habit name").fill(name);
   await page.getByRole("button", { name: "Create habit" }).click();
 
-  // Wait for modal to close and habit to appear in the list
+  // Wait for the create-habit modal to fully close before interacting with the list.
+  // We check that the "Habit name" input is gone (specific to the create modal),
+  // rather than "Close modal" which could also come from FlameIntroModal.
+  await expect(page.getByLabel("Habit name")).not.toBeVisible({ timeout: 10_000 });
+
+  // If this is the first habit, FlameIntroModal may appear — dismiss it
+  const gotIt = page.getByRole("button", { name: "Got it" });
+  try {
+    await gotIt.waitFor({ state: "visible", timeout: 2_000 });
+    await gotIt.click();
+  } catch {
+    // FlameIntroModal not shown (not the first habit or already seen)
+  }
+
+  // Wait for habit to appear in the list
   await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 });
 }
 
