@@ -100,6 +100,19 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-screen">
       <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
 
+      {/* Create habit FAB */}
+      {onCreateHabit && (
+        <Pressable
+          onPress={onCreateHabit}
+          style={[styles.fab, { backgroundColor: colors.brandPrimary }]}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new habit"
+          testID="create-habit-fab"
+        >
+          <Text style={styles.fabText}>+</Text>
+        </Pressable>
+      )}
+
       {/* Progress summary */}
       <View style={styles.progressRow}>
         <Text style={[styles.progressText, { color: colors.textSecondary }]}>
@@ -357,5 +370,23 @@ const styles = StyleSheet.create({
   habitNameCompleted: {
     textDecorationLine: "line-through",
     opacity: 0.6,
+  },
+  fab: {
+    position: "absolute",
+    bottom: spacing.xl,
+    right: spacing.xl,
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+    elevation: 4,
+  },
+  fabText: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "600",
+    lineHeight: 30,
   },
 });

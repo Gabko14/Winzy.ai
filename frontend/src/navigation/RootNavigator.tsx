@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { AuthNavigator } from "./AuthNavigator";
-import { LoadingState, EmptyState } from "../design-system";
+import { LoadingState } from "../design-system";
 import { spacing, lightTheme } from "../design-system";
 import { StatusBar } from "expo-status-bar";
 import { OfflineIndicator } from "../components/OfflineIndicator";
@@ -16,11 +16,20 @@ import { PublicFlameScreen } from "../screens/PublicFlameScreen";
 import { NotificationScreen } from "../components/notifications";
 import { FriendsScreen } from "../screens/FriendsScreen";
 import { AddFriendScreen } from "../screens/AddFriendScreen";
+import { FriendProfileScreen } from "../screens/FriendProfileScreen";
+import { FeedScreen } from "../screens/FeedScreen";
+import { StatsScreen } from "../screens/StatsScreen";
+import { MyChallengesScreen } from "../screens/MyChallengesScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
 import { useUnreadCount } from "../hooks/useUnreadCount";
+import { usePendingFriendCount } from "../hooks/usePendingFriendCount";
+import { useOnboarding } from "../hooks/useOnboarding";
+import { WelcomeScreen } from "../screens/WelcomeScreen";
+import { FlameIntroModal } from "../screens/FlameIntroModal";
 import { TabBar, type TabId } from "./TabBar";
 
 /** Screens that overlay on top of a tab's content */
-type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits" | "addFriend";
+type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits" | "addFriend" | "friendProfile" | "challenges" | "settings" | "stats";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -55,13 +64,18 @@ export function RootNavigator() {
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
 
   const unreadCount = useUnreadCount();
+  const pendingFriendCount = usePendingFriendCount();
+  const onboarding = useOnboarding();
+  const [showFlameIntro, setShowFlameIntro] = useState(false);
 
   const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);
   const goToNotifications = useCallback(() => setOverlay("notifications"), []);
   const goToHabits = useCallback(() => setOverlay("habits"), []);
   const goToAddFriend = useCallback(() => setOverlay("addFriend"), []);
+  const goToSettings = useCallback(() => setOverlay("settings"), []);
   const dismissOverlay = useCallback(() => setOverlay(null), []);
 
   const handleTabPress = useCallback((tabId: TabId) => {
@@ -72,6 +86,16 @@ export function RootNavigator() {
   const handleHabitPress = useCallback((habitId: string) => {
     setSelectedHabitId(habitId);
     setOverlay("habitDetail");
+  }, []);
+
+  const handleViewStats = useCallback((habitId: string) => {
+    setSelectedHabitId(habitId);
+    setOverlay("stats");
+  }, []);
+
+  const handleFriendPress = useCallback((friendId: string) => {
+    setSelectedFriendId(friendId);
+    setOverlay("friendProfile");
   }, []);
 
   const handleProfileCompletion = useCallback(() => {
@@ -126,6 +150,27 @@ export function RootNavigator() {
     );
   }
 
+  // Wait for onboarding state to load before deciding what to show
+  if (onboarding.loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]} testID="loading-screen">
+        <LoadingState message="Restoring your session..." />
+        <StatusBar style="auto" />
+      </View>
+    );
+  }
+
+  // Welcome screen for first-time users (after profile completion)
+  if (!onboarding.hasSeenWelcome) {
+    return (
+      <>
+        <OfflineIndicator />
+        <WelcomeScreen onContinue={onboarding.markWelcomeSeen} />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // --- Overlay screens (render on top of tabs, no tab bar) ---
 
   if (overlay === "editProfile") {
@@ -142,7 +187,17 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <HabitDetailScreen habitId={selectedHabitId} onBack={dismissOverlay} />
+        <HabitDetailScreen
+          habitId={selectedHabitId}
+          onBack={dismissOverlay}
+          onViewStats={handleViewStats}
+          onEdit={() => {
+            setOverlay("habits");
+          }}
+          onArchive={() => {
+            dismissOverlay();
+          }}
+        />
         <StatusBar style="auto" />
       </>
     );
@@ -167,7 +222,21 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <HabitListScreen />
+        <HabitListScreen
+          onBack={dismissOverlay}
+          onHabitCreated={() => {
+            if (!onboarding.hasSeenFlameIntro) {
+              setShowFlameIntro(true);
+            }
+          }}
+        />
+        <FlameIntroModal
+          visible={showFlameIntro}
+          onDismiss={() => {
+            setShowFlameIntro(false);
+            onboarding.markFlameIntroSeen();
+          }}
+        />
         <StatusBar style="auto" />
       </>
     );
@@ -186,11 +255,60 @@ export function RootNavigator() {
     );
   }
 
+  if (overlay === "friendProfile" && selectedFriendId) {
+    // displayName/username/since not passed — onFriendPress only receives friendId.
+    // Brief placeholder flash until API responds. Acceptable; enrichment is a separate concern.
+    return (
+      <>
+        <OfflineIndicator />
+        <FriendProfileScreen
+          friendId={selectedFriendId}
+          onBack={() => { setOverlay(null); setActiveTab("friends"); }}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
+  if (overlay === "challenges") {
+    return (
+      <>
+        <OfflineIndicator />
+        <MyChallengesScreen onBack={dismissOverlay} />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
+  if (overlay === "settings") {
+    return (
+      <>
+        <OfflineIndicator />
+        <SettingsScreen
+          onBack={() => { setOverlay(null); setActiveTab("profile"); }}
+          onEditProfile={goToEditProfile}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
+
+  if (overlay === "stats" && selectedHabitId) {
+    return (
+      <>
+        <OfflineIndicator />
+        <StatsScreen habitId={selectedHabitId} onBack={() => { setSelectedHabitId(selectedHabitId); setOverlay("habitDetail"); }} />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // --- Tab content ---
 
   const tabs = [
     { id: "today" as TabId, label: "Today", icon: "\u2600\uFE0F" },
-    { id: "friends" as TabId, label: "Friends", icon: "\uD83D\uDC65" },
+    { id: "friends" as TabId, label: "Friends", icon: "\uD83D\uDC65", badge: pendingFriendCount.count },
     { id: "feed" as TabId, label: "Feed", icon: "\uD83D\uDCE3" },
     { id: "profile" as TabId, label: "Profile", icon: "\uD83D\uDC64" },
   ];
@@ -202,26 +320,23 @@ export function RootNavigator() {
       tabContent = (
         <FriendsScreen
           onAddFriend={goToAddFriend}
-          onFriendPress={(_friendId) => {
-            // TODO: navigate to FriendProfileScreen (winzy.ai-ekw)
-          }}
+          onFriendPress={handleFriendPress}
         />
       );
       break;
     case "feed":
       tabContent = (
-        <View style={styles.center} testID="feed-tab-content">
-          <EmptyState
-            title="Activity feed coming soon"
-            message="You'll see your friends' progress here."
-            hideIllustration
-          />
-        </View>
+        <FeedScreen
+          onAvatarPress={handleFriendPress}
+          onChallengePress={() => {
+            setOverlay("challenges");
+          }}
+        />
       );
       break;
     case "profile":
       tabContent = (
-        <ProfileScreen onEditProfile={goToEditProfile} onSettings={() => handleTabPress("today")} />
+        <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => setOverlay("challenges")} />
       );
       break;
     case "today":
@@ -246,6 +361,13 @@ export function RootNavigator() {
         </View>
         <TabBar tabs={tabs} activeTab={activeTab} onTabPress={handleTabPress} />
       </View>
+      <FlameIntroModal
+        visible={showFlameIntro}
+        onDismiss={() => {
+          setShowFlameIntro(false);
+          onboarding.markFlameIntroSeen();
+        }}
+      />
       <StatusBar style="auto" />
     </>
   );

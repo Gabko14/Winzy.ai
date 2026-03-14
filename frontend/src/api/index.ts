@@ -28,3 +28,17 @@ export {
   type FriendRequestResult,
   type UserSearchResult,
 } from "./social";
+export {
+  type Challenge,
+  type ChallengeDetail,
+  type ChallengesPage,
+  type ChallengeStatus,
+  type MilestoneType,
+} from "./challenges";
+export {
+  type FeedEntry,
+  type FeedEntryData,
+  type FeedEventType,
+  type FeedPage,
+} from "./feed";
+export { type ExportBundle, exportMyData, deleteMyAccount } from "./account";
