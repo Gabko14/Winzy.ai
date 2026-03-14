@@ -13,6 +13,7 @@ type AuthContextValue = AuthState & {
   register: (email: string, username: string, password: string, displayName?: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   updateProfile: (request: UpdateProfileRequest) => Promise<UserProfile>;
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -81,9 +82,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ status: "unauthenticated" });
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    await api.delete("/auth/account");
+    await tokenStore.clear();
+    setState({ status: "unauthenticated" });
+  }, []);
+
   const value = useMemo(
-    () => ({ ...state, login, register, logout, updateProfile }),
-    [state, login, register, logout, updateProfile],
+    () => ({ ...state, login, register, logout, updateProfile, deleteAccount }),
+    [state, login, register, logout, updateProfile, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

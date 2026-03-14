@@ -240,6 +240,40 @@ app.MapPut("/challenges/{id:guid}/claim", async (Guid id, HttpContext ctx, Chall
     return Results.Ok(MapToResponse(challenge));
 });
 
+// --- Internal export endpoint (service-to-service, per export-contracts.md) ---
+
+app.MapGet("/challenges/internal/export/{userId:guid}", async (Guid userId, ChallengeDbContext db) =>
+{
+    var hasChallenges = await db.Challenges.AnyAsync(c => c.CreatorId == userId || c.RecipientId == userId);
+
+    if (!hasChallenges)
+        return Results.NotFound();
+
+    var challenges = await db.Challenges
+        .Where(c => c.CreatorId == userId || c.RecipientId == userId)
+        .OrderByDescending(c => c.CreatedAt)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        service = "challenge",
+        data = new
+        {
+            challenges = challenges.Select(c => new
+            {
+                challengeId = c.Id,
+                fromUserId = c.CreatorId,
+                toUserId = c.RecipientId,
+                habitId = c.HabitId,
+                reward = c.RewardDescription,
+                status = EffectiveStatus(c),
+                createdAt = c.CreatedAt,
+                completedAt = c.CompletedAt
+            })
+        }
+    });
+});
+
 // --- DELETE /challenges/{id} ---
 
 app.MapDelete("/challenges/{id:guid}", async (Guid id, HttpContext ctx, ChallengeDbContext db) =>

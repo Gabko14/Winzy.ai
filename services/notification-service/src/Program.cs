@@ -230,6 +230,39 @@ app.MapDelete("/notifications/devices", async (HttpContext ctx, NotificationDbCo
     return deleted > 0 ? Results.NoContent() : Results.NotFound();
 });
 
+// --- Internal export endpoint (service-to-service, per export-contracts.md) ---
+
+app.MapGet("/notifications/internal/export/{userId:guid}", async (Guid userId, NotificationDbContext db) =>
+{
+    var settings = await db.NotificationSettings
+        .FirstOrDefaultAsync(s => s.UserId == userId);
+
+    var hasNotifications = await db.Notifications.AnyAsync(n => n.UserId == userId);
+
+    if (settings is null && !hasNotifications)
+        return Results.NotFound();
+
+    var notifications = await db.Notifications
+        .Where(n => n.UserId == userId)
+        .OrderByDescending(n => n.CreatedAt)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        service = "notification",
+        data = new
+        {
+            settings = new
+            {
+                habitReminders = settings?.HabitReminders ?? true,
+                friendActivity = settings?.FriendActivity ?? true,
+                challengeUpdates = settings?.ChallengeUpdates ?? true
+            },
+            notifications = notifications.Select(MapToResponse)
+        }
+    });
+});
+
 // VAPID public key endpoint — clients need this to subscribe to web push
 app.MapGet("/notifications/vapid-public-key", (IConfiguration config) =>
 {

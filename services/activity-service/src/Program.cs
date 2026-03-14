@@ -240,6 +240,35 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     });
 });
 
+// --- Internal export endpoint (service-to-service, per export-contracts.md) ---
+
+app.MapGet("/activity/internal/export/{userId:guid}", async (Guid userId, ActivityDbContext db) =>
+{
+    var hasEntries = await db.FeedEntries.AnyAsync(e => e.ActorId == userId);
+    if (!hasEntries)
+        return Results.NotFound();
+
+    var feedEntries = await db.FeedEntries
+        .Where(e => e.ActorId == userId)
+        .OrderByDescending(e => e.CreatedAt)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        service = "activity",
+        data = new
+        {
+            feedEntries = feedEntries.Select(e => new
+            {
+                id = e.Id,
+                eventType = e.EventType,
+                data = e.Data,
+                createdAt = e.CreatedAt
+            })
+        }
+    });
+});
+
 app.Run();
 
 // --- Helpers ---
