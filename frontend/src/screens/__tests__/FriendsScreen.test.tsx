@@ -236,6 +236,25 @@ describe("FriendsScreen", () => {
     const { getByTestId } = render(<FriendsScreen />);
     fireEvent(getByTestId("friend-remove-me"), "longPress");
 
+    // Long press now opens the action sheet first
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Friend options",
+      undefined,
+      expect.arrayContaining([
+        expect.objectContaining({ text: "Remove Friend", style: "destructive" }),
+        expect.objectContaining({ text: "Cancel", style: "cancel" }),
+      ]),
+    );
+
+    // Simulate pressing "Remove Friend" in the action sheet
+    const actionSheetCalls = (Alert.alert as jest.Mock).mock.calls;
+    const actionSheetButtons = actionSheetCalls[0][2];
+    const removeOption = actionSheetButtons.find((b: { text: string }) => b.text === "Remove Friend");
+
+    (Alert.alert as jest.Mock).mockClear();
+    removeOption.onPress();
+
+    // Now the remove confirmation dialog should appear
     expect(Alert.alert).toHaveBeenCalledWith(
       "Remove friend?",
       "You won't see each other's flames anymore. You can always reconnect later.",
@@ -245,10 +264,10 @@ describe("FriendsScreen", () => {
       ]),
     );
 
-    // Simulate pressing "Remove" in the alert
-    const alertCalls = (Alert.alert as jest.Mock).mock.calls;
-    const buttons = alertCalls[0][2];
-    const removeButton = buttons.find((b: { text: string }) => b.text === "Remove");
+    // Simulate pressing "Remove" in the confirmation
+    const confirmCalls = (Alert.alert as jest.Mock).mock.calls;
+    const confirmButtons = confirmCalls[0][2];
+    const removeButton = confirmButtons.find((b: { text: string }) => b.text === "Remove");
 
     await act(async () => {
       removeButton.onPress();
@@ -271,7 +290,7 @@ describe("FriendsScreen", () => {
 
   // --- Outgoing request with cancel ---
 
-  it("renders outgoing request with cancel option", async () => {
+  it("shows confirmation dialog when canceling outgoing request and calls cancelRequest on confirm", async () => {
     const outgoing = makeOutgoingRequest({ id: "out-1" });
     mockUseFriends.friends = [makeFriend()];
     mockUseFriends.totalFriends = 1;
@@ -282,11 +301,96 @@ describe("FriendsScreen", () => {
     expect(getByTestId("pending-requests-section")).toBeTruthy();
     expect(getByText("Cancel")).toBeTruthy();
 
+    fireEvent.press(getByText("Cancel"));
+
+    // Should show confirmation dialog, not cancel immediately
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Cancel friend request?",
+      "This will withdraw your friend request. You can always send a new one later.",
+      expect.arrayContaining([
+        expect.objectContaining({ text: "Keep", style: "cancel" }),
+        expect.objectContaining({ text: "Cancel request", style: "destructive" }),
+      ]),
+    );
+
+    // Simulate pressing "Cancel request" in the alert
+    const alertCalls = (Alert.alert as jest.Mock).mock.calls;
+    const buttons = alertCalls[0][2];
+    const cancelButton = buttons.find((b: { text: string }) => b.text === "Cancel request");
+
     await act(async () => {
-      fireEvent.press(getByText("Cancel"));
+      cancelButton.onPress();
     });
 
     expect(mockUseFriends.cancelRequest).toHaveBeenCalledWith("out-1");
+  });
+
+  it("does not cancel outgoing request when Keep is pressed in confirmation", () => {
+    const outgoing = makeOutgoingRequest({ id: "out-keep" });
+    mockUseFriends.friends = [makeFriend()];
+    mockUseFriends.totalFriends = 1;
+    mockUseFriends.outgoing = [outgoing];
+
+    const { getByText } = render(<FriendsScreen />);
+
+    fireEvent.press(getByText("Cancel"));
+
+    expect(Alert.alert).toHaveBeenCalled();
+    // "Keep" is style: "cancel" — no onPress, so cancelRequest should not be called
+    expect(mockUseFriends.cancelRequest).not.toHaveBeenCalled();
+  });
+
+  // --- Flame indicators on friend rows (winzy.ai-779) ---
+
+  it("renders flame indicator for each friend row", () => {
+    mockUseFriends.friends = [
+      makeFriend({ friendId: "flame-friend", flameLevel: "steady", consistency: 42 }),
+    ];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId } = render(<FriendsScreen />);
+
+    expect(getByTestId("flame-flame-friend")).toBeTruthy();
+  });
+
+  it("renders flame with 'none' level when friend has no flame data", () => {
+    mockUseFriends.friends = [makeFriend({ friendId: "no-flame" })];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId } = render(<FriendsScreen />);
+
+    // Flame container should exist even without flame data
+    expect(getByTestId("flame-no-flame")).toBeTruthy();
+  });
+
+  // --- Menu button on friend rows (winzy.ai-1wzg) ---
+
+  it("renders visible menu button on each friend row", () => {
+    mockUseFriends.friends = [makeFriend({ friendId: "menu-friend" })];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId } = render(<FriendsScreen />);
+
+    expect(getByTestId("menu-menu-friend")).toBeTruthy();
+  });
+
+  it("shows action sheet when menu button is pressed", () => {
+    const friend = makeFriend({ friendId: "menu-remove" });
+    mockUseFriends.friends = [friend];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId } = render(<FriendsScreen />);
+    fireEvent.press(getByTestId("menu-menu-remove"));
+
+    // Menu button now opens the action sheet
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Friend options",
+      undefined,
+      expect.arrayContaining([
+        expect.objectContaining({ text: "Remove Friend", style: "destructive" }),
+        expect.objectContaining({ text: "Cancel", style: "cancel" }),
+      ]),
+    );
   });
 
   // --- Friend press navigation ---
