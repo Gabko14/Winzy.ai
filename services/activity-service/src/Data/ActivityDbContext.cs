@@ -18,6 +18,10 @@ public sealed class ActivityDbContext(DbContextOptions<ActivityDbContext> option
             b.HasIndex(e => e.CreatedAt);
             b.HasIndex(e => new { e.ActorId, e.CreatedAt });
 
+            b.HasIndex(e => e.DeletedAt)
+                .HasFilter("deleted_at IS NULL")
+                .HasDatabaseName("ix_feed_entries_not_deleted");
+
             b.Property(e => e.EventType).HasMaxLength(64);
             b.Property(e => e.Data).HasColumnType("jsonb");
 
