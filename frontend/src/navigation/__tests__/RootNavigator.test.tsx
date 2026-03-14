@@ -104,11 +104,16 @@ jest.mock("../../components/notifications", () => ({
 }));
 
 jest.mock("../../screens/HabitListScreen", () => ({
-  HabitListScreen: () => {
+  HabitListScreen: (props: Record<string, unknown>) => {
     const RN = require("react-native");
     return (
       <RN.View testID="habit-list-screen">
         <RN.Text>HabitListScreen</RN.Text>
+        {props.onHabitCreated && (
+          <RN.Pressable testID="habit-created-trigger" onPress={props.onHabitCreated as () => void}>
+            <RN.Text>Habit Created</RN.Text>
+          </RN.Pressable>
+        )}
       </RN.View>
     );
   },
@@ -141,6 +146,17 @@ jest.mock("../../screens/FriendsScreen", () => ({
             <RN.Text>Add Friend</RN.Text>
           </RN.Pressable>
         )}
+      </RN.View>
+    );
+  },
+}));
+
+jest.mock("../../screens/FeedScreen", () => ({
+  FeedScreen: () => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="feed-screen">
+        <RN.Text>FeedScreen</RN.Text>
       </RN.View>
     );
   },
@@ -203,6 +219,46 @@ jest.mock("expo-status-bar", () => ({
   StatusBar: () => null,
 }));
 
+// Mock useOnboarding — default to returning user (already seen welcome)
+const mockOnboarding = {
+  loading: false,
+  hasSeenWelcome: true,
+  hasSeenFlameIntro: true,
+  markWelcomeSeen: jest.fn(),
+  markFlameIntroSeen: jest.fn(),
+};
+jest.mock("../../hooks/useOnboarding", () => ({
+  useOnboarding: () => mockOnboarding,
+}));
+
+jest.mock("../../screens/WelcomeScreen", () => ({
+  WelcomeScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="welcome-screen">
+        <RN.Text>WelcomeScreen</RN.Text>
+        {props.onContinue && (
+          <RN.Pressable testID="welcome-continue" onPress={props.onContinue as () => void}>
+            <RN.Text>Continue</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
+jest.mock("../../screens/FlameIntroModal", () => ({
+  FlameIntroModal: ({ visible }: { visible: boolean }) => {
+    const RN = require("react-native");
+    if (!visible) return null;
+    return (
+      <RN.View testID="flame-intro-modal">
+        <RN.Text>FlameIntroModal</RN.Text>
+      </RN.View>
+    );
+  },
+}));
+
 // Mock useUnreadCount
 const mockUnreadCount = {
   count: 0,
@@ -212,6 +268,15 @@ const mockUnreadCount = {
 };
 jest.mock("../../hooks/useUnreadCount", () => ({
   useUnreadCount: () => mockUnreadCount,
+}));
+
+// Mock usePendingFriendCount
+const mockPendingFriendCount = {
+  count: 0,
+  refresh: jest.fn(),
+};
+jest.mock("../../hooks/usePendingFriendCount", () => ({
+  usePendingFriendCount: () => mockPendingFriendCount,
 }));
 
 // Mock useAuth — default to authenticated
@@ -229,6 +294,10 @@ beforeEach(() => {
   mockAuth.status = "authenticated";
   mockAuth.user = { displayName: "Test User", username: "testuser", email: "test@test.com" };
   mockUnreadCount.count = 0;
+  mockPendingFriendCount.count = 0;
+  mockOnboarding.loading = false;
+  mockOnboarding.hasSeenWelcome = true;
+  mockOnboarding.hasSeenFlameIntro = true;
 });
 
 describe("RootNavigator", () => {
@@ -280,7 +349,7 @@ describe("RootNavigator", () => {
   it("switches to Feed tab", () => {
     const { getByTestId } = render(<RootNavigator />);
     fireEvent.press(getByTestId("tab-feed"));
-    expect(getByTestId("feed-tab-content")).toBeTruthy();
+    expect(getByTestId("feed-screen")).toBeTruthy();
   });
 
   it("can switch back to Today from another tab", () => {
@@ -349,6 +418,19 @@ describe("RootNavigator", () => {
     expect(queryByTestId("tab-bar")).toBeNull();
   });
 
+  // --- Pending friend requests badge ---
+  it("shows badge on Friends tab when pending requests exist", () => {
+    mockPendingFriendCount.count = 2;
+    const { getByTestId } = render(<RootNavigator />);
+    expect(getByTestId("tab-friends").props.accessibilityLabel).toBe("Friends, 2 unread");
+  });
+
+  it("does not show badge on Friends tab when no pending requests", () => {
+    mockPendingFriendCount.count = 0;
+    const { getByTestId } = render(<RootNavigator />);
+    expect(getByTestId("tab-friends").props.accessibilityLabel).toBe("Friends");
+  });
+
   // --- 3ti: Badge drift fix ---
   it("passes onMarkAllReadFailed to NotificationScreen which calls unreadCount.refresh", () => {
     const { getByTestId } = render(<RootNavigator />);
@@ -363,5 +445,52 @@ describe("RootNavigator", () => {
     const { getByTestId } = render(<RootNavigator />);
     fireEvent.press(getByTestId("tab-profile"));
     expect(getByTestId("profile-screen")).toBeTruthy();
+  });
+
+  // --- Onboarding ---
+  it("shows welcome screen for new users who haven't seen it", () => {
+    mockOnboarding.hasSeenWelcome = false;
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+    expect(getByTestId("welcome-screen")).toBeTruthy();
+    expect(queryByTestId("app-shell")).toBeNull();
+  });
+
+  it("transitions from welcome to app shell when continue is pressed", () => {
+    mockOnboarding.hasSeenWelcome = false;
+    const { getByTestId } = render(<RootNavigator />);
+    expect(getByTestId("welcome-screen")).toBeTruthy();
+
+    // Pressing continue calls markWelcomeSeen which updates the mock
+    fireEvent.press(getByTestId("welcome-continue"));
+    expect(mockOnboarding.markWelcomeSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips welcome screen for returning users", () => {
+    mockOnboarding.hasSeenWelcome = true;
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+    expect(getByTestId("app-shell")).toBeTruthy();
+    expect(queryByTestId("welcome-screen")).toBeNull();
+  });
+
+  it("shows flame intro modal after first habit creation", () => {
+    mockOnboarding.hasSeenFlameIntro = false;
+    const { getByTestId } = render(<RootNavigator />);
+
+    // Navigate to habits overlay
+    fireEvent.press(getByTestId("create-habit-press"));
+    expect(getByTestId("habit-list-screen")).toBeTruthy();
+
+    // Simulate habit creation callback
+    fireEvent.press(getByTestId("habit-created-trigger"));
+    expect(getByTestId("flame-intro-modal")).toBeTruthy();
+  });
+
+  it("does not show flame intro if already seen", () => {
+    mockOnboarding.hasSeenFlameIntro = true;
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+
+    fireEvent.press(getByTestId("create-habit-press"));
+    fireEvent.press(getByTestId("habit-created-trigger"));
+    expect(queryByTestId("flame-intro-modal")).toBeNull();
   });
 });

@@ -24,6 +24,7 @@ import {
 } from "../design-system";
 import { useHabitDetail, useToggleCompletion } from "../hooks/useHabitDetail";
 import { useVisibility } from "../hooks/useVisibility";
+import { ActiveChallengesSection } from "../components/ActiveChallengesSection";
 import { visibilityLabel } from "../components/VisibilityPicker";
 import { isApiError } from "../api";
 import type { FlameLevel } from "../api/habits";
@@ -33,6 +34,7 @@ type Props = {
   onBack?: () => void;
   onEdit?: (habitId: string) => void;
   onArchive?: (habitId: string) => void;
+  onViewStats?: (habitId: string) => void;
 };
 
 // --- Calendar helpers ---
@@ -224,7 +226,7 @@ function Calendar({
 
 // --- Main screen ---
 
-export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props) {
+export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewStats }: Props) {
   const colors = lightTheme;
   const { habit, stats, loading, error, refresh, timezone } = useHabitDetail(habitId);
   const { getVisibility, loading: visibilityLoading, error: visibilityError } = useVisibility();
@@ -466,6 +468,9 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
         </Text>
       </Card>
 
+      {/* Active challenges */}
+      <ActiveChallengesSection habitId={habitId} />
+
       {/* Calendar card */}
       <Card style={styles.calendarCard}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -486,6 +491,19 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
           onNextMonth={handleNextMonth}
         />
       </Card>
+
+      {/* View full stats */}
+      {onViewStats && (
+        <View testID="view-full-stats">
+          <Button
+            title="View full stats"
+            onPress={() => onViewStats(habitId)}
+            variant="secondary"
+            size="md"
+            accessibilityLabel="View full stats"
+          />
+        </View>
+      )}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -510,7 +528,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive }: Props)
                   "This will hide the habit from your daily view. You can restore it later.",
                   [
                     { text: "Cancel", style: "cancel" },
-                    { text: "Archive", style: "destructive", onPress: () => onArchive(habitId) },
+                    { text: "Archive", onPress: () => onArchive(habitId) },
                   ],
                 );
               }

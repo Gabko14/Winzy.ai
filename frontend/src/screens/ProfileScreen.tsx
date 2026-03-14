@@ -8,6 +8,7 @@ import type { UserProfile } from "../api";
 type Props = {
   onEditProfile: () => void;
   onSettings: () => void;
+  onChallenges?: () => void;
 };
 
 function getInitials(user: UserProfile): string {
@@ -21,7 +22,7 @@ function getInitials(user: UserProfile): string {
   return user.username.slice(0, 2).toUpperCase();
 }
 
-export function ProfileScreen({ onEditProfile, onSettings }: Props) {
+export function ProfileScreen({ onEditProfile, onSettings, onChallenges }: Props) {
   const auth = useAuth();
   const colors = lightTheme;
 
@@ -66,6 +67,18 @@ export function ProfileScreen({ onEditProfile, onSettings }: Props) {
             variant="secondary"
             size="lg"
           />
+
+          {onChallenges && (
+            <Pressable
+              onPress={onChallenges}
+              style={[styles.settingsLink]}
+              testID="challenges-link"
+            >
+              <Text style={[styles.settingsText, { color: colors.brandPrimary }]}>
+                My Challenges
+              </Text>
+            </Pressable>
+          )}
 
           <Pressable
             onPress={onSettings}

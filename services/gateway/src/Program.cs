@@ -49,7 +49,7 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 Window = TimeSpan.FromMinutes(1),
-                PermitLimit = 100,
+                PermitLimit = 300,
                 QueueLimit = 0
             }));
     options.AddPolicy("auth", context =>

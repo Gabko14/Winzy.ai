@@ -46,6 +46,7 @@ export type ApiError = {
     | "forbidden"
     | "not_found"
     | "conflict"
+    | "rate_limited"
     | "validation"
     | "server_error"
     | "unknown";

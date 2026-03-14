@@ -12,7 +12,7 @@ const DEFAULT_BASE_URL =
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
-const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 let baseUrl = DEFAULT_BASE_URL;
@@ -117,6 +117,9 @@ function mapHttpError(status: number, body: unknown): ApiError {
   }
   if (status === 404) {
     return { ...base, code: "not_found", message: "The requested resource was not found." };
+  }
+  if (status === 429) {
+    return { ...base, code: "rate_limited", message: "You're moving fast! Give it a moment and try again." };
   }
   if (status === 409) {
     const msg =
@@ -224,7 +227,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
     // Retryable server errors (safe/idempotent methods only — replaying mutations is dangerous)
     if (RETRYABLE_STATUSES.has(res.status) && retriesLeft > 0 && !noRetry && SAFE_METHODS.has(method)) {
-      await delay(300 * (MAX_RETRIES - retriesLeft + 1));
+      const backoff = res.status === 429
+        ? 2000 * (MAX_RETRIES - retriesLeft + 1)  // 429: longer backoff (2s, 4s)
+        : 300 * (MAX_RETRIES - retriesLeft + 1);   // 5xx: short backoff (300ms, 600ms)
+      await delay(backoff);
       return attempt(retriesLeft - 1, isRetryAfterRefresh);
     }
 
