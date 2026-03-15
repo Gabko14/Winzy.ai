@@ -9,67 +9,17 @@ import {
   Alert,
 } from "react-native";
 import {
-  Card,
   EmptyState,
   LoadingState,
   ErrorState,
   Badge,
-  Button,
-  Flame,
 } from "../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
+import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useFriends } from "../hooks/useFriends";
 import type { Friend, IncomingRequest, OutgoingRequest } from "../api/social";
-
-// --- Display helpers ---
-
-function friendDisplayName(friend: Friend): string {
-  if (friend.displayName) return friend.displayName;
-  if (friend.username) return friend.username;
-  return `User ${friend.friendId.slice(0, 8)}`;
-}
-
-function friendInitials(friend: Friend): string {
-  if (friend.displayName) {
-    const parts = friend.displayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (friend.username) return friend.username.slice(0, 2).toUpperCase();
-  return friend.friendId.slice(0, 2).toUpperCase();
-}
-
-function incomingDisplayName(request: IncomingRequest): string {
-  if (request.fromDisplayName) return request.fromDisplayName;
-  if (request.fromUsername) return `@${request.fromUsername}`;
-  return `User ${request.fromUserId.slice(0, 8)}`;
-}
-
-function incomingInitials(request: IncomingRequest): string {
-  if (request.fromDisplayName) {
-    const parts = request.fromDisplayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (request.fromUsername) return request.fromUsername.slice(0, 2).toUpperCase();
-  return request.fromUserId.slice(0, 2).toUpperCase();
-}
-
-function outgoingDisplayName(request: OutgoingRequest): string {
-  if (request.toDisplayName) return request.toDisplayName;
-  if (request.toUsername) return `@${request.toUsername}`;
-  return `User ${request.toUserId.slice(0, 8)}`;
-}
-
-function outgoingInitials(request: OutgoingRequest): string {
-  if (request.toDisplayName) {
-    const parts = request.toDisplayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (request.toUsername) return request.toUsername.slice(0, 2).toUpperCase();
-  return request.toUserId.slice(0, 2).toUpperCase();
-}
+import { FriendRow } from "../components/friends/FriendsList";
+import { IncomingRequestsList } from "../components/friends/IncomingRequests";
+import { OutgoingRequestsList } from "../components/friends/OutgoingRequests";
 
 type Props = {
   onAddFriend?: () => void;
@@ -348,137 +298,19 @@ function PendingRequestsSection({
         Pending Requests
       </Text>
 
-      {incoming.map((request) => (
-        <Card key={request.id} style={styles.requestCard}>
-          <View style={styles.requestRow}>
-            <View style={styles.requestAvatar}>
-              <Text style={styles.requestAvatarText}>
-                {incomingInitials(request)}
-              </Text>
-            </View>
-            <View style={styles.requestInfo}>
-              <Text style={[styles.requestName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {incomingDisplayName(request)}
-              </Text>
-              <Text style={[styles.requestMeta, { color: colors.textSecondary }]}>
-                Wants to be friends
-              </Text>
-            </View>
-            <View style={styles.requestActions}>
-              <Button
-                title="Accept"
-                onPress={() => onAccept(request)}
-                variant="primary"
-                size="sm"
-                disabled={processingIds.has(request.id)}
-                loading={processingIds.has(request.id)}
-              />
-              <Button
-                title="Decline"
-                onPress={() => onDecline(request)}
-                variant="ghost"
-                size="sm"
-                disabled={processingIds.has(request.id)}
-              />
-            </View>
-          </View>
-        </Card>
-      ))}
+      <IncomingRequestsList
+        incoming={incoming}
+        processingIds={processingIds}
+        onAccept={onAccept}
+        onDecline={onDecline}
+      />
 
-      {outgoing.map((request) => (
-        <Card key={request.id} style={styles.requestCard}>
-          <View style={styles.requestRow}>
-            <View style={styles.requestAvatar}>
-              <Text style={styles.requestAvatarText}>
-                {outgoingInitials(request)}
-              </Text>
-            </View>
-            <View style={styles.requestInfo}>
-              <Text style={[styles.requestName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {outgoingDisplayName(request)}
-              </Text>
-              <Badge label="Pending" variant="default" />
-            </View>
-            <Button
-              title="Cancel"
-              onPress={() => onCancel(request)}
-              variant="ghost"
-              size="sm"
-              disabled={processingIds.has(request.id)}
-            />
-          </View>
-        </Card>
-      ))}
+      <OutgoingRequestsList
+        outgoing={outgoing}
+        processingIds={processingIds}
+        onCancel={onCancel}
+      />
     </View>
-  );
-}
-
-// --- Friend Row ---
-
-type FriendRowProps = {
-  friend: Friend;
-  onPress?: (friendId: string) => void;
-  onOptions: () => void;
-  processing: boolean;
-};
-
-function FriendRow({ friend, onPress, onOptions, processing }: FriendRowProps) {
-  const colors = lightTheme;
-  const name = friendDisplayName(friend);
-  const initials = friendInitials(friend);
-  const flameLevel = friend.flameLevel ?? "none";
-
-  return (
-    <Card style={styles.friendCard}>
-      <Pressable
-        style={styles.friendRow}
-        onPress={() => onPress?.(friend.friendId)}
-        onLongPress={onOptions}
-        accessibilityRole="button"
-        accessibilityLabel={`Friend ${name}`}
-        accessibilityHint="Tap to view profile"
-        testID={`friend-${friend.friendId}`}
-        disabled={processing}
-      >
-        <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-          <Text style={styles.avatarText}>
-            {initials}
-          </Text>
-        </View>
-
-        <View style={styles.friendInfo}>
-          <Text style={[styles.friendName, { color: colors.textPrimary }]} numberOfLines={1}>
-            {name}
-          </Text>
-          {friend.username && (
-            <Text style={[styles.friendUsername, { color: colors.textSecondary }]} numberOfLines={1}>
-              @{friend.username}
-            </Text>
-          )}
-          <Text style={[styles.friendSince, { color: colors.textSecondary }]}>
-            Friends since {new Date(friend.since).toLocaleDateString()}
-          </Text>
-        </View>
-
-        <View style={styles.flameContainer} testID={`flame-${friend.friendId}`}>
-          <Flame flameLevel={flameLevel} size="sm" consistency={friend.consistency} />
-        </View>
-
-        <Pressable
-          onPress={onOptions}
-          accessibilityRole="button"
-          accessibilityLabel={`Options for ${name}`}
-          hitSlop={8}
-          style={styles.menuButton}
-          testID={`menu-${friend.friendId}`}
-          disabled={processing}
-        >
-          <Text style={[styles.menuIcon, { color: colors.textSecondary }]}>
-            {"\u2026"}
-          </Text>
-        </Pressable>
-      </Pressable>
-    </Card>
   );
 }
 
@@ -545,95 +377,5 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
-  },
-  requestCard: {
-    padding: 0,
-    ...shadows.sm,
-  },
-  requestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.base,
-    gap: spacing.md,
-  },
-  requestAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.full,
-    backgroundColor: lightTheme.brandMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  requestAvatarText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: lightTheme.brandPrimary,
-  },
-  requestInfo: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  requestName: {
-    ...typography.body,
-    fontWeight: "600",
-  },
-  requestMeta: {
-    ...typography.caption,
-  },
-  requestActions: {
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  friendCard: {
-    padding: 0,
-    ...shadows.sm,
-  },
-  friendRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.base,
-    gap: spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: lightTheme.brandPrimary,
-  },
-  friendInfo: {
-    flex: 1,
-  },
-  flameContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.xs,
-  },
-  menuButton: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.full,
-  },
-  menuIcon: {
-    fontSize: 20,
-    fontWeight: "600",
-    letterSpacing: 1,
-  },
-  friendName: {
-    ...typography.body,
-    fontWeight: "600",
-  },
-  friendUsername: {
-    ...typography.bodySmall,
-  },
-  friendSince: {
-    ...typography.caption,
   },
 });
