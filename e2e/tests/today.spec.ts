@@ -70,6 +70,15 @@ test.describe("Today screen", () => {
         await newButton.click();
       }
 
+      // Skip the template picker if it appears (new habits show it first)
+      const skipBtn = page.getByTestId("template-skip");
+      try {
+        await skipBtn.waitFor({ state: "visible", timeout: 3_000 });
+        await skipBtn.click();
+      } catch {
+        // Template picker not shown
+      }
+
       // Fill in the habit name
       await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
       await page.getByLabel("Habit name").fill(habitName);

@@ -1,4 +1,4 @@
-import { test, expect, TEST_USER } from "../fixtures/base";
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
 import type { Page } from "@playwright/test";
 
 /**
@@ -19,14 +19,6 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   const email = `${uniqueUser}@winzy.test`;
 
   await page.goto("/");
-  // Dismiss onboarding splash if present (added by Track 4)
-  const letsGo = page.getByRole("button", { name: "Continue to the app" });
-  try {
-    await letsGo.waitFor({ state: "visible", timeout: 5_000 });
-    await letsGo.click();
-  } catch {
-    // Onboarding splash not shown — already on login screen
-  }
   await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Sign up" }).click();
   await expect(page.getByText("Create your account")).toBeVisible();
@@ -43,13 +35,7 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   await page.getByRole("button", { name: "Continue" }).click();
 
   // Dismiss post-auth welcome screen if present (added by Track 4)
-  const welcomeBtn = page.getByRole("button", { name: "Continue to the app" });
-  try {
-    await welcomeBtn.waitFor({ state: "visible", timeout: 5_000 });
-    await welcomeBtn.click();
-  } catch {
-    // Welcome screen not shown
-  }
+  await dismissWelcomeIfPresent(page);
 
   // On TodayScreen (empty)
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
@@ -58,6 +44,12 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   await page.getByText("Create your first habit").click();
   await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
   await page.getByText("Create your first habit").click();
+
+  // Skip template picker if shown
+  try {
+    await page.getByTestId("template-skip").waitFor({ state: "visible", timeout: 3_000 });
+    await page.getByTestId("template-skip").click();
+  } catch { /* not shown */ }
 
   await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Habit name").fill(habitName);

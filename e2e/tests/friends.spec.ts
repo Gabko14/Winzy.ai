@@ -284,13 +284,9 @@ test.describe("Friends management", () => {
         if (result === "profile") {
           await page.getByLabel("Display name").fill("Lifecycle B");
           await page.getByRole("button", { name: "Continue" }).click();
-          // Dismiss welcome screen inline (WelcomeScreen button is "Let's go")
-          try {
-            await page.getByText("Welcome to Winzy").waitFor({ state: "visible", timeout: 3_000 });
-            await page.getByText("Let\u2019s go").or(page.getByText("Let's go")).first().click();
-          } catch { /* welcome not shown */ }
+          await dismissWelcomeIfPresent(page);
         } else if (result === "welcome") {
-          await page.getByText("Let\u2019s go").or(page.getByText("Let's go")).first().click();
+          await dismissWelcomeIfPresent(page);
         }
       });
 

@@ -5,9 +5,15 @@ import { test as base, expect, type Page, type BrowserContext } from "@playwrigh
  * After registration or first login, RootNavigator shows WelcomeScreen
  * when the onboarding welcome flag is not set. Call this after profile
  * completion / login, before asserting on the Today screen.
+ *
+ * The WelcomeScreen button has title "Let's go" and accessibilityLabel
+ * "Continue to the app". On React Native Web, Pressable renders as a
+ * <div role="button"> which Playwright may not reliably match with
+ * getByRole("button"). We match by visible text instead, handling both
+ * straight ("Let's go") and curly ("\u2019") apostrophes.
  */
 export async function dismissWelcomeIfPresent(page: Page) {
-  const letsGo = page.getByRole("button", { name: "Continue to the app" });
+  const letsGo = page.getByText("Let\u2019s go").or(page.getByText("Let's go")).first();
   try {
     await letsGo.waitFor({ state: "visible", timeout: 5_000 });
     await letsGo.click();
