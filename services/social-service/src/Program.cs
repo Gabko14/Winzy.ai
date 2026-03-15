@@ -243,6 +243,19 @@ app.MapGet("/social/friends", async (HttpContext ctx, SocialDbContext db, int pa
     });
 });
 
+// --- GET /social/friends/requests/count ---
+
+app.MapGet("/social/friends/requests/count", async (HttpContext ctx, SocialDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var count = await db.Friendships
+        .CountAsync(f => f.FriendId == userId && f.Status == FriendshipStatus.Pending);
+
+    return Results.Ok(new { count });
+});
+
 // --- GET /social/friends/requests ---
 
 app.MapGet("/social/friends/requests", async (HttpContext ctx, SocialDbContext db) =>

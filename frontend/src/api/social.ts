@@ -92,6 +92,10 @@ export function fetchFriendRequests(): Promise<FriendRequestsResponse> {
   return api.get<FriendRequestsResponse>("/social/friends/requests");
 }
 
+export function fetchPendingFriendCount(): Promise<{ count: number }> {
+  return api.get<{ count: number }>("/social/friends/requests/count");
+}
+
 export function sendFriendRequest(friendId: string): Promise<FriendRequestResult> {
   return api.post<FriendRequestResult>("/social/friends/request", { friendId });
 }
