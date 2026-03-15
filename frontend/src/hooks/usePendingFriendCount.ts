@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
-import { fetchFriendRequests } from "../api/social";
+import { fetchPendingFriendCount as fetchCount } from "../api/social";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -11,9 +11,9 @@ export function usePendingFriendCount() {
 
   const poll = useCallback(async () => {
     try {
-      const data = await fetchFriendRequests();
+      const data = await fetchCount();
       if (mountedRef.current) {
-        setCount(data.incoming.length);
+        setCount(data.count);
       }
     } catch {
       // Silently ignore — badge is non-critical

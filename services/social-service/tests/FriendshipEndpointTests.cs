@@ -279,6 +279,81 @@ public class FriendshipEndpointTests : IAsyncLifetime
         Assert.Equal(0, body.GetProperty("total").GetInt32());
     }
 
+    // --- GET /social/friends/requests/count ---
+
+    [Fact]
+    public async Task PendingFriendCount_NoPending_ReturnsZero()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.GetAsync("/social/friends/requests/count", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task PendingFriendCount_WithIncoming_ReturnsCount()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // _userId sends request to _friendId — incoming for _friendId
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        var response = await friendClient.GetAsync("/social/friends/requests/count", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task PendingFriendCount_OutgoingNotCounted()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // _userId sends request — outgoing, should not count
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        var response = await client.GetAsync("/social/friends/requests/count", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task PendingFriendCount_AcceptedNotCounted()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Send and accept
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        // After acceptance, count should be 0
+        var response = await friendClient.GetAsync("/social/friends/requests/count", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task PendingFriendCount_MissingUserId_Returns400()
+    {
+        using var client = _fixture.Factory.CreateClient();
+
+        var response = await client.GetAsync("/social/friends/requests/count", CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // --- GET /social/friends/requests ---
 
     [Fact]
