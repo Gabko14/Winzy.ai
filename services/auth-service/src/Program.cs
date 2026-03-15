@@ -12,6 +12,7 @@ builder.Services.AddServiceDatabase<AuthDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<TokenService>();
+builder.Services.AddSingleton<ExportRateLimiter>();
 builder.Services.AddHttpClient("HabitService", client =>
 {
     var url = builder.Configuration["Services:HabitServiceUrl"] ?? "http://habit-service:5002";

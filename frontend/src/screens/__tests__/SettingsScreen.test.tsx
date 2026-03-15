@@ -50,6 +50,20 @@ jest.mock("../../api/account", () => ({
   }),
 }));
 
+const mockSubscribe = jest.fn();
+const mockUnsubscribe = jest.fn();
+const mockPushState = {
+  status: "unsubscribed" as string,
+  platform: "web_push" as string,
+  subscribing: false,
+  subscribe: mockSubscribe,
+  unsubscribe: mockUnsubscribe,
+};
+
+jest.mock("../../hooks/usePushNotifications", () => ({
+  usePushNotifications: () => mockPushState,
+}));
+
 const { api } = jest.requireMock("../../api");
 const { fetchPreferences, updateDefaultVisibility } = jest.requireMock("../../api/visibility");
 const { exportMyData } = jest.requireMock("../../api/account");
@@ -67,6 +81,11 @@ function renderSettings() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPushState.status = "unsubscribed";
+  mockPushState.platform = "web_push";
+  mockPushState.subscribing = false;
+  mockSubscribe.mockResolvedValue(undefined);
+  mockUnsubscribe.mockResolvedValue(undefined);
   fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "private" });
   updateDefaultVisibility.mockResolvedValue({ defaultHabitVisibility: "friends" });
   exportMyData.mockResolvedValue({
@@ -400,6 +419,109 @@ describe("SettingsScreen — Account Deletion", () => {
     await waitFor(() => {
       expect(screen.queryByText("Delete account?")).toBeNull();
     });
+  });
+});
+
+// --- Notifications Section ---
+
+describe("SettingsScreen — Notifications Section", () => {
+  it("renders push toggle when status is unsubscribed", async () => {
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-notifications-section")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("push-toggle-row")).toBeTruthy();
+    expect(screen.getByTestId("push-toggle")).toBeTruthy();
+    expect(screen.getByText("Get reminders and friend activity updates")).toBeTruthy();
+  });
+
+  it("renders enabled toggle when status is subscribed", async () => {
+    mockPushState.status = "subscribed";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-toggle")).toBeTruthy();
+    });
+
+    expect(screen.getByText("You'll receive reminders and friend activity")).toBeTruthy();
+  });
+
+  it("calls subscribe when toggle is turned on", async () => {
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-toggle")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent(screen.getByTestId("push-toggle"), "valueChange", true);
+    });
+
+    expect(mockSubscribe).toHaveBeenCalledTimes(1);
+    expect(mockUnsubscribe).not.toHaveBeenCalled();
+  });
+
+  it("calls unsubscribe when toggle is turned off", async () => {
+    mockPushState.status = "subscribed";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-toggle")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent(screen.getByTestId("push-toggle"), "valueChange", false);
+    });
+
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockSubscribe).not.toHaveBeenCalled();
+  });
+
+  it("shows denied state with explanation when permission is denied", async () => {
+    mockPushState.status = "denied";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-denied")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/blocked by your browser or device settings/i)).toBeTruthy();
+    expect(screen.getByTestId("push-open-settings")).toBeTruthy();
+  });
+
+  it("shows loading state while checking notification status", async () => {
+    mockPushState.status = "loading";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-loading")).toBeTruthy();
+    });
+
+    expect(screen.getByText("Checking notification status...")).toBeTruthy();
+  });
+
+  it("hides notification section when platform is unsupported", async () => {
+    mockPushState.status = "unsupported";
+    mockPushState.platform = "unsupported";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-screen")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("settings-notifications-section")).toBeNull();
+  });
+
+  it("disables toggle while subscribing is in progress", async () => {
+    mockPushState.subscribing = true;
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-toggle")).toBeTruthy();
+    });
+
+    const toggle = screen.getByTestId("push-toggle");
+    expect(toggle.props.disabled).toBe(true);
   });
 });
 

@@ -5,9 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Switch,
   Platform,
   Linking,
 } from "react-native";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { Button, Card, Modal } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
@@ -77,6 +79,9 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // Push notifications
+  const push = usePushNotifications();
+
   // Account deletion state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -123,6 +128,14 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
     setTheme(newTheme);
     storeTheme(newTheme);
   }, []);
+
+  const handlePushToggle = useCallback(async (value: boolean) => {
+    if (value) {
+      await push.subscribe();
+    } else {
+      await push.unsubscribe();
+    }
+  }, [push]);
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -335,6 +348,74 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
             </View>
           </Card>
         </View>
+
+        {/* Notifications Section */}
+        {push.status !== "unsupported" && (
+          <View style={styles.section} testID="settings-notifications-section">
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Notifications
+            </Text>
+            <Card>
+              {push.status === "loading" ? (
+                <Text
+                  style={[styles.settingHint, { color: colors.textTertiary, marginBottom: 0 }]}
+                  testID="push-loading"
+                >
+                  Checking notification status...
+                </Text>
+              ) : push.status === "denied" ? (
+                <View testID="push-denied">
+                  <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>
+                    Push notifications
+                  </Text>
+                  <Text style={[styles.settingHint, { color: colors.textTertiary }]}>
+                    Notifications are blocked by your browser or device settings.
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      if (Platform.OS === "web") {
+                        // Browsers don't have a direct settings URL; inform the user
+                      } else {
+                        Linking.openSettings();
+                      }
+                    }}
+                    accessibilityRole="button"
+                    testID="push-open-settings"
+                  >
+                    <Text style={[styles.linkText, { color: colors.brandPrimary }]}>
+                      {Platform.OS === "web"
+                        ? "Enable in your browser's site settings"
+                        : "Open device settings"}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.pushRow} testID="push-toggle-row">
+                  <View style={styles.actionContent}>
+                    <Text style={[styles.settingLabel, { color: colors.textPrimary, marginBottom: 0 }]}>
+                      Push notifications
+                    </Text>
+                    <Text style={[styles.settingHint, { color: colors.textTertiary, marginBottom: 0 }]}>
+                      {push.status === "subscribed"
+                        ? "You'll receive reminders and friend activity"
+                        : "Get reminders and friend activity updates"}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={push.status === "subscribed"}
+                    onValueChange={handlePushToggle}
+                    disabled={push.subscribing}
+                    trackColor={{ false: colors.border, true: colors.brandPrimary }}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Push notifications"
+                    accessibilityState={{ checked: push.status === "subscribed" }}
+                    testID="push-toggle"
+                  />
+                </View>
+              )}
+            </Card>
+          </View>
+        )}
 
         {/* About Section */}
         <View style={styles.section} testID="settings-about-section">
@@ -638,6 +719,11 @@ const styles = StyleSheet.create({
   themeLabel: {
     ...typography.body,
     fontWeight: "500",
+  },
+  pushRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
   },
   aboutRow: {
     flexDirection: "row",
