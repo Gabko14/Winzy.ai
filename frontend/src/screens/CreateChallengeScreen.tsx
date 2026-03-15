@@ -293,7 +293,7 @@ export function CreateChallengeScreen({
                   <Pressable
                     onPress={() => setTargetValue((v) => Math.max(MIN_TARGET, v - 5))}
                     style={[styles.sliderButton, { borderColor: colors.border }]}
-                    accessibilityLabel="Decrease target"
+                    accessibilityLabel={`Decrease target, currently ${targetValue}%`}
                     testID="target-decrease"
                   >
                     <Text style={[styles.sliderButtonText, { color: colors.textPrimary }]}>-</Text>
@@ -306,7 +306,7 @@ export function CreateChallengeScreen({
                   <Pressable
                     onPress={() => setTargetValue((v) => Math.min(MAX_TARGET, v + 5))}
                     style={[styles.sliderButton, { borderColor: colors.border }]}
-                    accessibilityLabel="Increase target"
+                    accessibilityLabel={`Increase target, currently ${targetValue}%`}
                     testID="target-increase"
                   >
                     <Text style={[styles.sliderButtonText, { color: colors.textPrimary }]}>+</Text>

@@ -92,7 +92,7 @@ describe("ChallengeCompletionOverlay", () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText("Claim Reward"));
+    fireEvent.press(screen.getByLabelText("Let's celebrate!"));
     expect(onClaim).toHaveBeenCalledTimes(1);
   });
 
@@ -126,8 +126,8 @@ describe("ChallengeCompletionOverlay", () => {
     );
 
     expect(screen.getByTestId("celebration-claim-error")).toBeTruthy();
-    expect(screen.getByText("Could not claim reward. Tap to try again.")).toBeTruthy();
-    expect(screen.getByText("Retry Claim")).toBeTruthy();
+    expect(screen.getByText(/try that again/i)).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
   });
 
   it("shows remaining count badge when multiple challenges completed", () => {
