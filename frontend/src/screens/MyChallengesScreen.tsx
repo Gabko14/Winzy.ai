@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
 import { LoadingState, ErrorState, EmptyState } from "../design-system";
 import { spacing, typography, lightTheme } from "../design-system";
-import { fetchChallenges, fetchChallengeDetail, type ChallengeDetail } from "../api/challenges";
-import type { ApiError } from "../api/types";
+import { useChallenges } from "../hooks/useChallenges";
 import { ChallengeProgressCard } from "../components/ChallengeProgressCard";
 
 type Props = {
@@ -12,31 +11,7 @@ type Props = {
 
 export function MyChallengesScreen({ onBack }: Props) {
   const colors = lightTheme;
-  const [challenges, setChallenges] = useState<ChallengeDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<ApiError | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // TODO(winzy.ai-n+1): N+1 API calls — fetches list then detail for each.
-      // Fix by adding progress fields to the list endpoint response.
-      const page = await fetchChallenges(1, 100);
-      const details = await Promise.all(
-        page.items.map((c) => fetchChallengeDetail(c.id)),
-      );
-      setChallenges(details);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { challenges, loading, error, refresh } = useChallenges();
 
   const activeChallenges = challenges.filter((c) => c.status === "active");
   const completedChallenges = challenges.filter(
@@ -57,7 +32,7 @@ export function MyChallengesScreen({ onBack }: Props) {
   if (error) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]} testID="challenges-error">
-        <ErrorState message={error.message} onRetry={load} />
+        <ErrorState message={error.message} onRetry={refresh} />
       </View>
     );
   }

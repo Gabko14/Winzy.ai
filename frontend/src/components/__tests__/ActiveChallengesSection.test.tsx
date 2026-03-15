@@ -3,14 +3,12 @@ import { render, screen, waitFor } from "@testing-library/react-native";
 import { ActiveChallengesSection } from "../ActiveChallengesSection";
 
 const mockFetchChallenges = jest.fn();
-const mockFetchChallengeDetail = jest.fn();
 
 jest.mock("../../api/challenges", () => ({
   fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
-  fetchChallengeDetail: (...args: unknown[]) => mockFetchChallengeDetail(...args),
 }));
 
-function makeChallengeItem(overrides: Record<string, unknown> = {}) {
+function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
   return {
     id: "ch-1",
     habitId: "habit-1",
@@ -25,13 +23,6 @@ function makeChallengeItem(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    ...overrides,
-  };
-}
-
-function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
-  return {
-    ...makeChallengeItem(overrides),
     progress: 60,
     completionCount: 18,
     baselineConsistency: null,
@@ -48,12 +39,11 @@ beforeEach(() => {
 describe("ActiveChallengesSection", () => {
   it("renders active challenges for a habit", async () => {
     mockFetchChallenges.mockResolvedValue({
-      items: [makeChallengeItem()],
+      items: [makeChallengeDetail()],
       page: 1,
       pageSize: 100,
       total: 1,
     });
-    mockFetchChallengeDetail.mockResolvedValue(makeChallengeDetail());
 
     render(<ActiveChallengesSection habitId="habit-1" />);
 
@@ -82,20 +72,21 @@ describe("ActiveChallengesSection", () => {
   it("filters challenges by habitId", async () => {
     mockFetchChallenges.mockResolvedValue({
       items: [
-        makeChallengeItem({ id: "ch-1", habitId: "habit-1" }),
-        makeChallengeItem({ id: "ch-2", habitId: "habit-2" }),
+        makeChallengeDetail({ id: "ch-1", habitId: "habit-1" }),
+        makeChallengeDetail({ id: "ch-2", habitId: "habit-2" }),
       ],
       page: 1,
       pageSize: 100,
       total: 2,
     });
-    mockFetchChallengeDetail.mockResolvedValue(makeChallengeDetail());
 
     render(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
-      expect(mockFetchChallengeDetail).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("active-challenges-section")).toBeTruthy();
     });
+    // Only one card rendered — habit-2 is filtered out
+    expect(screen.getAllByTestId("challenge-progress-card")).toHaveLength(1);
   });
 
   it("shows error state on fetch failure", async () => {
@@ -123,20 +114,20 @@ describe("ActiveChallengesSection", () => {
   it("only shows active challenges, not completed ones", async () => {
     mockFetchChallenges.mockResolvedValue({
       items: [
-        makeChallengeItem({ id: "ch-1", habitId: "habit-1", status: "active" }),
-        makeChallengeItem({ id: "ch-2", habitId: "habit-1", status: "completed" }),
+        makeChallengeDetail({ id: "ch-1", habitId: "habit-1", status: "active" }),
+        makeChallengeDetail({ id: "ch-2", habitId: "habit-1", status: "completed" }),
       ],
       page: 1,
       pageSize: 100,
       total: 2,
     });
-    mockFetchChallengeDetail.mockResolvedValue(makeChallengeDetail());
 
     render(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
-      // Only the active challenge should trigger a detail fetch
-      expect(mockFetchChallengeDetail).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("active-challenges-section")).toBeTruthy();
     });
+    // Only the active challenge renders a card
+    expect(screen.getAllByTestId("challenge-progress-card")).toHaveLength(1);
   });
 });
