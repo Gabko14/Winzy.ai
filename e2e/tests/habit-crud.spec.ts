@@ -49,7 +49,16 @@ async function openCreateModal(page: Page) {
     await emptyCta.click();
   }
 
-  // Wait for the create habit modal
+  // Skip the template picker if it appears (new habits show it first)
+  const skipBtn = page.getByTestId("template-skip");
+  try {
+    await skipBtn.waitFor({ state: "visible", timeout: 3_000 });
+    await skipBtn.click();
+  } catch {
+    // Template picker not shown (e.g., editing)
+  }
+
+  // Wait for the create habit modal form
   await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
 }
 
@@ -317,6 +326,11 @@ test.describe("Habit CRUD", () => {
 
     await test.step("create second habit via '+ New' button", async () => {
       await page.getByRole("button", { name: "Create new habit" }).click();
+      // Skip template picker if shown
+      try {
+        await page.getByTestId("template-skip").waitFor({ state: "visible", timeout: 3_000 });
+        await page.getByTestId("template-skip").click();
+      } catch { /* not shown */ }
       await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
       await createHabit(page, habit2);
       test.info().annotations.push({
