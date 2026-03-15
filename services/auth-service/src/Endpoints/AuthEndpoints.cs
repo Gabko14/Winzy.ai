@@ -365,7 +365,7 @@ public static class AuthEndpoints
             return Results.Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,
                 title: "Too Many Requests",
-                detail: "Data export is limited to one request per minute. Please try again later.");
+                type: "https://httpstatuses.com/429");
 
         var user = await db.Users.FindAsync([userId.Value], ct);
         if (user is null)

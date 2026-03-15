@@ -110,6 +110,9 @@ jest.mock("../../components/notifications", () => ({
             <RN.Pressable testID="notif-press-challenge" onPress={() => onNotifPress({ id: "n2", type: "challengecreated", data: { challengeId: "ch-1", fromUserId: "friend-456" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
               <RN.Text>Challenge</RN.Text>
             </RN.Pressable>
+            <RN.Pressable testID="notif-press-accepted" onPress={() => onNotifPress({ id: "n4", type: "friendrequestaccepted", data: { otherUserId: "friend-789" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>Accepted</RN.Text>
+            </RN.Pressable>
             <RN.Pressable testID="notif-press-no-data" onPress={() => onNotifPress({ id: "n3", type: "friendrequestsent", data: {}, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
               <RN.Text>NoData</RN.Text>
             </RN.Pressable>
@@ -687,6 +690,15 @@ describe("RootNavigator", () => {
     expect(getByTestId("notification-screen")).toBeTruthy();
 
     fireEvent.press(getByTestId("notif-press-friend-request"));
+    expect(getByTestId("friend-profile-screen")).toBeTruthy();
+  });
+
+  it("navigates to friend profile when accepted notification uses otherUserId", () => {
+    const { getByTestId } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-accepted"));
     expect(getByTestId("friend-profile-screen")).toBeTruthy();
   });
 
