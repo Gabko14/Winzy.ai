@@ -31,10 +31,26 @@ setup("authenticate", async ({ page, request }) => {
     await page.getByLabel("Password").fill(TEST_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    // Check if we land on Today screen or hit a login error
+    // After login we may land on Today, WelcomeScreen, or a login error.
     const todayLocator = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
+    const welcomeLocator = page.getByText("Welcome to Winzy");
+
+    /** Dismiss WelcomeScreen if present, then wait for Today. */
+    async function waitForToday() {
+      const result = await Promise.race([
+        todayLocator.waitFor({ timeout: 10_000 }).then(() => "today" as const),
+        welcomeLocator.waitFor({ timeout: 10_000 }).then(() => "welcome" as const),
+      ]);
+      if (result === "welcome") {
+        // Dismiss the welcome screen (button text "Let's go", may be curly quote)
+        const letsGo = page.getByText("Let\u2019s go").or(page.getByText("Let's go")).first();
+        await letsGo.click();
+        await expect(todayLocator).toBeVisible({ timeout: 10_000 });
+      }
+    }
+
     try {
-      await expect(todayLocator).toBeVisible({ timeout: 10_000 });
+      await waitForToday();
     } catch {
       // Login failed — user probably doesn't exist. Register via API and retry.
       console.log("[auth.setup] Login failed, registering test user via API...");
@@ -55,7 +71,7 @@ setup("authenticate", async ({ page, request }) => {
         await page.getByLabel("Email or username").fill(TEST_EMAIL);
         await page.getByLabel("Password").fill(TEST_PASSWORD);
         await page.getByRole("button", { name: "Sign in" }).click();
-        await expect(todayLocator).toBeVisible({ timeout: 10_000 });
+        await waitForToday();
       } else {
         throw new Error(`[auth.setup] Registration failed with status ${res.status()}`);
       }
