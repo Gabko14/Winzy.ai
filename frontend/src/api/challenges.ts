@@ -37,7 +37,7 @@ export type ChallengeDetail = Challenge & {
 };
 
 export type ChallengesPage = {
-  items: Challenge[];
+  items: ChallengeDetail[];
   page: number;
   pageSize: number;
   total: number;
@@ -51,4 +51,25 @@ export function fetchChallenges(page = 1, pageSize = 20): Promise<ChallengesPage
 
 export function fetchChallengeDetail(id: string): Promise<ChallengeDetail> {
   return api.get<ChallengeDetail>(`/challenges/${id}`);
+}
+
+// --- Create challenge ---
+
+export type CreateChallengeRequest = {
+  habitId: string;
+  recipientId: string;
+  milestoneType: MilestoneType;
+  targetValue: number;
+  periodDays: number;
+  rewardDescription: string;
+};
+
+export function createChallenge(request: CreateChallengeRequest): Promise<Challenge> {
+  return api.post<Challenge>("/challenges", request);
+}
+
+// --- Claim challenge ---
+
+export function claimChallenge(id: string): Promise<Challenge> {
+  return api.put<Challenge>(`/challenges/${id}/claim`);
 }

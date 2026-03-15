@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
-import { render, fireEvent } from "@testing-library/react-native";
+import { render, fireEvent, act } from "@testing-library/react-native";
 import { RootNavigator } from "../RootNavigator";
 
 // Mock all screen components to simple stubs
@@ -73,6 +73,12 @@ jest.mock("../../screens/HabitDetailScreen", () => ({
             <RN.Text>Back</RN.Text>
           </RN.Pressable>
         )}
+        {props.onEdit && (
+          <RN.Pressable testID="habit-edit-press" onPress={() => /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+            (props.onEdit as any)(String(props.habitId))}>
+            <RN.Text>Edit</RN.Text>
+          </RN.Pressable>
+        )}
       </RN.View>
     );
   },
@@ -81,6 +87,8 @@ jest.mock("../../screens/HabitDetailScreen", () => ({
 jest.mock("../../components/notifications", () => ({
   NotificationScreen: (props: Record<string, unknown>) => {
     const RN = require("react-native");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onNotifPress = props.onNotificationPress as any;
     return (
       <RN.View testID="notification-screen">
         <RN.Text>NotificationScreen</RN.Text>
@@ -93,6 +101,19 @@ jest.mock("../../components/notifications", () => ({
           <RN.Pressable testID="mark-all-read-failed" onPress={props.onMarkAllReadFailed as () => void}>
             <RN.Text>MarkAllReadFailed</RN.Text>
           </RN.Pressable>
+        )}
+        {onNotifPress && (
+          <>
+            <RN.Pressable testID="notif-press-friend-request" onPress={() => onNotifPress({ id: "n1", type: "friendrequestsent", data: { fromUserId: "friend-123" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>FriendRequest</RN.Text>
+            </RN.Pressable>
+            <RN.Pressable testID="notif-press-challenge" onPress={() => onNotifPress({ id: "n2", type: "challengecreated", data: { challengeId: "ch-1", fromUserId: "friend-456" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>Challenge</RN.Text>
+            </RN.Pressable>
+            <RN.Pressable testID="notif-press-no-data" onPress={() => onNotifPress({ id: "n3", type: "friendrequestsent", data: {}, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>NoData</RN.Text>
+            </RN.Pressable>
+          </>
         )}
       </RN.View>
     );
@@ -178,6 +199,38 @@ jest.mock("../../screens/AddFriendScreen", () => ({
   },
 }));
 
+jest.mock("../../screens/FriendProfileScreen", () => ({
+  FriendProfileScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="friend-profile-screen">
+        <RN.Text>FriendProfileScreen {props.friendId as string}</RN.Text>
+        {props.onBack && (
+          <RN.Pressable testID="friend-profile-back" onPress={props.onBack as () => void}>
+            <RN.Text>Back</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
+jest.mock("../../screens/MyChallengesScreen", () => ({
+  MyChallengesScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="challenges-screen">
+        <RN.Text>MyChallengesScreen</RN.Text>
+        {props.onBack && (
+          <RN.Pressable testID="challenges-back" onPress={props.onBack as () => void}>
+            <RN.Text>Back</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
 jest.mock("../../screens/PublicFlameScreen", () => ({
   PublicFlameScreen: () => {
     const RN = require("react-native");
@@ -209,6 +262,64 @@ jest.mock("../../screens/SignUpScreen", () => ({
       </RN.View>
     );
   },
+}));
+
+jest.mock("../../screens/CreateHabitScreen", () => ({
+  CreateHabitScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    if (!props.visible) return null;
+    return (
+      <RN.View testID="create-habit-screen">
+        <RN.Text>CreateHabitScreen</RN.Text>
+        <RN.Text testID="edit-habit-name">{(props.editHabit as { name: string })?.name}</RN.Text>
+        {props.onClose && (
+          <RN.Pressable testID="create-habit-close" onPress={props.onClose as () => void}>
+            <RN.Text>Close</RN.Text>
+          </RN.Pressable>
+        )}
+        {props.onSaved && (
+          <RN.Pressable testID="create-habit-saved" onPress={() => /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+            (props.onSaved as any)({ id: "h1", name: "Test" })}>
+            <RN.Text>Save</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
+const mockFetchHabit = jest.fn();
+jest.mock("../../api/habits", () => ({
+  fetchHabit: (...args: unknown[]) => mockFetchHabit(...args),
+}));
+
+const mockVisibility = {
+  visibilityMap: {} as Record<string, string>,
+  defaultVisibility: "private",
+  loading: false,
+  error: null,
+  refresh: jest.fn(),
+  getVisibility: jest.fn().mockReturnValue("private"),
+};
+jest.mock("../../hooks/useVisibility", () => ({
+  useVisibility: () => mockVisibility,
+}));
+
+const mockChallengeCompletion = {
+  current: null as Record<string, unknown> | null,
+  claiming: false,
+  claimError: null,
+  remainingCount: 0,
+  claim: jest.fn(),
+  dismiss: jest.fn(),
+  triggerCheck: jest.fn(),
+};
+jest.mock("../../hooks/useChallengeCompletion", () => ({
+  useChallengeCompletion: () => mockChallengeCompletion,
+}));
+
+jest.mock("../../components/ChallengeCompletionOverlay", () => ({
+  ChallengeCompletionOverlay: () => null,
 }));
 
 jest.mock("../../components/OfflineIndicator", () => ({
@@ -298,6 +409,17 @@ beforeEach(() => {
   mockOnboarding.loading = false;
   mockOnboarding.hasSeenWelcome = true;
   mockOnboarding.hasSeenFlameIntro = true;
+  mockChallengeCompletion.current = null;
+  mockFetchHabit.mockResolvedValue({
+    id: "h1",
+    name: "Morning Run",
+    icon: "🏃",
+    color: "#F97316",
+    frequency: "daily",
+    customDays: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    archivedAt: null,
+  });
 });
 
 describe("RootNavigator", () => {
@@ -492,5 +614,97 @@ describe("RootNavigator", () => {
     fireEvent.press(getByTestId("create-habit-press"));
     fireEvent.press(getByTestId("habit-created-trigger"));
     expect(queryByTestId("flame-intro-modal")).toBeNull();
+  });
+
+  // --- Edit habit direct to form (winzy.ai-2yc9) ---
+
+  it("navigates from habit detail to edit form directly, not habit list", async () => {
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+
+    // Navigate to habit detail
+    fireEvent.press(getByTestId("habit-press"));
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+
+    // Press edit — should fetch habit and show CreateHabitScreen
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-edit-press"));
+    });
+
+    expect(mockFetchHabit).toHaveBeenCalledWith("h1");
+    expect(getByTestId("create-habit-screen")).toBeTruthy();
+    expect(getByTestId("edit-habit-name").props.children).toBe("Morning Run");
+    expect(queryByTestId("habit-list-screen")).toBeNull();
+  });
+
+  it("returns from edit form to habit detail on close", async () => {
+    const { getByTestId } = render(<RootNavigator />);
+
+    // Navigate to habit detail -> edit
+    fireEvent.press(getByTestId("habit-press"));
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-edit-press"));
+    });
+    expect(getByTestId("create-habit-screen")).toBeTruthy();
+
+    // Close the edit form
+    fireEvent.press(getByTestId("create-habit-close"));
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+  });
+
+  it("returns from edit form to habit detail on save", async () => {
+    const { getByTestId } = render(<RootNavigator />);
+
+    // Navigate to habit detail -> edit
+    fireEvent.press(getByTestId("habit-press"));
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-edit-press"));
+    });
+    expect(getByTestId("create-habit-screen")).toBeTruthy();
+
+    // Save the habit
+    fireEvent.press(getByTestId("create-habit-saved"));
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+  });
+
+  it("stays on habit detail when edit fetch fails", async () => {
+    mockFetchHabit.mockRejectedValueOnce(new Error("Network error"));
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+
+    fireEvent.press(getByTestId("habit-press"));
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-edit-press"));
+    });
+
+    // Should still be on habit detail, not navigated away
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+    expect(queryByTestId("create-habit-screen")).toBeNull();
+  });
+
+  // --- 1xsy: Notification deep-linking ---
+  it("navigates to friend profile when friend request notification is tapped", () => {
+    const { getByTestId } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-friend-request"));
+    expect(getByTestId("friend-profile-screen")).toBeTruthy();
+  });
+
+  it("navigates to challenges screen when challenge notification is tapped", () => {
+    const { getByTestId } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-challenge"));
+    expect(getByTestId("challenges-screen")).toBeTruthy();
+  });
+
+  it("stays on notifications when friend request has no fromUserId", () => {
+    const { getByTestId } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-no-data"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
   });
 });

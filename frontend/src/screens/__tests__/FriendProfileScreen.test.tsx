@@ -107,7 +107,7 @@ describe("FriendProfileScreen", () => {
     expect(getByTestId("set-challenge-button")).toBeTruthy();
     const button = getByRole("button", { name: "Set challenge for this friend" });
     fireEvent.press(button);
-    expect(onSetChallenge).toHaveBeenCalledWith("friend-123");
+    expect(onSetChallenge).toHaveBeenCalledWith("friend-123", "Alice Smith");
   });
 
   // --- Edge case: friend with no visible habits shows encouraging empty state ---

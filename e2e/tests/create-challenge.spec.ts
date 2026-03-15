@@ -1,0 +1,286 @@
+import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
+import type { Page } from "@playwright/test";
+
+const API_BASE = "http://localhost:5050";
+
+/**
+ * Create Challenge E2E tests.
+ *
+ * Covers: friend profile -> Set Challenge -> complete flow -> success,
+ * preview verification, and validation.
+ */
+
+async function gotoLoginScreen(page: Page) {
+  await page.goto("/");
+  await dismissWelcomeIfPresent(page);
+
+  const signIn = page.getByText("Welcome back");
+  const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
+  const profileCompletion = page.getByText("What should we call you?");
+
+  const where = await Promise.race([
+    signIn.waitFor({ timeout: 15_000 }).then(() => "signIn" as const),
+    today.waitFor({ timeout: 15_000 }).then(() => "today" as const),
+    profileCompletion.waitFor({ timeout: 15_000 }).then(() => "profile" as const),
+  ]);
+
+  if (where === "signIn") return;
+
+  if (where === "profile") {
+    await page.getByLabel("Display name").fill("Temp User");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await dismissWelcomeIfPresent(page);
+    await expect(today).toBeVisible({ timeout: 10_000 });
+  }
+
+  await page.evaluate(() => localStorage.clear());
+  await page.goto("/");
+  await expect(signIn).toBeVisible({ timeout: 15_000 });
+}
+
+test.describe("Create Challenge flow", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let userAToken: string;
+  let userAId: string;
+  let userBToken: string;
+  let userBId: string;
+  let userBUsername: string;
+  let userBEmail: string;
+
+  test("setup: register two users who are friends, user B has a habit", async ({ request }) => {
+    const tsA = Date.now();
+    const tsB = tsA + 1;
+    const usernameA = `e2e_challA_${tsA}`;
+    userBUsername = `e2e_challB_${tsB}`;
+    userBEmail = `${userBUsername}@winzy.test`;
+
+    await test.step("register user A", async () => {
+      const res = await request.post(`${API_BASE}/auth/register`, {
+        data: {
+          email: `${usernameA}@winzy.test`,
+          username: usernameA,
+          password: TEST_USER.password,
+          displayName: "Challenger A",
+        },
+      });
+      expect(res.status()).toBe(201);
+      const body = await res.json();
+      userAToken = body.accessToken;
+      userAId = body.user.id;
+    });
+
+    await test.step("register user B", async () => {
+      const res = await request.post(`${API_BASE}/auth/register`, {
+        data: {
+          email: userBEmail,
+          username: userBUsername,
+          password: TEST_USER.password,
+          displayName: "Challenger B",
+        },
+      });
+      expect(res.status()).toBe(201);
+      const body = await res.json();
+      userBToken = body.accessToken;
+      userBId = body.user.id;
+    });
+
+    await test.step("user A sends friend request to user B", async () => {
+      const res = await request.post(`${API_BASE}/social/friends/request`, {
+        headers: { Authorization: `Bearer ${userAToken}` },
+        data: { friendId: userBId },
+      });
+      expect(res.status()).toBe(201);
+      const body = await res.json();
+
+      // User B accepts
+      const acceptRes = await request.put(
+        `${API_BASE}/social/friends/request/${body.id}/accept`,
+        { headers: { Authorization: `Bearer ${userBToken}` } },
+      );
+      expect(acceptRes.status()).toBe(200);
+      test.info().annotations.push({
+        type: "step",
+        description: "Friendship established between A and B",
+      });
+    });
+
+    await test.step("user B creates a habit", async () => {
+      const res = await request.post(`${API_BASE}/habits`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+        data: {
+          name: "Daily Meditation",
+          frequency: "daily",
+          visibility: "friends",
+        },
+      });
+      expect(res.status()).toBe(201);
+      test.info().annotations.push({
+        type: "step",
+        description: "User B has a visible habit: Daily Meditation",
+      });
+    });
+  });
+
+  test("navigate from friend profile -> Set Challenge -> complete flow -> see Challenge sent", async ({
+    unauthenticatedPage: page,
+  }) => {
+    await test.step("sign in as user A via token", async () => {
+      await page.goto("/");
+      await page.evaluate(
+        ([token]) => {
+          localStorage.setItem("access_token", token);
+        },
+        [userAToken],
+      );
+      await page.goto("/");
+      await dismissWelcomeIfPresent(page);
+      test.info().annotations.push({
+        type: "step",
+        description: "Signed in as user A via token",
+      });
+    });
+
+    await test.step("navigate to Friends tab and find friend B", async () => {
+      const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
+
+      // May need to complete profile first
+      const result = await Promise.race([
+        page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile"),
+        today.waitFor({ timeout: 5_000 }).then(() => "today"),
+      ]);
+
+      if (result === "profile") {
+        await page.getByLabel("Display name").fill("Challenger A");
+        await page.getByRole("button", { name: "Continue" }).click();
+        await dismissWelcomeIfPresent(page);
+      }
+
+      await expect(today).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("tab-friends").click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Navigated to Friends tab",
+      });
+    });
+
+    await test.step("tap friend B to open profile", async () => {
+      // Wait for friends list to load
+      await expect(page.getByTestId("friends-screen")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("Challenger B")).toBeVisible({ timeout: 10_000 });
+      await page.getByText("Challenger B").click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Opened friend B's profile",
+      });
+    });
+
+    await test.step("tap Set Challenge button", async () => {
+      await expect(page.getByTestId("friend-profile-screen")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId("set-challenge-button")).toBeVisible({ timeout: 10_000 });
+      await page.getByRole("button", { name: "Set challenge for this friend" }).click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Tapped Set Challenge button",
+      });
+    });
+
+    await test.step("step 1: select habit", async () => {
+      await expect(page.getByTestId("step-1-select-habit")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("Daily Meditation")).toBeVisible();
+      await page.getByText("Daily Meditation").click();
+      await page.getByRole("button", { name: "Continue to next step" }).click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Selected habit: Daily Meditation",
+      });
+    });
+
+    await test.step("step 2: set target", async () => {
+      await expect(page.getByTestId("step-2-set-target")).toBeVisible({ timeout: 10_000 });
+      // Use default target and period
+      await page.getByRole("button", { name: "Continue to next step" }).click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Set target: 60% over 30 days (defaults)",
+      });
+    });
+
+    await test.step("step 3: describe reward", async () => {
+      await expect(page.getByTestId("step-3-reward")).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("reward-input").fill("Grab coffee at the new place downtown");
+      await page.getByRole("button", { name: "Continue to next step" }).click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Described reward: coffee together",
+      });
+    });
+
+    await test.step("step 4: verify preview and submit", async () => {
+      await expect(page.getByTestId("step-4-preview")).toBeVisible({ timeout: 10_000 });
+
+      // Verify preview content
+      await expect(page.getByTestId("preview-friend")).toBeVisible();
+      await expect(page.getByTestId("preview-habit")).toBeVisible();
+      await expect(page.getByTestId("preview-target")).toBeVisible();
+      await expect(page.getByTestId("preview-reward")).toBeVisible();
+      await expect(page.getByText("Grab coffee at the new place downtown")).toBeVisible();
+
+      await page.getByRole("button", { name: "Send challenge" }).click();
+      test.info().annotations.push({
+        type: "step",
+        description: "Preview verified and challenge submitted",
+      });
+    });
+
+    await test.step("step 5: see Challenge sent!", async () => {
+      await expect(page.getByText("Challenge sent!")).toBeVisible({ timeout: 10_000 });
+      test.info().annotations.push({
+        type: "step",
+        description: "Success screen: Challenge sent!",
+      });
+    });
+  });
+
+  test("validation blocks submit without required fields", async ({ unauthenticatedPage: page }) => {
+    // Sign in as user A
+    await page.evaluate(
+      ([token]) => {
+        localStorage.setItem("access_token", token);
+      },
+      [userAToken],
+    );
+    await page.goto("/");
+    await dismissWelcomeIfPresent(page);
+
+    const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
+    const result = await Promise.race([
+      page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile"),
+      today.waitFor({ timeout: 5_000 }).then(() => "today"),
+    ]);
+    if (result === "profile") {
+      await page.getByLabel("Display name").fill("Challenger A");
+      await page.getByRole("button", { name: "Continue" }).click();
+      await dismissWelcomeIfPresent(page);
+    }
+
+    await test.step("navigate to create challenge", async () => {
+      await expect(today).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("tab-friends").click();
+      await expect(page.getByTestId("friends-screen")).toBeVisible({ timeout: 10_000 });
+      await page.getByText("Challenger B").click();
+      await expect(page.getByTestId("friend-profile-screen")).toBeVisible({ timeout: 10_000 });
+      await page.getByRole("button", { name: "Set challenge for this friend" }).click();
+      await expect(page.getByTestId("step-1-select-habit")).toBeVisible({ timeout: 10_000 });
+    });
+
+    await test.step("continue button is disabled without selecting a habit", async () => {
+      const continueBtn = page.getByRole("button", { name: "Continue to next step" });
+      await expect(continueBtn).toBeDisabled();
+      test.info().annotations.push({
+        type: "step",
+        description: "Continue disabled when no habit selected",
+      });
+    });
+  });
+});
