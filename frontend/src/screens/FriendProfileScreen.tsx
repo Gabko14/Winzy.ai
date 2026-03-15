@@ -23,7 +23,7 @@ type Props = {
   /** Date the friendship was established. */
   since?: string;
   onBack?: () => void;
-  onSetChallenge?: (friendId: string) => void;
+  onSetChallenge?: (friendId: string, friendName: string) => void;
 };
 
 export function FriendProfileScreen({
@@ -141,7 +141,7 @@ export function FriendProfileScreen({
           <View style={styles.actions} testID="set-challenge-button">
             <Button
               title="Set Challenge"
-              onPress={() => onSetChallenge(friendId)}
+              onPress={() => onSetChallenge(friendId, name)}
               variant="secondary"
               size="md"
               accessibilityLabel="Set challenge for this friend"

@@ -14,22 +14,30 @@ import { TodayScreen } from "../screens/TodayScreen";
 import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
 import { NotificationScreen } from "../components/notifications";
+import type { NotificationItem } from "../api/notifications";
 import { FriendsScreen } from "../screens/FriendsScreen";
 import { AddFriendScreen } from "../screens/AddFriendScreen";
 import { FriendProfileScreen } from "../screens/FriendProfileScreen";
+import { CreateChallengeScreen } from "../screens/CreateChallengeScreen";
 import { FeedScreen } from "../screens/FeedScreen";
 import { StatsScreen } from "../screens/StatsScreen";
+import { CreateHabitScreen } from "../screens/CreateHabitScreen";
 import { MyChallengesScreen } from "../screens/MyChallengesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { fetchHabit } from "../api/habits";
+import type { Habit } from "../api/habits";
+import { useVisibility } from "../hooks/useVisibility";
 import { useUnreadCount } from "../hooks/useUnreadCount";
 import { usePendingFriendCount } from "../hooks/usePendingFriendCount";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { WelcomeScreen } from "../screens/WelcomeScreen";
 import { FlameIntroModal } from "../screens/FlameIntroModal";
 import { TabBar, type TabId } from "./TabBar";
+import { useChallengeCompletion } from "../hooks/useChallengeCompletion";
+import { ChallengeCompletionOverlay } from "../components/ChallengeCompletionOverlay";
 
 /** Screens that overlay on top of a tab's content */
-type OverlayScreen = "editProfile" | "habitDetail" | "notifications" | "habits" | "addFriend" | "friendProfile" | "challenges" | "settings" | "stats";
+type OverlayScreen = "editProfile" | "habitDetail" | "editHabit" | "notifications" | "habits" | "addFriend" | "friendProfile" | "createChallenge" | "challenges" | "settings" | "stats";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -65,10 +73,14 @@ export function RootNavigator() {
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [selectedFriendName, setSelectedFriendName] = useState<string | null>(null);
+  const [editHabitData, setEditHabitData] = useState<Habit | null>(null);
 
   const unreadCount = useUnreadCount();
   const pendingFriendCount = usePendingFriendCount();
   const onboarding = useOnboarding();
+  const visibility = useVisibility();
+  const challengeCompletion = useChallengeCompletion();
   const [showFlameIntro, setShowFlameIntro] = useState(false);
 
   const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);
@@ -76,6 +88,20 @@ export function RootNavigator() {
   const goToHabits = useCallback(() => setOverlay("habits"), []);
   const goToAddFriend = useCallback(() => setOverlay("addFriend"), []);
   const goToSettings = useCallback(() => setOverlay("settings"), []);
+  const handleEditHabit = useCallback(async (habitId: string) => {
+    try {
+      const habit = await fetchHabit(habitId);
+      setEditHabitData(habit);
+      setOverlay("editHabit");
+    } catch {
+      // Fetch failed — stay on detail screen, user can retry
+    }
+  }, []);
+  const handleSetChallenge = useCallback((fId: string, fName: string) => {
+    setSelectedFriendId(fId);
+    setSelectedFriendName(fName);
+    setOverlay("createChallenge");
+  }, []);
   const dismissOverlay = useCallback(() => setOverlay(null), []);
 
   const handleTabPress = useCallback((tabId: TabId) => {
@@ -98,6 +124,27 @@ export function RootNavigator() {
     setOverlay("friendProfile");
   }, []);
 
+
+  const handleNotificationPress = useCallback((notification: NotificationItem) => {
+    const { type, data } = notification;
+    const fromUserId = data.fromUserId as string | undefined;
+
+    switch (type) {
+      case "friendrequestsent":
+      case "friendrequestaccepted":
+        if (fromUserId) {
+          setSelectedFriendId(fromUserId);
+          setOverlay("friendProfile");
+        }
+        break;
+      case "challengecreated":
+        setOverlay("challenges");
+        break;
+      case "challengecompleted":
+        challengeCompletion.triggerCheck();
+        break;
+    }
+  }, [challengeCompletion]);
   const handleProfileCompletion = useCallback(() => {
     setProfileCompleted(true);
   }, []);
@@ -191,12 +238,32 @@ export function RootNavigator() {
           habitId={selectedHabitId}
           onBack={dismissOverlay}
           onViewStats={handleViewStats}
-          onEdit={() => {
-            setOverlay("habits");
-          }}
+          onEdit={handleEditHabit}
           onArchive={() => {
             dismissOverlay();
           }}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
+  if (overlay === "editHabit" && editHabitData) {
+    return (
+      <>
+        <OfflineIndicator />
+        <CreateHabitScreen
+          visible
+          onClose={() => {
+            setEditHabitData(null);
+            setOverlay("habitDetail");
+          }}
+          onSaved={() => {
+            setEditHabitData(null);
+            setOverlay("habitDetail");
+          }}
+          editHabit={editHabitData}
+          editVisibility={visibility.getVisibility(editHabitData.id)}
         />
         <StatusBar style="auto" />
       </>
@@ -208,6 +275,7 @@ export function RootNavigator() {
       <>
         <OfflineIndicator />
         <NotificationScreen
+          onNotificationPress={handleNotificationPress}
           onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
           onMarkAllRead={() => unreadCount.resetToZero()}
           onMarkAllReadFailed={() => unreadCount.refresh()}
@@ -264,6 +332,22 @@ export function RootNavigator() {
         <FriendProfileScreen
           friendId={selectedFriendId}
           onBack={() => { setOverlay(null); setActiveTab("friends"); }}
+          onSetChallenge={handleSetChallenge}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
+  if (overlay === "createChallenge" && selectedFriendId) {
+    return (
+      <>
+        <OfflineIndicator />
+        <CreateChallengeScreen
+          friendId={selectedFriendId}
+          friendName={selectedFriendName ?? undefined}
+          onBack={() => { setOverlay("friendProfile"); }}
+          onComplete={() => { setOverlay(null); setActiveTab("friends"); }}
         />
         <StatusBar style="auto" />
       </>
@@ -368,6 +452,16 @@ export function RootNavigator() {
           onboarding.markFlameIntroSeen();
         }}
       />
+      {challengeCompletion.current && (
+        <ChallengeCompletionOverlay
+          challenge={challengeCompletion.current}
+          claiming={challengeCompletion.claiming}
+          claimError={challengeCompletion.claimError}
+          remainingCount={challengeCompletion.remainingCount}
+          onClaim={challengeCompletion.claim}
+          onDismiss={challengeCompletion.dismiss}
+        />
+      )}
       <StatusBar style="auto" />
     </>
   );
