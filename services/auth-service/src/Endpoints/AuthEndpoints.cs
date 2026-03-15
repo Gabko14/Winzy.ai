@@ -30,6 +30,7 @@ public static class AuthEndpoints
         group.MapGet("/export", ExportData);
         group.MapGet("/users/search", SearchUsers);
         group.MapGet("/internal/resolve/{username}", ResolveUsername);
+        group.MapPost("/internal/profiles", BatchProfiles);
         group.MapGet("/internal/export/{userId:guid}", InternalExport);
     }
 
@@ -351,6 +352,7 @@ public static class AuthEndpoints
     private static async Task<IResult> ExportData(
         AuthDbContext db,
         IHttpClientFactory httpClientFactory,
+        ExportRateLimiter rateLimiter,
         HttpContext httpContext,
         ILogger<Program> logger,
         CancellationToken ct)
@@ -358,6 +360,12 @@ public static class AuthEndpoints
         var userId = GetUserId(httpContext);
         if (userId is null)
             return Results.Unauthorized();
+
+        if (!rateLimiter.TryAcquire(userId.Value))
+            return Results.Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "Too Many Requests",
+                detail: "Data export is limited to one request per minute. Please try again later.");
 
         var user = await db.Users.FindAsync([userId.Value], ct);
         if (user is null)
@@ -475,6 +483,30 @@ public static class AuthEndpoints
             .FirstOrDefaultAsync(ct);
 
         return user is null ? Results.NotFound() : Results.Ok(new { userId = user.Id });
+    }
+
+    private static async Task<IResult> BatchProfiles(
+        BatchProfilesRequest request,
+        AuthDbContext db,
+        CancellationToken ct)
+    {
+        if (request.UserIds is null || request.UserIds.Count == 0)
+            return Results.Ok(Array.Empty<object>());
+
+        // Cap at 100 to prevent abuse
+        var ids = request.UserIds.Distinct().Take(100).ToList();
+
+        var profiles = await db.Users
+            .Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, u.Username, u.DisplayName })
+            .ToListAsync(ct);
+
+        return Results.Ok(profiles.Select(p => new
+        {
+            userId = p.Id,
+            username = p.Username,
+            displayName = p.DisplayName
+        }));
     }
 
     private static Guid? GetUserId(HttpContext httpContext)

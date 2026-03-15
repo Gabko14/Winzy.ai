@@ -40,6 +40,7 @@ public sealed class UserRegisteredSubscriber(
         var entry = new FeedEntry
         {
             ActorId = data.UserId,
+            ActorUsername = data.Username,
             EventType = Subjects.UserRegistered,
             Data = JsonDocument.Parse(JsonSerializer.Serialize(new { userId = data.UserId, username = data.Username })),
             IdempotencyKey = idempotencyKey

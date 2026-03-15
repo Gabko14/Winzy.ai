@@ -45,6 +45,8 @@ function makeEntry(overrides: Partial<FeedEntry> = {}): FeedEntry {
   return {
     id,
     actorId: "actor-001",
+    actorUsername: "alice",
+    actorDisplayName: "Alice Smith",
     eventType: "habit.completed" as FeedEventType,
     data: { userId: "actor-001", habitId: "habit-001", date: "2026-03-14", consistency: 0.85 },
     createdAt: new Date(Date.now() - 3600_000).toISOString(),
@@ -280,6 +282,53 @@ describe("FeedScreen", () => {
 
     const { getByTestId } = render(<FeedScreen />);
     expect(getByTestId("feed-loading-more")).toBeTruthy();
+  });
+
+  // --- Actor display name rendering ---
+
+  it("renders actor display name in feed entries", () => {
+    mockUseFriends.friends = [makeFriend()];
+    mockUseFriends.totalFriends = 1;
+    mockUseFeed.items = [
+      makeEntry({ id: "e1", actorDisplayName: "Jane Doe", actorUsername: "janedoe" }),
+    ];
+
+    const { getByText } = render(<FeedScreen />);
+    expect(getByText("Jane Doe")).toBeTruthy();
+  });
+
+  it("renders username when display name is null", () => {
+    mockUseFriends.friends = [makeFriend()];
+    mockUseFriends.totalFriends = 1;
+    mockUseFeed.items = [
+      makeEntry({ id: "e1", actorDisplayName: null, actorUsername: "janedoe" }),
+    ];
+
+    const { getByText } = render(<FeedScreen />);
+    expect(getByText("janedoe")).toBeTruthy();
+  });
+
+  it("falls back to actorId prefix when both name fields are null", () => {
+    mockUseFriends.friends = [makeFriend()];
+    mockUseFriends.totalFriends = 1;
+    mockUseFeed.items = [
+      makeEntry({ id: "e1", actorId: "abcdef12-0000-0000-0000-000000000000", actorDisplayName: null, actorUsername: null }),
+    ];
+
+    const { getByText } = render(<FeedScreen />);
+    expect(getByText("abcdef12")).toBeTruthy();
+  });
+
+  it("shows two-letter initials from display name", () => {
+    mockUseFriends.friends = [makeFriend()];
+    mockUseFriends.totalFriends = 1;
+    mockUseFeed.items = [
+      makeEntry({ id: "e1", actorDisplayName: "Jane Doe", actorUsername: "janedoe" }),
+    ];
+
+    const { getByText } = render(<FeedScreen />);
+    // Initials should be "JD" from "Jane Doe"
+    expect(getByText("JD")).toBeTruthy();
   });
 
   // --- All event types render ---

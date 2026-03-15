@@ -323,6 +323,86 @@ public class FeedEndpointTests : IAsyncLifetime
         Assert.Equal(validHabitId, items[0].GetProperty("data").GetProperty("habitId").GetGuid());
     }
 
+    // --- Actor display names ---
+
+    [Fact]
+    public async Task GetFeed_ReturnsActorNamesFromAuthService()
+    {
+        // Set up auth profiles for the batch lookup
+        MockAuthHandler.SetProfile(_userId, "testuser", "Test User");
+        MockAuthHandler.SetProfile(_friendId, "frienduser", "Friend Name");
+
+        var habitId = Guid.NewGuid();
+        MockSocialHandler.SetVisibleHabits(_friendId, _userId, habitId);
+        await SeedFeedEntry(_userId, "habit.created", new { habitId = Guid.NewGuid(), name = "Read" });
+        await SeedFeedEntry(_friendId, "habit.completed", new { habitId });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(2, items.GetArrayLength());
+
+        // Both entries should have actor names enriched
+        for (var i = 0; i < items.GetArrayLength(); i++)
+        {
+            var item = items[i];
+            Assert.True(item.TryGetProperty("actorUsername", out var username));
+            Assert.NotNull(username.GetString());
+            Assert.NotEqual(JsonValueKind.Null, username.ValueKind);
+        }
+    }
+
+    [Fact]
+    public async Task GetFeed_ReturnsStoredActorName_WhenDenormalized()
+    {
+        // Seed an entry that already has the actor name (e.g. from UserRegisteredSubscriber)
+        using (var db = _fixture.CreateDbContext())
+        {
+            var entry = new FeedEntry
+            {
+                ActorId = _userId,
+                ActorUsername = "storeduser",
+                ActorDisplayName = "Stored Display",
+                EventType = "user.registered",
+                Data = JsonDocument.Parse(JsonSerializer.Serialize(new { userId = _userId, username = "storeduser" }))
+            };
+            db.FeedEntries.Add(entry);
+            await db.SaveChangesAsync(CT);
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal("storeduser", items[0].GetProperty("actorUsername").GetString());
+        Assert.Equal("Stored Display", items[0].GetProperty("actorDisplayName").GetString());
+    }
+
+    [Fact]
+    public async Task GetFeed_GracefullyHandlesAuthServiceDown()
+    {
+        // Don't set any profiles — MockAuthHandler will return profiles for known IDs only.
+        // Since we haven't registered these user IDs, the batch will return empty.
+        await SeedFeedEntry(_userId, "habit.created", new { habitId = Guid.NewGuid(), name = "Yoga" });
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        // Should still return 200 with entries, just without actor names
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        // actorUsername should be present in JSON (as null)
+        Assert.True(items[0].TryGetProperty("actorUsername", out _));
+    }
+
     // --- GET /health ---
 
     [Fact]

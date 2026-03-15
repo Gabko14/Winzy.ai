@@ -42,3 +42,5 @@ public record UserSearchResult(
     string Username,
     string? DisplayName,
     string? AvatarUrl);
+
+public record BatchProfilesRequest(List<Guid>? UserIds);

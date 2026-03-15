@@ -25,6 +25,9 @@ public sealed class ActivityDbContext(DbContextOptions<ActivityDbContext> option
             b.Property(e => e.EventType).HasMaxLength(64);
             b.Property(e => e.Data).HasColumnType("jsonb");
 
+            b.Property(e => e.ActorUsername).HasMaxLength(64);
+            b.Property(e => e.ActorDisplayName).HasMaxLength(128);
+
             b.Property(e => e.IdempotencyKey).HasMaxLength(256);
             b.HasIndex(e => e.IdempotencyKey)
                 .IsUnique()
