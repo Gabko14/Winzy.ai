@@ -72,13 +72,13 @@ export function ChallengeCompletionOverlay({
             style={[styles.errorText, { color: colors.error }]}
             testID="celebration-claim-error"
           >
-            Could not claim reward. Tap to try again.
+            Let's try that again — something went wrong.
           </Text>
         )}
 
         <View style={styles.actions}>
           <Button
-            title={claimError ? "Retry Claim" : claiming ? "Claiming..." : "Claim Reward"}
+            title={claimError ? "Try again" : claiming ? "Saving..." : "Let's celebrate!"}
             onPress={onClaim}
             disabled={claiming}
             size="lg"

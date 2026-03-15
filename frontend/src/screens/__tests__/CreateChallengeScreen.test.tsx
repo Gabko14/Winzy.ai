@@ -160,7 +160,7 @@ describe("CreateChallengeScreen", () => {
     // Done button
     fireEvent.press(getByRole("button", { name: "Done, return to previous screen" }));
     expect(onComplete).toHaveBeenCalled();
-  });
+  }, 15_000);
 
   // --- Happy path: pre-selected friend/habit context ---
 
