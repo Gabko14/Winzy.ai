@@ -127,13 +127,14 @@ export function RootNavigator() {
 
   const handleNotificationPress = useCallback((notification: NotificationItem) => {
     const { type, data } = notification;
-    const fromUserId = data.fromUserId as string | undefined;
+    // friendrequestsent uses fromUserId, friendrequestaccepted uses otherUserId
+    const targetUserId = (data.fromUserId ?? data.otherUserId) as string | undefined;
 
     switch (type) {
       case "friendrequestsent":
       case "friendrequestaccepted":
-        if (fromUserId) {
-          setSelectedFriendId(fromUserId);
+        if (targetUserId) {
+          setSelectedFriendId(targetUserId);
           setOverlay("friendProfile");
         }
         break;
