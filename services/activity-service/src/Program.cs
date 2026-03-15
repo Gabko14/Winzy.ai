@@ -34,6 +34,13 @@ builder.Services.AddHttpClient("SocialService", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["Services:AuthServiceUrl"] ?? "http://auth-service:5001";
+    client.BaseAddress = new Uri(authUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
@@ -169,7 +176,7 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
         var rawEntries = await batchQuery
             .OrderByDescending(e => e.CreatedAt)
             .Take(batchSize)
-            .Select(e => new FeedEntryDto(e.Id, e.ActorId, e.EventType, e.Data, e.CreatedAt))
+            .Select(e => new FeedEntryDto(e.Id, e.ActorId, e.ActorUsername, e.ActorDisplayName, e.EventType, e.Data, e.CreatedAt))
             .ToListAsync();
 
         if (rawEntries.Count < batchSize)
@@ -232,6 +239,77 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
     var page = hasMore ? filtered.GetRange(0, limit) : filtered;
     var nextCursor = hasMore ? page[^1].CreatedAt.ToString("O") : null;
 
+    // Enrich entries that are missing actor names (old data or events without username)
+    var missingNameIds = page
+        .Where(e => e.ActorUsername is null)
+        .Select(e => e.ActorId)
+        .Distinct()
+        .ToList();
+
+    if (missingNameIds.Count > 0)
+    {
+        var authClient = httpClientFactory.CreateClient("AuthService");
+        try
+        {
+            using var profileResponse = await authClient.PostAsJsonAsync(
+                "/auth/internal/profiles", new { userIds = missingNameIds });
+
+            if (profileResponse.IsSuccessStatusCode)
+            {
+                var profiles = await profileResponse.Content
+                    .ReadFromJsonAsync<List<UserProfileResponse>>(jsonOptions);
+
+                if (profiles is not null)
+                {
+                    var profileMap = profiles
+                        .GroupBy(p => p.UserId)
+                        .ToDictionary(g => g.Key, g => g.First());
+
+                    for (var i = 0; i < page.Count; i++)
+                    {
+                        var entry = page[i];
+                        if (entry.ActorUsername is null && profileMap.TryGetValue(entry.ActorId, out var profile))
+                        {
+                            page[i] = entry with
+                            {
+                                ActorUsername = profile.Username,
+                                ActorDisplayName = profile.DisplayName
+                            };
+                        }
+                    }
+
+                    // Persist resolved names back to DB so future requests skip the lookup
+                    var resolvedActorIds = profileMap.Keys.ToList();
+                    var entriesToBackfill = await db.FeedEntries
+                        .Where(e => resolvedActorIds.Contains(e.ActorId) && e.ActorUsername == null)
+                        .ToListAsync();
+
+                    foreach (var entry in entriesToBackfill)
+                    {
+                        if (profileMap.TryGetValue(entry.ActorId, out var p))
+                        {
+                            entry.ActorUsername = p.Username;
+                            entry.ActorDisplayName = p.DisplayName;
+                        }
+                    }
+
+                    if (entriesToBackfill.Count > 0)
+                        await db.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Auth Service returned {StatusCode} for batch profile lookup",
+                    profileResponse.StatusCode);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Failed to fetch profiles from Auth Service");
+        }
+    }
+
     return Results.Ok(new
     {
         items = page,
@@ -282,9 +360,10 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
 
 // --- DTOs ---
 
-internal record FeedEntryDto(Guid Id, Guid ActorId, string EventType, JsonDocument? Data, DateTimeOffset CreatedAt);
+internal record FeedEntryDto(Guid Id, Guid ActorId, string? ActorUsername, string? ActorDisplayName, string EventType, JsonDocument? Data, DateTimeOffset CreatedAt);
 internal record FriendsListResponse(List<Guid> FriendIds);
 internal record VisibleHabitsResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
+internal record UserProfileResponse(Guid UserId, string Username, string? DisplayName);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

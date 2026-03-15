@@ -16,6 +16,8 @@ export type FeedEntryData = Record<string, unknown>;
 export type FeedEntry = {
   id: string;
   actorId: string;
+  actorUsername: string | null;
+  actorDisplayName: string | null;
   eventType: FeedEventType;
   data: FeedEntryData | null;
   createdAt: string;

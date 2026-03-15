@@ -101,6 +101,10 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
                     // Replace SocialService HttpClient with mock handler
                     services.AddHttpClient("SocialService")
                         .ConfigurePrimaryHttpMessageHandler(() => new MockSocialHandler());
+
+                    // Replace AuthService HttpClient with mock handler
+                    services.AddHttpClient("AuthService")
+                        .ConfigurePrimaryHttpMessageHandler(() => new MockAuthHandler());
                 });
             });
 
@@ -138,6 +142,7 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
     {
         MockSocialHandler.FriendIds.Clear();
         MockSocialHandler.VisibleHabits.Clear();
+        MockAuthHandler.Profiles.Clear();
         using var db = CreateDbContext();
         await db.FeedEntries.ExecuteDeleteAsync();
     }
@@ -234,4 +239,47 @@ internal class MockSocialHandler : HttpMessageHandler
             Content = JsonContent.Create(new { friendIds = Array.Empty<Guid>() })
         });
     }
+}
+
+internal class MockAuthHandler : HttpMessageHandler
+{
+    /// <summary>
+    /// Maps userId -> (username, displayName). Set this before running tests.
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, (string Username, string? DisplayName)> Profiles = new();
+
+    public static void SetProfile(Guid userId, string username, string? displayName = null)
+    {
+        Profiles[userId] = (username, displayName);
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+
+        // Handle POST /auth/internal/profiles
+        if (path == "/auth/internal/profiles" && request.Method == HttpMethod.Post)
+        {
+            var body = await request.Content!.ReadFromJsonAsync<BatchProfilesBody>(cancellationToken: cancellationToken);
+            var userIds = body?.UserIds ?? [];
+
+            var results = userIds
+                .Where(id => Profiles.ContainsKey(id))
+                .Select(id =>
+                {
+                    var (username, displayName) = Profiles[id];
+                    return new { userId = id, username, displayName };
+                })
+                .ToList();
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(results)
+            };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
+    private record BatchProfilesBody(List<Guid> UserIds);
 }

@@ -106,8 +106,24 @@ function formatRelativeTime(isoDate: string): string {
 
 // --- Actor display helpers ---
 
-function actorInitials(actorId: string): string {
-  return actorId.slice(0, 2).toUpperCase();
+function actorDisplayName(entry: FeedEntry): string {
+  if (entry.actorDisplayName) return entry.actorDisplayName;
+  if (entry.actorUsername) return entry.actorUsername;
+  return entry.actorId.slice(0, 8);
+}
+
+function actorInitials(entry: FeedEntry): string {
+  if (entry.actorDisplayName) {
+    const parts = entry.actorDisplayName.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return entry.actorDisplayName.slice(0, 2).toUpperCase();
+  }
+  if (entry.actorUsername) {
+    return entry.actorUsername.slice(0, 2).toUpperCase();
+  }
+  return entry.actorId.slice(0, 2).toUpperCase();
 }
 
 // --- Props ---
@@ -240,7 +256,8 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
   const colors = lightTheme;
   const icon = getEventIcon(entry.eventType);
   const label = getEventLabel(entry.eventType, entry.data);
-  const initials = actorInitials(entry.actorId);
+  const initials = actorInitials(entry);
+  const name = actorDisplayName(entry);
   const timestamp = formatRelativeTime(entry.createdAt);
 
   const isChallengeEntry =
@@ -261,7 +278,7 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
       <Pressable
         onPress={() => onAvatarPress?.(entry.actorId)}
         accessibilityRole="button"
-        accessibilityLabel={`View profile of user ${entry.actorId.slice(0, 8)}`}
+        accessibilityLabel={`View profile of ${name}`}
         testID={`feed-avatar-${entry.id}`}
       >
         <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
@@ -274,6 +291,7 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
       <View style={styles.entryContent}>
         <Text style={[styles.entryText, { color: colors.textPrimary }]} numberOfLines={2}>
           <Text style={styles.entryIcon}>{icon} </Text>
+          <Text style={styles.actorName}>{name} </Text>
           {label}
         </Text>
         <Text style={[styles.entryTimestamp, { color: colors.textSecondary }]}>
@@ -369,6 +387,9 @@ const styles = StyleSheet.create({
   },
   entryIcon: {
     fontSize: 16,
+  },
+  actorName: {
+    fontWeight: "600",
   },
   entryTimestamp: {
     ...typography.caption,

@@ -6,6 +6,8 @@ namespace Winzy.ActivityService.Entities;
 public sealed class FeedEntry : BaseEntity
 {
     public Guid ActorId { get; set; }
+    public string? ActorUsername { get; set; }
+    public string? ActorDisplayName { get; set; }
     public required string EventType { get; set; }
     public JsonDocument? Data { get; set; }
 
