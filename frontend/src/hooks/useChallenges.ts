@@ -2,13 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchChallenges,
   fetchChallengeDetail,
-  type Challenge,
   type ChallengeDetail,
 } from "../api/challenges";
 import type { ApiError } from "../api/types";
 
 type ChallengesState = {
-  challenges: Challenge[];
+  challenges: ChallengeDetail[];
   loading: boolean;
   error: ApiError | null;
 };
@@ -82,16 +81,11 @@ export function useHabitChallenges(habitId: string) {
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      // TODO(winzy.ai-n+1): N+1 API calls — fetches list then detail for each.
-      // Fix by adding progress fields to the list endpoint response.
       const data = await fetchChallenges(1, 100);
       const habitChallenges = data.items.filter(
         (c) => c.habitId === habitId && c.status === "active",
       );
-      const details = await Promise.all(
-        habitChallenges.map((c) => fetchChallengeDetail(c.id)),
-      );
-      setState({ challenges: details, loading: false, error: null });
+      setState({ challenges: habitChallenges, loading: false, error: null });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: err as ApiError }));
     }

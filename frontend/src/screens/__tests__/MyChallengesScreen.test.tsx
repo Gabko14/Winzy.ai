@@ -3,14 +3,12 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react-nativ
 import { MyChallengesScreen } from "../MyChallengesScreen";
 
 const mockFetchChallenges = jest.fn();
-const mockFetchChallengeDetail = jest.fn();
 
 jest.mock("../../api/challenges", () => ({
   fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
-  fetchChallengeDetail: (...args: unknown[]) => mockFetchChallengeDetail(...args),
 }));
 
-function makeChallengeItem(overrides: Record<string, unknown> = {}) {
+function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
   return {
     id: "ch-1",
     habitId: "habit-1",
@@ -25,13 +23,6 @@ function makeChallengeItem(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    ...overrides,
-  };
-}
-
-function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
-  return {
-    ...makeChallengeItem(overrides),
     progress: 60,
     completionCount: 18,
     baselineConsistency: null,
@@ -82,12 +73,11 @@ describe("MyChallengesScreen", () => {
 
   it("renders active challenges section", async () => {
     mockFetchChallenges.mockResolvedValue({
-      items: [makeChallengeItem({ status: "active" })],
+      items: [makeChallengeDetail({ status: "active" })],
       page: 1,
       pageSize: 100,
       total: 1,
     });
-    mockFetchChallengeDetail.mockResolvedValue(makeChallengeDetail({ status: "active" }));
 
     render(<MyChallengesScreen />);
     await waitFor(() => {
@@ -98,14 +88,11 @@ describe("MyChallengesScreen", () => {
 
   it("renders completed challenges section", async () => {
     mockFetchChallenges.mockResolvedValue({
-      items: [makeChallengeItem({ id: "ch-2", status: "completed" })],
+      items: [makeChallengeDetail({ id: "ch-2", status: "completed" })],
       page: 1,
       pageSize: 100,
       total: 1,
     });
-    mockFetchChallengeDetail.mockResolvedValue(
-      makeChallengeDetail({ id: "ch-2", status: "completed" }),
-    );
 
     render(<MyChallengesScreen />);
     await waitFor(() => {
@@ -116,14 +103,11 @@ describe("MyChallengesScreen", () => {
 
   it("renders expired challenges section", async () => {
     mockFetchChallenges.mockResolvedValue({
-      items: [makeChallengeItem({ id: "ch-3", status: "expired" })],
+      items: [makeChallengeDetail({ id: "ch-3", status: "expired" })],
       page: 1,
       pageSize: 100,
       total: 1,
     });
-    mockFetchChallengeDetail.mockResolvedValue(
-      makeChallengeDetail({ id: "ch-3", status: "expired" }),
-    );
 
     render(<MyChallengesScreen />);
     await waitFor(() => {
@@ -161,5 +145,24 @@ describe("MyChallengesScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("My Challenges")).toBeTruthy();
     });
+  });
+
+  it("does not call fetchChallengeDetail — list endpoint includes all fields", async () => {
+    mockFetchChallenges.mockResolvedValue({
+      items: [
+        makeChallengeDetail({ id: "ch-1", status: "active" }),
+        makeChallengeDetail({ id: "ch-2", status: "completed" }),
+      ],
+      page: 1,
+      pageSize: 100,
+      total: 2,
+    });
+
+    render(<MyChallengesScreen />);
+    await waitFor(() => {
+      expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
+    });
+    // Only fetchChallenges should be called, never fetchChallengeDetail
+    expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
   });
 });

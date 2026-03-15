@@ -198,7 +198,7 @@ app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int pag
         .Take(pageSize)
         .ToListAsync();
 
-    return Results.Ok(new { items = challenges.Select(MapToResponse), page, pageSize, total });
+    return Results.Ok(new { items = challenges.Select(MapToDetailResponse), page, pageSize, total });
 });
 
 // --- GET /challenges/{id} ---
