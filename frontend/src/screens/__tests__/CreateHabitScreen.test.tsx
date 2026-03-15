@@ -36,6 +36,16 @@ function renderCreate(props?: Partial<Parameters<typeof CreateHabitScreen>[0]>) 
   );
 }
 
+/** Render the create screen and skip past the template picker to the form */
+function renderCreateForm(props?: Partial<Parameters<typeof CreateHabitScreen>[0]>) {
+  const result = renderCreate(props);
+  // Skip template picker for new habits (edits go straight to form)
+  if (!props?.editHabit) {
+    fireEvent.press(screen.getByTestId("template-skip"));
+  }
+  return result;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Reset default mocks
@@ -47,7 +57,7 @@ describe("CreateHabitScreen", () => {
   // --- Happy path ---
 
   it("renders the create form with correct title", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByText("New Habit")).toBeTruthy();
     expect(screen.getByText("Create habit")).toBeTruthy();
     expect(screen.getByLabelText("Habit name")).toBeTruthy();
@@ -83,7 +93,7 @@ describe("CreateHabitScreen", () => {
     };
     createHabit.mockResolvedValue(newHabit);
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Morning run");
 
     await act(async () => {
@@ -137,7 +147,7 @@ describe("CreateHabitScreen", () => {
   // --- Visibility picker ---
 
   it("shows visibility picker with private/friends/public options", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByTestId("visibility-picker")).toBeTruthy();
     expect(screen.getByTestId("visibility-private")).toBeTruthy();
     expect(screen.getByTestId("visibility-friends")).toBeTruthy();
@@ -147,7 +157,7 @@ describe("CreateHabitScreen", () => {
   it("defaults visibility from Social Service user preferences", async () => {
     fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "friends" });
 
-    renderCreate();
+    renderCreateForm();
 
     // Wait for the preference to load and apply via resetForm
     await waitFor(() => {
@@ -208,7 +218,7 @@ describe("CreateHabitScreen", () => {
     };
     createHabit.mockResolvedValue(newHabit);
 
-    renderCreate();
+    renderCreateForm();
 
     // Wait for preferences to load so picker is enabled
     await waitFor(() => {
@@ -237,7 +247,7 @@ describe("CreateHabitScreen", () => {
   });
 
   it("shows correct visibility icon/text on each option", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByText("Private")).toBeTruthy();
     expect(screen.getByText("Friends")).toBeTruthy();
     expect(screen.getByText("Public")).toBeTruthy();
@@ -266,7 +276,7 @@ describe("CreateHabitScreen", () => {
       message: "Network error",
     });
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
     fireEvent.press(screen.getByTestId("visibility-friends"));
 
@@ -330,7 +340,7 @@ describe("CreateHabitScreen", () => {
 
   it("habit with no visibility row defaults to private correctly", () => {
     // When editVisibility is not provided, should default to private
-    renderCreate();
+    renderCreateForm();
     const privateBtn = screen.getByTestId("visibility-private");
     expect(privateBtn.props.accessibilityState.selected).toBe(true);
   });
@@ -338,7 +348,7 @@ describe("CreateHabitScreen", () => {
   // --- Validation ---
 
   it("shows validation error for empty name on submit", async () => {
-    renderCreate();
+    renderCreateForm();
 
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "");
 
@@ -351,7 +361,7 @@ describe("CreateHabitScreen", () => {
   });
 
   it("clears name error when user types", async () => {
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "");
 
     await act(async () => {
@@ -365,7 +375,7 @@ describe("CreateHabitScreen", () => {
   });
 
   it("shows error when custom frequency has no days selected", async () => {
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test habit");
     fireEvent.press(screen.getByTestId("freq-custom"));
 
@@ -380,24 +390,24 @@ describe("CreateHabitScreen", () => {
   // --- Icon/Color/Frequency pickers ---
 
   it("renders icon picker with selectable options", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByTestId("icon-picker")).toBeTruthy();
   });
 
   it("renders color picker with selectable options", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByTestId("color-picker")).toBeTruthy();
   });
 
   it("renders frequency picker with all options", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.getByTestId("freq-daily")).toBeTruthy();
     expect(screen.getByTestId("freq-weekly")).toBeTruthy();
     expect(screen.getByTestId("freq-custom")).toBeTruthy();
   });
 
   it("shows day picker when custom frequency is selected", () => {
-    renderCreate();
+    renderCreateForm();
     expect(screen.queryByTestId("days-picker")).toBeNull();
 
     fireEvent.press(screen.getByTestId("freq-custom"));
@@ -405,7 +415,7 @@ describe("CreateHabitScreen", () => {
   });
 
   it("toggles custom day selection", () => {
-    renderCreate();
+    renderCreateForm();
     fireEvent.press(screen.getByTestId("freq-custom"));
 
     const monButton = screen.getByTestId("day-Mon");
@@ -425,7 +435,7 @@ describe("CreateHabitScreen", () => {
       message: "Unable to reach the server.",
     });
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test habit");
 
     await act(async () => {
@@ -442,7 +452,7 @@ describe("CreateHabitScreen", () => {
   it("shows generic server error for unknown failures", async () => {
     createHabit.mockRejectedValue(new Error("unexpected"));
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test habit");
 
     await act(async () => {
@@ -461,7 +471,7 @@ describe("CreateHabitScreen", () => {
       message: "Something went wrong on our end. Please try again.",
     });
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
 
     await act(async () => {
@@ -491,7 +501,7 @@ describe("CreateHabitScreen", () => {
     };
     createHabit.mockResolvedValue(newHabit);
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "  Morning run  ");
 
     await act(async () => {
@@ -518,7 +528,7 @@ describe("CreateHabitScreen", () => {
     };
     createHabit.mockResolvedValue(newHabit);
 
-    renderCreate();
+    renderCreateForm();
     fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
 
     await act(async () => {
@@ -529,5 +539,115 @@ describe("CreateHabitScreen", () => {
       const call = createHabit.mock.calls[0][0];
       expect(call.customDays).toBeUndefined();
     });
+  });
+
+  // --- Template picker integration ---
+
+  it("shows template picker when creating a new habit", () => {
+    renderCreate();
+    expect(screen.getByTestId("template-picker")).toBeTruthy();
+    // Form should be hidden while template picker is showing
+    expect(screen.queryByTestId("habit-name-input")).toBeNull();
+  });
+
+  it("does not show template picker when editing a habit", () => {
+    renderCreate({
+      editHabit: {
+        id: "h1",
+        name: "Morning run",
+        icon: "\uD83C\uDFC3",
+        color: "#F97316",
+        frequency: "daily",
+        customDays: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        archivedAt: null,
+      },
+    });
+    expect(screen.queryByTestId("template-picker")).toBeNull();
+    expect(screen.getByTestId("habit-name-input")).toBeTruthy();
+  });
+
+  it("selecting a template pre-fills the form with template data", () => {
+    renderCreate();
+    // Select the Meditation template (first in Health)
+    fireEvent.press(screen.getByTestId("template-meditation"));
+
+    // Template picker should be dismissed, form should be visible
+    expect(screen.queryByTestId("template-picker")).toBeNull();
+    expect(screen.getByTestId("habit-name-input").props.value).toBe("Meditation");
+  });
+
+  it("user can customize pre-filled fields from template before saving", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Morning meditation",
+      icon: "\uD83E\uDDD8",
+      color: "#7C3AED",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+
+    renderCreate();
+    // Select Meditation template
+    fireEvent.press(screen.getByTestId("template-meditation"));
+
+    // Customize the name
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Morning meditation");
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(createHabit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Morning meditation",
+          icon: "\uD83E\uDDD8",
+          color: "#7C3AED",
+          frequency: "daily",
+        }),
+      );
+    });
+  });
+
+  it("skipping templates shows the empty create form", () => {
+    renderCreate();
+    expect(screen.getByTestId("template-picker")).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId("template-skip"));
+
+    expect(screen.queryByTestId("template-picker")).toBeNull();
+    expect(screen.getByTestId("habit-name-input")).toBeTruthy();
+    // Name should be empty (no template selected)
+    expect(screen.getByTestId("habit-name-input").props.value).toBe("");
+  });
+
+  it("template picker resets when modal is re-opened", () => {
+    const { rerender } = renderCreate();
+    // Skip templates
+    fireEvent.press(screen.getByTestId("template-skip"));
+    expect(screen.queryByTestId("template-picker")).toBeNull();
+
+    // Close and re-open modal
+    rerender(
+      <CreateHabitScreen
+        visible={false}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+    rerender(
+      <CreateHabitScreen
+        visible={true}
+        onClose={onClose}
+        onSaved={onSaved}
+      />,
+    );
+
+    // Template picker should be back
+    expect(screen.getByTestId("template-picker")).toBeTruthy();
   });
 });

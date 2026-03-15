@@ -13,6 +13,8 @@ import { useCreateHabit, useUpdateHabit } from "../hooks/useHabits";
 import { useDefaultVisibility, useUpdateVisibility } from "../hooks/useVisibility";
 import { validateHabitName, validateCustomDays } from "../utils/habitValidation";
 import { VisibilityPicker } from "../components/VisibilityPicker";
+import { TemplatePicker } from "../components/TemplatePicker";
+import type { HabitTemplate } from "../data/habitTemplates";
 import type { HabitVisibility } from "../api/visibility";
 import type { Habit, FrequencyType, CreateHabitRequest, UpdateHabitRequest } from "../api/habits";
 
@@ -52,6 +54,9 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   const colors = lightTheme;
   const isEditing = !!editHabit;
 
+  // --- Template picker state (new habits only) ---
+  const [showTemplatePicker, setShowTemplatePicker] = useState(!isEditing);
+
   // --- Form state ---
   const [name, setName] = useState(editHabit?.name ?? "");
   const [icon, setIcon] = useState(editHabit?.icon ?? HABIT_ICONS[0]);
@@ -66,6 +71,20 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   const [errors, setErrors] = useState<{ name?: string; customDays?: string }>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // --- Template selection ---
+  const handleTemplateSelect = useCallback((template: HabitTemplate) => {
+    setName(template.name);
+    setIcon(template.icon);
+    setColor(template.color);
+    setFrequency(template.frequency);
+    setCustomDays([]);
+    setShowTemplatePicker(false);
+  }, []);
+
+  const handleSkipTemplates = useCallback(() => {
+    setShowTemplatePicker(false);
+  }, []);
+
   // Reset form when modal opens with different habit
   const resetForm = useCallback(() => {
     setName(editHabit?.name ?? "");
@@ -78,10 +97,19 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
     setServerError(null);
   }, [editHabit, editVisibility, defaultVisibility]);
 
-  // Reset when modal becomes visible
+  // Reset form fields when deps change while visible (e.g. default visibility loads)
   React.useEffect(() => {
     if (visible) resetForm();
   }, [visible, resetForm]);
+
+  // Reset template picker only on modal open (visible transitions to true)
+  const prevVisible = React.useRef(false);
+  React.useEffect(() => {
+    if (visible && !prevVisible.current) {
+      setShowTemplatePicker(!isEditing);
+    }
+    prevVisible.current = visible;
+  }, [visible, isEditing]);
 
   const { update: updateVisibility } = useUpdateVisibility();
 
@@ -187,6 +215,13 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Template picker for new habits */}
+        {showTemplatePicker && !isEditing && (
+          <TemplatePicker onSelect={handleTemplateSelect} onSkip={handleSkipTemplates} />
+        )}
+
+        {/* Form (shown after template selection/skip, or always for edits) */}
+        {(!showTemplatePicker || isEditing) && <>
         {serverError && (
           <View
             style={[styles.errorBanner, { backgroundColor: colors.errorBackground }]}
@@ -358,6 +393,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
             size="lg"
           />
         </View>
+        </>}
       </ScrollView>
     </Modal>
   );
