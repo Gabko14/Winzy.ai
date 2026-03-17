@@ -24,7 +24,7 @@ import { StatsScreen } from "../screens/StatsScreen";
 import { CreateHabitScreen } from "../screens/CreateHabitScreen";
 import { MyChallengesScreen } from "../screens/MyChallengesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
-import { fetchHabit } from "../api/habits";
+import { fetchHabit, archiveHabit } from "../api/habits";
 import type { Habit } from "../api/habits";
 import { useVisibility } from "../hooks/useVisibility";
 import { useUnreadCount } from "../hooks/useUnreadCount";
@@ -240,8 +240,13 @@ export function RootNavigator() {
           onBack={dismissOverlay}
           onViewStats={handleViewStats}
           onEdit={handleEditHabit}
-          onArchive={() => {
-            dismissOverlay();
+          onArchive={async (habitId: string) => {
+            try {
+              await archiveHabit(habitId);
+              dismissOverlay();
+            } catch {
+              // Archive failed — stay on detail screen so user can retry
+            }
           }}
         />
         <StatusBar style="auto" />

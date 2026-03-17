@@ -18,8 +18,8 @@ export function validateHabitName(name: string): FieldError {
 }
 
 export function validateCustomDays(frequency: FrequencyType, customDays: number[]): FieldError {
-  if (frequency === "custom" && customDays.length === 0) {
-    return "Select at least one day for custom frequency.";
+  if ((frequency === "weekly" || frequency === "custom") && customDays.length === 0) {
+    return "Select at least one day.";
   }
   return null;
 }

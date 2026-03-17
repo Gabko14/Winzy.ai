@@ -79,6 +79,12 @@ jest.mock("../../screens/HabitDetailScreen", () => ({
             <RN.Text>Edit</RN.Text>
           </RN.Pressable>
         )}
+        {props.onArchive && (
+          <RN.Pressable testID="habit-archive-press" onPress={() => /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+            (props.onArchive as any)(String(props.habitId))}>
+            <RN.Text>Archive</RN.Text>
+          </RN.Pressable>
+        )}
       </RN.View>
     );
   },
@@ -292,8 +298,10 @@ jest.mock("../../screens/CreateHabitScreen", () => ({
 }));
 
 const mockFetchHabit = jest.fn();
+const mockArchiveHabit = jest.fn();
 jest.mock("../../api/habits", () => ({
   fetchHabit: (...args: unknown[]) => mockFetchHabit(...args),
+  archiveHabit: (...args: unknown[]) => mockArchiveHabit(...args),
 }));
 
 const mockVisibility = {
@@ -423,6 +431,7 @@ beforeEach(() => {
     createdAt: "2026-01-01T00:00:00Z",
     archivedAt: null,
   });
+  mockArchiveHabit.mockResolvedValue(undefined);
 });
 
 describe("RootNavigator", () => {
@@ -718,5 +727,42 @@ describe("RootNavigator", () => {
 
     fireEvent.press(getByTestId("notif-press-no-data"));
     expect(getByTestId("notification-screen")).toBeTruthy();
+  });
+
+  // --- Archive wiring (winzy.ai-izy.3) ---
+
+  it("calls archiveHabit API and dismisses overlay on success", async () => {
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+
+    // Navigate to habit detail
+    fireEvent.press(getByTestId("habit-press"));
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+
+    // Press archive
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-archive-press"));
+    });
+
+    expect(mockArchiveHabit).toHaveBeenCalledWith("h1");
+    // Should dismiss back to tab view
+    expect(queryByTestId("habit-detail-screen")).toBeNull();
+    expect(getByTestId("today-screen")).toBeTruthy();
+  });
+
+  it("stays on habit detail when archive API fails", async () => {
+    mockArchiveHabit.mockRejectedValueOnce(new Error("Network error"));
+    const { getByTestId } = render(<RootNavigator />);
+
+    // Navigate to habit detail
+    fireEvent.press(getByTestId("habit-press"));
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
+
+    // Press archive — should fail and stay on detail
+    await act(async () => {
+      fireEvent.press(getByTestId("habit-archive-press"));
+    });
+
+    expect(mockArchiveHabit).toHaveBeenCalledWith("h1");
+    expect(getByTestId("habit-detail-screen")).toBeTruthy();
   });
 });
