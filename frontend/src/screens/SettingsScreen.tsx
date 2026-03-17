@@ -82,6 +82,9 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
   // Push notifications
   const push = usePushNotifications();
 
+  // Sign out state
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
   // Account deletion state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -181,10 +184,17 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
     }
   }, [auth]);
 
-  // auth.logout() catches API errors internally and always clears local state
   const handleSignOut = useCallback(async () => {
-    if (auth.status === "authenticated") {
+    if (auth.status !== "authenticated") return;
+    setSignOutError(null);
+    try {
       await auth.logout();
+    } catch (err) {
+      if (isApiError(err)) {
+        setSignOutError(err.message);
+      } else {
+        setSignOutError("Sign out failed. Please check your connection and try again.");
+      }
     }
   }, [auth]);
 
@@ -371,23 +381,24 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
                   <Text style={[styles.settingHint, { color: colors.textTertiary }]}>
                     Notifications are blocked by your browser or device settings.
                   </Text>
-                  <Pressable
-                    onPress={() => {
-                      if (Platform.OS === "web") {
-                        // Browsers don't have a direct settings URL; inform the user
-                      } else {
-                        Linking.openSettings();
-                      }
-                    }}
-                    accessibilityRole="button"
-                    testID="push-open-settings"
-                  >
-                    <Text style={[styles.linkText, { color: colors.brandPrimary }]}>
-                      {Platform.OS === "web"
-                        ? "Enable in your browser's site settings"
-                        : "Open device settings"}
+                  {Platform.OS === "web" ? (
+                    <Text
+                      style={[styles.settingHint, { color: colors.textSecondary, marginBottom: 0 }]}
+                      testID="push-denied-instructions"
+                    >
+                      To enable, click the lock icon in your browser's address bar and allow notifications for this site.
                     </Text>
-                  </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() => Linking.openSettings()}
+                      accessibilityRole="button"
+                      testID="push-open-settings"
+                    >
+                      <Text style={[styles.linkText, { color: colors.brandPrimary }]}>
+                        Open device settings
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : (
                 <View style={styles.pushRow} testID="push-toggle-row">
@@ -530,6 +541,16 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
 
         {/* Sign Out */}
         <View style={styles.section} testID="settings-sign-out">
+          {signOutError && (
+            <View
+              style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
+              testID="sign-out-error"
+            >
+              <Text style={[styles.inlineErrorText, { color: colors.error }]}>
+                {signOutError}
+              </Text>
+            </View>
+          )}
           <Button
             title="Sign out"
             onPress={handleSignOut}

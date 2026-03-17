@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import {
   fetchChallenges,
   claimChallenge,
@@ -87,11 +88,32 @@ export function useChallengeCompletion() {
     }
   }, []);
 
-  // Initial load + polling
+  // Initial load + polling with page visibility pause
   useEffect(() => {
     checkForCompletions();
-    const interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    let interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
+
+    // Pause polling when tab is backgrounded (web only)
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        // Resume: check immediately then restart interval
+        checkForCompletions();
+        interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
+      }
+    }
+
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
   }, [checkForCompletions]);
 
   /** The challenge currently being celebrated (front of queue) */

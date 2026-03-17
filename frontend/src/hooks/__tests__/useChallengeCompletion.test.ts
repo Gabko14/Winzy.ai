@@ -1,4 +1,5 @@
 import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { Platform } from "react-native";
 import { useChallengeCompletion } from "../useChallengeCompletion";
 
 const mockFetchChallenges = jest.fn();
@@ -24,7 +25,7 @@ function makeChallenge(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    progress: 60,
+    progress: 0.75, // 0-1 fraction (backend contract)
     completionCount: 18,
     baselineConsistency: null,
     customStartDate: null,
@@ -215,6 +216,72 @@ describe("useChallengeCompletion", () => {
       expect(result.current.current).not.toBeNull();
     });
     expect(result.current.current?.rewardDescription).toBe("");
+  });
+
+  it("pauses polling when page is hidden and resumes when visible", async () => {
+    // Set up web platform + document mock for visibility API
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    const listeners: Record<string, (() => void)[]> = {};
+    const mockDocument = {
+      hidden: false,
+      addEventListener: jest.fn((event: string, handler: () => void) => {
+        listeners[event] = listeners[event] || [];
+        listeners[event].push(handler);
+      }),
+      removeEventListener: jest.fn((event: string, handler: () => void) => {
+        listeners[event] = (listeners[event] || []).filter((h) => h !== handler);
+      }),
+    };
+    // @ts-expect-error -- partial document mock for visibility test
+    globalThis.document = mockDocument;
+
+    mockFetchChallenges.mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      total: 0,
+    });
+
+    const { unmount } = renderHook(() => useChallengeCompletion());
+    await waitFor(() => {
+      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+    });
+
+    // Simulate tab going hidden
+    mockDocument.hidden = true;
+    for (const handler of listeners["visibilitychange"] || []) handler();
+
+    // Advance past a poll interval — should NOT trigger a fetch
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+    });
+    // Still only the initial call
+    expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+
+    // Simulate tab becoming visible again
+    mockDocument.hidden = false;
+    mockFetchChallenges.mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      total: 0,
+    });
+    await act(async () => {
+      for (const handler of listeners["visibilitychange"] || []) handler();
+    });
+
+    // Should have fetched immediately on becoming visible
+    await waitFor(() => {
+      expect(mockFetchChallenges).toHaveBeenCalledTimes(2);
+    });
+
+    unmount();
+    // Clean up
+    // @ts-expect-error -- remove mock
+    delete globalThis.document;
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
   });
 
   it("triggerCheck forces a refetch (push notification fallback)", async () => {

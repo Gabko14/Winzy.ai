@@ -105,6 +105,20 @@ test.describe("Create Challenge flow", () => {
       });
     });
 
+    await test.step("complete both user profiles so welcome screen doesn't block", async () => {
+      const resA = await request.put(`${API_BASE}/auth/profile`, {
+        headers: { Authorization: `Bearer ${userAToken}` },
+        data: { displayName: "Challenger A" },
+      });
+      expect(resA.status()).toBe(200);
+
+      const resB = await request.put(`${API_BASE}/auth/profile`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+        data: { displayName: "Challenger B" },
+      });
+      expect(resB.status()).toBe(200);
+    });
+
     await test.step("user B creates a habit", async () => {
       const res = await request.post(`${API_BASE}/habits`, {
         headers: { Authorization: `Bearer ${userBToken}` },
@@ -130,6 +144,7 @@ test.describe("Create Challenge flow", () => {
       await page.evaluate(
         ([token]) => {
           localStorage.setItem("access_token", token);
+          localStorage.setItem("winzy_onboarding_welcome_seen", "true");
         },
         [userAToken],
       );
@@ -143,20 +158,7 @@ test.describe("Create Challenge flow", () => {
 
     await test.step("navigate to Friends tab and find friend B", async () => {
       const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
-
-      // May need to complete profile first
-      const result = await Promise.race([
-        page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile"),
-        today.waitFor({ timeout: 5_000 }).then(() => "today"),
-      ]);
-
-      if (result === "profile") {
-        await page.getByLabel("Display name").fill("Challenger A");
-        await page.getByRole("button", { name: "Continue" }).click();
-        await dismissWelcomeIfPresent(page);
-      }
-
-      await expect(today).toBeVisible({ timeout: 10_000 });
+      await expect(today).toBeVisible({ timeout: 15_000 });
       await page.getByTestId("tab-friends").click();
       test.info().annotations.push({
         type: "step",
@@ -243,10 +245,12 @@ test.describe("Create Challenge flow", () => {
   });
 
   test("validation blocks submit without required fields", async ({ unauthenticatedPage: page }) => {
-    // Sign in as user A
+    // Sign in as user A (profile already completed via API in setup)
+    await page.goto("/");
     await page.evaluate(
       ([token]) => {
         localStorage.setItem("access_token", token);
+        localStorage.setItem("winzy_onboarding_welcome_seen", "true");
       },
       [userAToken],
     );
@@ -254,15 +258,6 @@ test.describe("Create Challenge flow", () => {
     await dismissWelcomeIfPresent(page);
 
     const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
-    const result = await Promise.race([
-      page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile"),
-      today.waitFor({ timeout: 5_000 }).then(() => "today"),
-    ]);
-    if (result === "profile") {
-      await page.getByLabel("Display name").fill("Challenger A");
-      await page.getByRole("button", { name: "Continue" }).click();
-      await dismissWelcomeIfPresent(page);
-    }
 
     await test.step("navigate to create challenge", async () => {
       await expect(today).toBeVisible({ timeout: 10_000 });
