@@ -23,7 +23,7 @@ function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    progress: 60,
+    progress: 0.75, // 0-1 fraction (backend contract)
     completionCount: 18,
     baselineConsistency: null,
     customStartDate: null,

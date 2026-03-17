@@ -50,8 +50,10 @@ public static class ConsistencyCalculator
         // If the habit was created after the window start, narrow the window
         var effectiveStart = windowStart > habitCreatedDate ? windowStart : habitCreatedDate;
 
-        // If the habit was created today or in the future, no applicable days yet
-        if (effectiveStart > today)
+        // If the habit was created today or in the future, no applicable days yet.
+        // A habit created today has zero track record — consistency starts accumulating tomorrow.
+        // The frontend shows "completed today" via the completedToday flag independently.
+        if (effectiveStart >= today)
             return 0;
 
         // Weekly frequency uses a different algorithm: weeks with completions / total weeks

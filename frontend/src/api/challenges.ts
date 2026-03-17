@@ -29,6 +29,7 @@ export type Challenge = {
 };
 
 export type ChallengeDetail = Challenge & {
+  /** Progress toward the milestone as a 0.0–1.0 fraction (backend: ProgressCalculator.CalculateProgress). */
   progress: number;
   completionCount: number;
   baselineConsistency: number | null;
@@ -62,6 +63,8 @@ export type CreateChallengeRequest = {
   targetValue: number;
   periodDays: number;
   rewardDescription: string;
+  customStartDate?: string;
+  customEndDate?: string;
 };
 
 export function createChallenge(request: CreateChallengeRequest): Promise<Challenge> {

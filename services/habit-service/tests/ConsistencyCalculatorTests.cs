@@ -88,16 +88,17 @@ public class ConsistencyCalculatorTests
     }
 
     [Fact]
-    public void Daily_HabitCreatedToday_Returns0()
+    public void Daily_HabitCreatedToday_WithCompletion_Returns0()
     {
+        // A habit created today has zero track record — consistency is 0 regardless of completion.
+        // The frontend uses the separate "completedToday" flag for today's status.
         var today = new DateOnly(2025, 3, 1);
         var habit = MakeHabit(createdDate: today);
 
-        // Even if completed today, there's 1 applicable day
         var completed = new HashSet<DateOnly> { today };
         var result = ConsistencyCalculator.Calculate(habit, completed, today);
 
-        Assert.Equal(100, result);
+        Assert.Equal(0, result);
     }
 
     [Fact]
@@ -107,6 +108,61 @@ public class ConsistencyCalculatorTests
         var habit = MakeHabit(createdDate: today);
 
         var result = ConsistencyCalculator.Calculate(habit, [], today);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Daily_HabitCreatedYesterday_WithBothDaysCompleted_Returns100()
+    {
+        // Created yesterday, completed yesterday and today.
+        // Window is [yesterday .. today] = 2 applicable days, both completed = 100%.
+        var today = new DateOnly(2025, 3, 1);
+        var yesterday = today.AddDays(-1);
+        var habit = MakeHabit(createdDate: yesterday);
+
+        var completed = new HashSet<DateOnly> { yesterday, today };
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_HabitCreatedYesterday_OnlyTodayCompleted_Returns50()
+    {
+        // Created yesterday, only completed today (not yesterday).
+        // Window is [yesterday .. today], 2 applicable days, 1 completed = 50%.
+        var today = new DateOnly(2025, 3, 1);
+        var yesterday = today.AddDays(-1);
+        var habit = MakeHabit(createdDate: yesterday);
+
+        var completed = new HashSet<DateOnly> { today };
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void Weekly_HabitCreatedToday_Returns0()
+    {
+        var today = new DateOnly(2025, 3, 10); // Monday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: today);
+
+        var completed = new HashSet<DateOnly> { today };
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, today);
+
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public void Custom_HabitCreatedToday_Returns0()
+    {
+        var today = new DateOnly(2025, 3, 3); // Monday
+        var customDays = new List<DayOfWeek> { DayOfWeek.Monday };
+        var habit = MakeHabit(frequency: FrequencyType.Custom, customDays: customDays, createdDate: today);
+
+        var completed = new HashSet<DateOnly> { today };
+        var result = ConsistencyCalculator.Calculate(habit, completed, today, today);
 
         Assert.Equal(0, result);
     }
