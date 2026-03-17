@@ -3,55 +3,70 @@ import { Platform } from "react-native";
 const ACCESS_KEY = "winzy_access_token";
 const REFRESH_KEY = "winzy_refresh_token";
 
-/**
- * Token storage abstraction.
- *
- * Web: uses localStorage (httpOnly refresh cookie is the real security layer).
- * Native: will use SecureStore when native builds ship — for now localStorage
- * is fine because native isn't exposed yet.
- */
+type SimpleStorage = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+  removeItem: (key: string) => Promise<void>;
+};
 
-function getStorage() {
-  if (Platform.OS === "web" && typeof localStorage !== "undefined") {
-    return {
-      getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
-      setItem: (key: string, value: string) => {
-        localStorage.setItem(key, value);
-        return Promise.resolve();
-      },
-      removeItem: (key: string) => {
-        localStorage.removeItem(key);
-        return Promise.resolve();
-      },
-    };
-  }
-  // Fallback: in-memory (tests, SSR)
+function createMemoryStorage(): SimpleStorage {
   const mem = new Map<string, string>();
   return {
-    getItem: (key: string) => Promise.resolve(mem.get(key) ?? null),
-    setItem: (key: string, value: string) => {
+    getItem: (key) => Promise.resolve(mem.get(key) ?? null),
+    setItem: (key, value) => {
       mem.set(key, value);
       return Promise.resolve();
     },
-    removeItem: (key: string) => {
+    removeItem: (key) => {
       mem.delete(key);
       return Promise.resolve();
     },
   };
 }
 
-const storage = getStorage();
+function createLocalStorage(): SimpleStorage {
+  return {
+    getItem: (key) => Promise.resolve(localStorage.getItem(key)),
+    setItem: (key, value) => {
+      localStorage.setItem(key, value);
+      return Promise.resolve();
+    },
+    removeItem: (key) => {
+      localStorage.removeItem(key);
+      return Promise.resolve();
+    },
+  };
+}
+
+/**
+ * Token storage abstraction.
+ *
+ * Web:    access token is memory-only (never touches localStorage — XSS-safe).
+ *         Refresh token lives exclusively in the HttpOnly cookie; tokenStore
+ *         never reads or writes it on web.
+ * Native: localStorage for now (will be SecureStore when native builds ship).
+ *         Refresh token is stored here because native has no cookie jar.
+ */
+const isWeb = Platform.OS === "web";
+const hasLocalStorage = typeof localStorage !== "undefined";
+
+// Web access tokens: always in-memory (survives only for the tab lifetime).
+// Native tokens: localStorage (persists across restarts).
+const accessStorage = isWeb ? createMemoryStorage() : (hasLocalStorage ? createLocalStorage() : createMemoryStorage());
+const refreshStorage = isWeb ? createMemoryStorage() : (hasLocalStorage ? createLocalStorage() : createMemoryStorage());
 
 export const tokenStore = {
-  getAccessToken: () => storage.getItem(ACCESS_KEY),
-  setAccessToken: (token: string) => storage.setItem(ACCESS_KEY, token),
+  getAccessToken: () => accessStorage.getItem(ACCESS_KEY),
+  setAccessToken: (token: string) => accessStorage.setItem(ACCESS_KEY, token),
 
-  getRefreshToken: () => storage.getItem(REFRESH_KEY),
-  setRefreshToken: (token: string) => storage.setItem(REFRESH_KEY, token),
+  // On web, refresh token is in the HttpOnly cookie — these are no-ops.
+  // On native, refresh token is persisted in local/secure storage.
+  getRefreshToken: () => refreshStorage.getItem(REFRESH_KEY),
+  setRefreshToken: (token: string) => refreshStorage.setItem(REFRESH_KEY, token),
 
   clear: async () => {
-    await storage.removeItem(ACCESS_KEY);
-    await storage.removeItem(REFRESH_KEY);
+    await accessStorage.removeItem(ACCESS_KEY);
+    await refreshStorage.removeItem(REFRESH_KEY);
   },
 
   /**
@@ -60,8 +75,9 @@ export const tokenStore = {
    * Call during session bootstrap to clean up upgraded users.
    */
   clearLegacyWebRefreshToken: async () => {
-    if (Platform.OS === "web" && typeof localStorage !== "undefined") {
+    if (isWeb && hasLocalStorage) {
       localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem(ACCESS_KEY);
     }
   },
 };

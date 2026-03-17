@@ -149,6 +149,10 @@ describe("SettingsScreen — Account Section", () => {
       expect(api.post).toHaveBeenCalledWith("/auth/logout", undefined);
     });
     expect(tokenStore.clear).not.toHaveBeenCalled();
+    // Error feedback is shown to the user
+    await waitFor(() => {
+      expect(screen.getByTestId("sign-out-error")).toBeTruthy();
+    });
   });
 });
 

@@ -544,6 +544,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
           {signOutError && (
             <View
               style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
+              accessibilityRole="alert"
               testID="sign-out-error"
             >
               <Text style={[styles.inlineErrorText, { color: colors.error }]}>
