@@ -10,6 +10,10 @@ import {
 } from "../ChallengeProgressCard";
 import type { ChallengeDetail } from "../../api/challenges";
 
+/**
+ * Backend returns progress as a 0.0–1.0 fraction (ProgressCalculator.CalculateProgress).
+ * Default: 0.9 means 90% of the way to the target (e.g., 72/80 consistency).
+ */
 function makeChallengeDetail(overrides: Partial<ChallengeDetail> = {}): ChallengeDetail {
   return {
     id: "ch-1",
@@ -21,7 +25,7 @@ function makeChallengeDetail(overrides: Partial<ChallengeDetail> = {}): Challeng
     periodDays: 30,
     rewardDescription: "Let's grab coffee together!",
     status: "active",
-    progress: 72,
+    progress: 0.9, // 0-1 fraction: 72/80 = 0.9
     completionCount: 22,
     baselineConsistency: null,
     customStartDate: null,
@@ -57,12 +61,10 @@ describe("ChallengeProgressCard", () => {
   // --- Happy path: on-track encouragement at 70%+ progress ---
 
   it("shows on-track encouragement message at 70%+ progress", () => {
-    // 72/80 = 90% of target -> this is "almostThere"
-    // For "onTrack" we need 50-89% of target
-    const challenge = makeChallengeDetail({ progress: 56, targetValue: 80 });
+    // progress=0.7 means 70% of the way to target -> "onTrack" (50-89%)
+    const challenge = makeChallengeDetail({ progress: 0.7, targetValue: 80 });
     render(<ChallengeProgressCard challenge={challenge} />);
 
-    // 56/80 = 70% -> onTrack
     expect(screen.getByText("You're doing great! Keep it up!")).toBeTruthy();
     expect(screen.getByTestId("challenge-trend-badge")).toBeTruthy();
   });
@@ -70,20 +72,20 @@ describe("ChallengeProgressCard", () => {
   // --- Happy path: almost-there message at 90%+ progress ---
 
   it("shows almost-there message at 90%+ progress", () => {
-    const challenge = makeChallengeDetail({ progress: 75, targetValue: 80 });
+    // progress=0.94 means 94% of the way to target -> "almostThere" (>=90%)
+    const challenge = makeChallengeDetail({ progress: 0.94, targetValue: 80 });
     render(<ChallengeProgressCard challenge={challenge} />);
 
-    // 75/80 = 93.75% -> almostThere
     expect(screen.getByText("So close! Just a little more!")).toBeTruthy();
   });
 
   // --- Happy path: needs-push message at <50% progress ---
 
   it("shows needs-push message at less than 50% progress with supportive tone", () => {
-    const challenge = makeChallengeDetail({ progress: 30, targetValue: 80 });
+    // progress=0.375 means 37.5% of the way to target -> "needsPush" (<50%)
+    const challenge = makeChallengeDetail({ progress: 0.375, targetValue: 80 });
     render(<ChallengeProgressCard challenge={challenge} />);
 
-    // 30/80 = 37.5% -> needsPush
     expect(screen.getByText("Every day counts. You've got this!")).toBeTruthy();
   });
 
@@ -100,7 +102,7 @@ describe("ChallengeProgressCard", () => {
 
   it("shows grace state when challenge has 0 days remaining but is not complete", () => {
     const challenge = makeChallengeDetail({
-      progress: 60,
+      progress: 0.75, // 75% of the way to target
       targetValue: 80,
       endsAt: new Date(Date.now() - 1000).toISOString(), // past
       status: "active",
@@ -185,7 +187,7 @@ describe("getTrendIndicator", () => {
     expect(
       getTrendIndicator(
         makeChallengeDetail({
-          progress: 50,
+          progress: 0.625, // 62.5% toward target
           endsAt: new Date(Date.now() - 1000).toISOString(),
           status: "active",
         }),
@@ -194,20 +196,23 @@ describe("getTrendIndicator", () => {
   });
 
   it("returns almostThere at 90%+ progress", () => {
+    // progress=0.94 -> 94% -> almostThere
     expect(
-      getTrendIndicator(makeChallengeDetail({ progress: 75, targetValue: 80 })),
+      getTrendIndicator(makeChallengeDetail({ progress: 0.94, targetValue: 80 })),
     ).toBe("almostThere");
   });
 
   it("returns onTrack at 50-89%", () => {
+    // progress=0.625 -> 62.5% -> onTrack
     expect(
-      getTrendIndicator(makeChallengeDetail({ progress: 50, targetValue: 80 })),
+      getTrendIndicator(makeChallengeDetail({ progress: 0.625, targetValue: 80 })),
     ).toBe("onTrack");
   });
 
   it("returns needsPush below 50%", () => {
+    // progress=0.25 -> 25% -> needsPush
     expect(
-      getTrendIndicator(makeChallengeDetail({ progress: 20, targetValue: 80 })),
+      getTrendIndicator(makeChallengeDetail({ progress: 0.25, targetValue: 80 })),
     ).toBe("needsPush");
   });
 });
@@ -224,16 +229,24 @@ describe("getEncouragementMessage", () => {
 });
 
 describe("getProgressPercent", () => {
-  it("calculates correct percentage", () => {
-    expect(getProgressPercent(makeChallengeDetail({ progress: 40, targetValue: 80 }))).toBe(50);
+  it("converts 0-1 fraction to 0-100 percentage", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: 0.5 }))).toBe(50);
   });
 
   it("caps at 100%", () => {
-    expect(getProgressPercent(makeChallengeDetail({ progress: 100, targetValue: 80 }))).toBe(100);
+    expect(getProgressPercent(makeChallengeDetail({ progress: 1.2 }))).toBe(100);
   });
 
-  it("returns 0 for targetValue 0", () => {
-    expect(getProgressPercent(makeChallengeDetail({ targetValue: 0 }))).toBe(0);
+  it("clamps negative to 0", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: -0.1 }))).toBe(0);
+  });
+
+  it("returns 0 for zero progress", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: 0 }))).toBe(0);
+  });
+
+  it("returns 100 for progress=1.0 (fully complete)", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: 1.0 }))).toBe(100);
   });
 });
 
@@ -250,5 +263,83 @@ describe("getDaysRemaining", () => {
     );
     expect(daysRemaining).toBeGreaterThanOrEqual(4);
     expect(daysRemaining).toBeLessThanOrEqual(6);
+  });
+});
+
+// --- Regression: backend/frontend progress contract alignment ---
+// These tests verify that the frontend correctly interprets the backend's
+// 0.0–1.0 fractional progress values from ProgressCalculator.CalculateProgress.
+// If these break, the two sides have drifted.
+
+describe("backend contract regression", () => {
+  it("displays correct progress for consistencyTarget (backend: consistency/targetValue)", () => {
+    // Backend: consistency=40, target=80 -> CalculateProgress returns 0.5
+    const challenge = makeChallengeDetail({
+      milestoneType: "consistencyTarget",
+      progress: 0.5,
+      targetValue: 80,
+    });
+    expect(getProgressPercent(challenge)).toBe(50);
+    render(<ChallengeProgressCard challenge={challenge} />);
+    expect(screen.getByText("40% → 80%")).toBeTruthy();
+  });
+
+  it("displays correct progress for daysInPeriod (backend: completionCount/targetValue)", () => {
+    // Backend: completionCount=10, target=20 -> CalculateProgress returns 0.5
+    const challenge = makeChallengeDetail({
+      milestoneType: "daysInPeriod",
+      progress: 0.5,
+      targetValue: 20,
+      completionCount: 10,
+    });
+    expect(getProgressPercent(challenge)).toBe(50);
+    render(<ChallengeProgressCard challenge={challenge} />);
+    expect(screen.getByText("10 / 20")).toBeTruthy();
+  });
+
+  it("displays correct progress for totalCompletions (backend: completionCount/targetValue)", () => {
+    // Backend: completionCount=33, target=100 -> CalculateProgress returns 0.33
+    const challenge = makeChallengeDetail({
+      milestoneType: "totalCompletions",
+      progress: 0.33,
+      targetValue: 100,
+      completionCount: 33,
+    });
+    expect(getProgressPercent(challenge)).toBe(33);
+    render(<ChallengeProgressCard challenge={challenge} />);
+    expect(screen.getByText("33 / 100")).toBeTruthy();
+  });
+
+  it("displays correct progress for improvementMilestone (backend: improvement/targetValue)", () => {
+    // Backend: baseline=50, current=60, targetImprovement=20 -> improvement=10, progress=0.5
+    const challenge = makeChallengeDetail({
+      milestoneType: "improvementMilestone",
+      progress: 0.5,
+      targetValue: 20,
+      baselineConsistency: 50,
+    });
+    expect(getProgressPercent(challenge)).toBe(50);
+    render(<ChallengeProgressCard challenge={challenge} />);
+    expect(screen.getByText("10% → 20%")).toBeTruthy();
+  });
+
+  it("shows 100% progress bar when backend returns 1.0 (milestone reached)", () => {
+    const challenge = makeChallengeDetail({
+      progress: 1.0,
+      targetValue: 80,
+      status: "completed",
+    });
+    expect(getProgressPercent(challenge)).toBe(100);
+  });
+
+  it("handles fractional progress near boundaries correctly", () => {
+    // 89.9% should be onTrack, not almostThere
+    expect(getTrendIndicator(makeChallengeDetail({ progress: 0.899 }))).toBe("onTrack");
+    // 90% should be almostThere
+    expect(getTrendIndicator(makeChallengeDetail({ progress: 0.9 }))).toBe("almostThere");
+    // 49.9% should be needsPush
+    expect(getTrendIndicator(makeChallengeDetail({ progress: 0.499 }))).toBe("needsPush");
+    // 50% should be onTrack
+    expect(getTrendIndicator(makeChallengeDetail({ progress: 0.5 }))).toBe("onTrack");
   });
 });

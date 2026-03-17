@@ -64,8 +64,9 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     if (request.Name.Trim().Length > 256)
         return Results.BadRequest(new { error = "Name must not exceed 256 characters" });
 
-    if (request.Frequency == FrequencyType.Custom && (request.CustomDays is null || request.CustomDays.Count == 0))
-        return Results.BadRequest(new { error = "CustomDays required for Custom frequency" });
+    if ((request.Frequency is FrequencyType.Custom or FrequencyType.Weekly)
+        && (request.CustomDays is null || request.CustomDays.Count == 0))
+        return Results.BadRequest(new { error = "CustomDays required for Weekly and Custom frequency" });
 
     var habit = new Habit
     {
@@ -74,7 +75,7 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
         Icon = request.Icon?.Trim(),
         Color = request.Color?.Trim(),
         Frequency = request.Frequency,
-        CustomDays = request.Frequency == FrequencyType.Custom ? request.CustomDays : null
+        CustomDays = request.Frequency is FrequencyType.Weekly or FrequencyType.Custom ? request.CustomDays : null
     };
 
     db.Habits.Add(habit);
@@ -144,15 +145,16 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
         habit.Color = request.Color.Trim();
     if (request.Frequency.HasValue)
     {
-        if (request.Frequency.Value == FrequencyType.Custom && (request.CustomDays is null || request.CustomDays.Count == 0))
-            return Results.BadRequest(new { error = "CustomDays required for Custom frequency" });
+        if (request.Frequency.Value is FrequencyType.Custom or FrequencyType.Weekly
+            && (request.CustomDays is null || request.CustomDays.Count == 0))
+            return Results.BadRequest(new { error = "CustomDays required for Weekly and Custom frequency" });
         habit.Frequency = request.Frequency.Value;
-        habit.CustomDays = request.Frequency.Value == FrequencyType.Custom ? request.CustomDays : null;
+        habit.CustomDays = request.Frequency.Value is FrequencyType.Weekly or FrequencyType.Custom ? request.CustomDays : null;
     }
-    else if (request.CustomDays is not null && habit.Frequency == FrequencyType.Custom)
+    else if (request.CustomDays is not null && habit.Frequency is FrequencyType.Custom or FrequencyType.Weekly)
     {
         if (request.CustomDays.Count == 0)
-            return Results.BadRequest(new { error = "CustomDays cannot be empty for Custom frequency" });
+            return Results.BadRequest(new { error = "CustomDays cannot be empty for Weekly and Custom frequency" });
         habit.CustomDays = request.CustomDays;
     }
 
@@ -222,12 +224,14 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
         localDate = DateOnly.FromDateTime(userNow);
     }
 
-    // Validate date range: not in the future, not more than 60 days in the past
+    // Validate date range: not in the future, not before the 60-day rolling window.
+    // The window is [today - 59 .. today] (60 days inclusive), so reject anything before windowStart.
     var userToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
     if (localDate > userToday)
         return Results.BadRequest(new { error = "Cannot log completions in the future" });
-    if (localDate < userToday.AddDays(-ConsistencyCalculator.WindowDays))
-        return Results.BadRequest(new { error = $"Cannot log completions more than {ConsistencyCalculator.WindowDays} days in the past" });
+    var windowStart = userToday.AddDays(-(ConsistencyCalculator.WindowDays - 1));
+    if (localDate < windowStart)
+        return Results.BadRequest(new { error = $"Cannot log completions more than {ConsistencyCalculator.WindowDays - 1} days in the past" });
 
     // Check for duplicate completion
     var exists = await db.Completions.AnyAsync(c => c.HabitId == id && c.LocalDate == localDate);

@@ -18,7 +18,7 @@ function makeChallenge(overrides: Partial<ChallengeDetail> = {}): ChallengeDetai
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: "2026-03-10T00:00:00Z",
     claimedAt: null,
-    progress: 80,
+    progress: 1.0, // 0-1 fraction (completed challenge)
     completionCount: 24,
     baselineConsistency: null,
     customStartDate: null,

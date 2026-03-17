@@ -109,6 +109,79 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
+    [Fact]
+    public async Task CreateHabit_WeeklyFrequency_WithDays_Returns201_AndPersistsDays()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Yoga",
+            frequency = 1,
+            customDays = new[] { 1, 3, 5 }
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("weekly", body.GetProperty("frequency").GetString());
+        var days = body.GetProperty("customDays").EnumerateArray().Select(d => d.GetInt32()).ToArray();
+        Assert.Equal([1, 3, 5], days);
+    }
+
+    [Fact]
+    public async Task CreateHabit_WeeklyFrequency_WithoutDays_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Yoga",
+            frequency = 1
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateHabit_ChangeToWeekly_WithDays_PersistsDays()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var updateResponse = await client.PutAsJsonAsync($"/habits/{habitId}", new
+        {
+            frequency = 1,
+            customDays = new[] { 0, 6 }
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var body = await updateResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("weekly", body.GetProperty("frequency").GetString());
+        var days = body.GetProperty("customDays").EnumerateArray().Select(d => d.GetInt32()).ToArray();
+        Assert.Equal([0, 6], days);
+    }
+
+    [Fact]
+    public async Task UpdateHabit_ChangeToWeekly_WithoutDays_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var updateResponse = await client.PutAsJsonAsync($"/habits/{habitId}", new
+        {
+            frequency = 1
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, updateResponse.StatusCode);
+    }
+
     // --- GET /habits ---
 
     [Fact]
@@ -419,6 +492,69 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task CompleteHabit_FutureDate_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1).ToString("yyyy-MM-dd");
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = tomorrow,
+            timezone = "UTC"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("future", body.GetProperty("error").GetString()!);
+    }
+
+    [Fact]
+    public async Task CompleteHabit_ExactWindowBoundary_Accepted()
+    {
+        // Day at exactly windowStart (59 days ago) should be accepted
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        var windowStart = utcToday.AddDays(-59).ToString("yyyy-MM-dd");
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = windowStart,
+            timezone = "UTC"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompleteHabit_OneDayBeforeWindow_Rejected()
+    {
+        // Day at windowStart - 1 (60 days ago) is outside the window and should be rejected
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Exercise", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        var beforeWindow = utcToday.AddDays(-60).ToString("yyyy-MM-dd");
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = beforeWindow,
+            timezone = "UTC"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     // --- DELETE /habits/{id}/completions/{date} ---
 
     [Fact]
@@ -488,7 +624,9 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.True(body.GetProperty("consistency").GetDouble() > 0);
+        // A habit created today has 0% consistency — no track record yet.
+        // The completedToday flag still reflects today's completion independently.
+        Assert.Equal(0, body.GetProperty("consistency").GetDouble());
         Assert.Equal(1, body.GetProperty("totalCompletions").GetInt32());
         Assert.Equal(60, body.GetProperty("windowDays").GetInt32());
         Assert.True(body.GetProperty("completedToday").GetBoolean());

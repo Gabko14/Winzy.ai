@@ -53,9 +53,12 @@ export function getEncouragementMessage(trend: TrendIndicator): string {
   }
 }
 
+/**
+ * Returns progress as a 0–100 percentage for display.
+ * Backend returns progress as a 0.0–1.0 fraction (already normalized against targetValue).
+ */
 export function getProgressPercent(challenge: ChallengeDetail): number {
-  if (challenge.targetValue <= 0) return 0;
-  return Math.min((challenge.progress / challenge.targetValue) * 100, 100);
+  return Math.min(Math.max(challenge.progress * 100, 0), 100);
 }
 
 export function getDaysRemaining(challenge: ChallengeDetail): number {
@@ -100,12 +103,18 @@ function getMilestoneLabel(type: MilestoneType): string {
   }
 }
 
+/**
+ * Formats progress for display. Backend progress is a 0.0–1.0 fraction.
+ * - Consistency-based types: show current% -> target% (derived from fraction * target)
+ * - Count-based types: show completionCount / target
+ */
 function formatProgressValue(challenge: ChallengeDetail): string {
   const type = challenge.milestoneType;
   if (type === "consistencyTarget" || type === "customDateRange" || type === "improvementMilestone") {
-    return `${Math.round(challenge.progress)}% → ${Math.round(challenge.targetValue)}%`;
+    const currentValue = Math.round(challenge.progress * challenge.targetValue);
+    return `${currentValue}% → ${Math.round(challenge.targetValue)}%`;
   }
-  return `${Math.round(challenge.progress)} / ${Math.round(challenge.targetValue)}`;
+  return `${challenge.completionCount} / ${Math.round(challenge.targetValue)}`;
 }
 
 export function ChallengeProgressCard({ challenge, creatorName }: Props) {
