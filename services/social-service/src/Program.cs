@@ -30,6 +30,13 @@ builder.Services.AddHttpClient("HabitService", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["Services:AuthServiceUrl"] ?? "http://auth-service:5001";
+    client.BaseAddress = new Uri(authUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
@@ -212,7 +219,8 @@ app.MapDelete("/social/friends/{friendId:guid}", async (Guid friendId, HttpConte
 
 // --- GET /social/friends ---
 
-app.MapGet("/social/friends", async (HttpContext ctx, SocialDbContext db, int page = 1, int pageSize = 20) =>
+app.MapGet("/social/friends", async (HttpContext ctx, SocialDbContext db,
+    IHttpClientFactory httpClientFactory, ILogger<Program> logger, int page = 1, int pageSize = 20) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -230,12 +238,23 @@ app.MapGet("/social/friends", async (HttpContext ctx, SocialDbContext db, int pa
         .Take(pageSize)
         .ToListAsync();
 
+    // Enrich with profile data from auth service
+    var friendIds = friends.Select(f => f.FriendId).ToList();
+    var profileMap = await FetchProfileMap(httpClientFactory, friendIds, logger);
+
     return Results.Ok(new
     {
-        items = friends.Select(f => new
+        items = friends.Select(f =>
         {
-            friendId = f.FriendId,
-            since = f.CreatedAt
+            profileMap.TryGetValue(f.FriendId, out var profile);
+            return new
+            {
+                friendId = f.FriendId,
+                since = f.CreatedAt,
+                username = profile?.Username,
+                displayName = profile?.DisplayName,
+                avatarUrl = (string?)null
+            };
         }),
         page,
         pageSize,
@@ -258,34 +277,55 @@ app.MapGet("/social/friends/requests/count", async (HttpContext ctx, SocialDbCon
 
 // --- GET /social/friends/requests ---
 
-app.MapGet("/social/friends/requests", async (HttpContext ctx, SocialDbContext db) =>
+app.MapGet("/social/friends/requests", async (HttpContext ctx, SocialDbContext db,
+    IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var incoming = await db.Friendships
+    var incomingRaw = await db.Friendships
         .Where(f => f.FriendId == userId && f.Status == FriendshipStatus.Pending)
         .OrderByDescending(f => f.CreatedAt)
-        .Select(f => new
+        .ToListAsync();
+
+    var outgoingRaw = await db.Friendships
+        .Where(f => f.UserId == userId && f.Status == FriendshipStatus.Pending)
+        .OrderByDescending(f => f.CreatedAt)
+        .ToListAsync();
+
+    // Batch-fetch profiles for all user IDs in requests
+    var allUserIds = incomingRaw.Select(f => f.UserId)
+        .Concat(outgoingRaw.Select(f => f.FriendId))
+        .Distinct().ToList();
+    var profileMap = await FetchProfileMap(httpClientFactory, allUserIds, logger);
+
+    var incoming = incomingRaw.Select(f =>
+    {
+        profileMap.TryGetValue(f.UserId, out var profile);
+        return new
         {
             id = f.Id,
             fromUserId = f.UserId,
             direction = "incoming",
-            createdAt = f.CreatedAt
-        })
-        .ToListAsync();
+            createdAt = f.CreatedAt,
+            fromUsername = profile?.Username,
+            fromDisplayName = profile?.DisplayName
+        };
+    });
 
-    var outgoing = await db.Friendships
-        .Where(f => f.UserId == userId && f.Status == FriendshipStatus.Pending)
-        .OrderByDescending(f => f.CreatedAt)
-        .Select(f => new
+    var outgoing = outgoingRaw.Select(f =>
+    {
+        profileMap.TryGetValue(f.FriendId, out var profile);
+        return new
         {
             id = f.Id,
             toUserId = f.FriendId,
             direction = "outgoing",
-            createdAt = f.CreatedAt
-        })
-        .ToListAsync();
+            createdAt = f.CreatedAt,
+            toUsername = profile?.Username,
+            toDisplayName = profile?.DisplayName
+        };
+    });
 
     return Results.Ok(new { incoming, outgoing });
 });
@@ -339,16 +379,56 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
         .FirstOrDefaultAsync(p => p.UserId == friendId);
     var defaultVisibility = preference?.DefaultHabitVisibility ?? HabitVisibility.Private;
 
-    // Filter habits by visibility: show only those visible to friends (or public)
-    var visibleHabits = habits.Where(h =>
-    {
-        if (h.TryGetProperty("id", out var idProp) && Guid.TryParse(idProp.GetString(), out var habitId))
+    // Filter habits by visibility and enrich with consistency/flameLevel
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var windowStart = today.AddDays(-59); // 60-day rolling window
+
+    var visibleHabits = habits
+        .Where(h =>
         {
-            var visibility = visibilityMap.TryGetValue(habitId, out var v) ? v : defaultVisibility;
-            return visibility is HabitVisibility.Friends or HabitVisibility.Public;
-        }
-        return false;
-    }).ToList();
+            if (h.TryGetProperty("id", out var idProp) && Guid.TryParse(idProp.GetString(), out var habitId))
+            {
+                var visibility = visibilityMap.TryGetValue(habitId, out var v) ? v : defaultVisibility;
+                return visibility is HabitVisibility.Friends or HabitVisibility.Public;
+            }
+            return false;
+        })
+        .Select(h =>
+        {
+            var id = h.GetProperty("id").GetString()!;
+            var name = h.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            var icon = h.TryGetProperty("icon", out var ic) && ic.ValueKind != JsonValueKind.Null ? ic.GetString() : null;
+            var color = h.TryGetProperty("color", out var co) && co.ValueKind != JsonValueKind.Null ? co.GetString() : null;
+
+            // Compute consistency from completions in the 60-day window
+            var consistency = 0.0;
+            if (h.TryGetProperty("completions", out var completions) && completions.ValueKind == JsonValueKind.Array)
+            {
+                var uniqueDates = new HashSet<DateOnly>();
+                foreach (var c in completions.EnumerateArray())
+                {
+                    if (c.TryGetProperty("localDate", out var ld) && DateOnly.TryParse(ld.GetString(), out var d))
+                    {
+                        if (d >= windowStart && d <= today)
+                            uniqueDates.Add(d);
+                    }
+                }
+                consistency = Math.Round(uniqueDates.Count / 60.0 * 100, 1);
+            }
+
+            var flameLevel = GetFlameLevel(consistency);
+
+            return new
+            {
+                id,
+                name,
+                icon,
+                color,
+                consistency,
+                flameLevel
+            };
+        })
+        .ToList();
 
     logger.LogInformation(
         "Visibility filter applied: UserId={UserId}, Viewer={Viewer}, TotalHabits={Total}, VisibleHabits={Visible}, FilteredOut={Filtered}",
@@ -728,11 +808,54 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
     return header is not null && Guid.TryParse(header, out userId);
 }
 
-// --- Request DTOs ---
+static async Task<Dictionary<Guid, ProfileInfo>> FetchProfileMap(
+    IHttpClientFactory httpClientFactory, List<Guid> userIds, ILogger logger)
+{
+    if (userIds.Count == 0)
+        return [];
+
+    try
+    {
+        var authClient = httpClientFactory.CreateClient("AuthService");
+        using var response = await authClient.PostAsJsonAsync("/auth/internal/profiles",
+            new { userIds });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Auth Service batch profiles returned {StatusCode}", response.StatusCode);
+            return [];
+        }
+
+        var profiles = await response.Content.ReadFromJsonAsync<List<ProfileInfo>>(
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        return profiles?.ToDictionary(p => p.UserId) ?? [];
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        logger.LogWarning(ex, "Failed to fetch batch profiles from Auth Service");
+        return [];
+    }
+}
+
+static string GetFlameLevel(double consistency)
+{
+    if (consistency >= 80)
+        return "blazing";
+    if (consistency >= 55)
+        return "strong";
+    if (consistency >= 30)
+        return "steady";
+    if (consistency >= 10)
+        return "ember";
+    return "none";
+}
+
+// --- Request/Response DTOs ---
 
 internal record FriendRequestDto(Guid FriendId);
 internal record VisibilityUpdateDto(HabitVisibility Visibility);
 internal record PreferencesUpdateDto(HabitVisibility DefaultHabitVisibility);
+internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

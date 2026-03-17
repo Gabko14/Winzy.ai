@@ -267,6 +267,42 @@ public class VisibilityEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetFriendProfile_ReturnsConsistencyAndFlameLevel()
+    {
+        await CreateFriendship();
+
+        // Create habits with completions over the last 60 days
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var completions = Enumerable.Range(0, 50)
+            .Select(i => new { localDate = today.AddDays(-i).ToString("yyyy-MM-dd"), completedAt = DateTimeOffset.UtcNow })
+            .ToArray();
+
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = _habitId1.ToString(), name = "Workout", icon = "dumbbell", color = "#ff0000", completions }
+        ]);
+
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Set visibility to friends
+        await friendClient.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "friends" }, CT);
+
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+        Assert.Equal(1, habits.GetArrayLength());
+
+        var habit = habits[0];
+        Assert.Equal("Workout", habit.GetProperty("name").GetString());
+        Assert.True(habit.GetProperty("consistency").GetDouble() > 0);
+        Assert.NotEqual("none", habit.GetProperty("flameLevel").GetString());
+        // 50 completions in 60 days = ~83.3% -> blazing
+        Assert.Equal("blazing", habit.GetProperty("flameLevel").GetString());
+    }
+
+    [Fact]
     public async Task GetFriendProfile_NotFriends_Returns404()
     {
         using var client = _fixture.CreateAuthenticatedClient(_userId);

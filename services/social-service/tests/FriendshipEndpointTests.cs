@@ -254,6 +254,53 @@ public class FriendshipEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListFriends_EnrichesWithProfileData()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        MockAuthHandler.SetProfile(_friendId, "alice", "Alice Wonderland");
+
+        // Create friendship
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        var response = await client.GetAsync("/social/friends", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("alice", item.GetProperty("username").GetString());
+        Assert.Equal("Alice Wonderland", item.GetProperty("displayName").GetString());
+    }
+
+    [Fact]
+    public async Task ListFriends_GracefulDegradation_WhenProfilesNotFound()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        // Don't set any profiles — auth service returns empty
+        // Create friendship
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+
+        var response = await client.GetAsync("/social/friends", CT);
+
+        // Should still return friend data, just without enriched profile
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+        var item = body.GetProperty("items")[0];
+        Assert.Equal(_friendId, item.GetProperty("friendId").GetGuid());
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("username").ValueKind);
+    }
+
+    [Fact]
     public async Task ListFriends_Empty_ReturnsEmptyList()
     {
         using var client = _fixture.CreateAuthenticatedClient(_userId);
@@ -377,6 +424,33 @@ public class FriendshipEndpointTests : IAsyncLifetime
         var friendBody = await friendResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.Equal(0, friendBody.GetProperty("outgoing").GetArrayLength());
         Assert.Equal(1, friendBody.GetProperty("incoming").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListFriendRequests_EnrichesWithProfileData()
+    {
+        MockAuthHandler.SetProfile(_userId, "sender", "Sender Name");
+        MockAuthHandler.SetProfile(_friendId, "receiver", "Receiver Name");
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Send a request
+        await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+
+        // Outgoing for sender — should have toUsername/toDisplayName
+        var response = await client.GetAsync("/social/friends/requests", CT);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var outgoing = body.GetProperty("outgoing")[0];
+        Assert.Equal("receiver", outgoing.GetProperty("toUsername").GetString());
+        Assert.Equal("Receiver Name", outgoing.GetProperty("toDisplayName").GetString());
+
+        // Incoming for receiver — should have fromUsername/fromDisplayName
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+        var friendResponse = await friendClient.GetAsync("/social/friends/requests", CT);
+        var friendBody = await friendResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var incoming = friendBody.GetProperty("incoming")[0];
+        Assert.Equal("sender", incoming.GetProperty("fromUsername").GetString());
+        Assert.Equal("Sender Name", incoming.GetProperty("fromDisplayName").GetString());
     }
 
     // --- GET /social/internal/friends/{userId1}/{userId2} ---
