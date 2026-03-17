@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform } from "react-native";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { SettingsScreen } from "../SettingsScreen";
 import { AuthProvider } from "../../hooks/useAuth";
@@ -132,7 +133,7 @@ describe("SettingsScreen — Account Section", () => {
     });
   });
 
-  it("clears local state even when sign out API fails", async () => {
+  it("does not clear local state when sign out API fails", async () => {
     const { tokenStore } = jest.requireMock("../../api");
     api.post.mockRejectedValue(new Error("network error"));
 
@@ -142,9 +143,12 @@ describe("SettingsScreen — Account Section", () => {
     });
 
     fireEvent.press(screen.getByText("Sign out"));
+    // The logout error propagates — tokens are NOT cleared because the server
+    // did not confirm revocation. The HttpOnly cookie is still alive.
     await waitFor(() => {
-      expect(tokenStore.clear).toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledWith("/auth/logout", undefined);
     });
+    expect(tokenStore.clear).not.toHaveBeenCalled();
   });
 });
 
@@ -477,7 +481,25 @@ describe("SettingsScreen — Notifications Section", () => {
     expect(mockSubscribe).not.toHaveBeenCalled();
   });
 
-  it("shows denied state with explanation when permission is denied", async () => {
+  it("shows denied state with instructions on web", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    mockPushState.status = "denied";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-denied")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/blocked by your browser or device settings/i)).toBeTruthy();
+    expect(screen.getByTestId("push-denied-instructions")).toBeTruthy();
+    expect(screen.getByText(/click the lock icon/i)).toBeTruthy();
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("shows denied state with open settings link on native", async () => {
     mockPushState.status = "denied";
 
     renderSettings();
@@ -487,6 +509,7 @@ describe("SettingsScreen — Notifications Section", () => {
 
     expect(screen.getByText(/blocked by your browser or device settings/i)).toBeTruthy();
     expect(screen.getByTestId("push-open-settings")).toBeTruthy();
+    expect(screen.getByText("Open device settings")).toBeTruthy();
   });
 
   it("shows loading state while checking notification status", async () => {
