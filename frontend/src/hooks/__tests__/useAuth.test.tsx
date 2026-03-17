@@ -152,7 +152,7 @@ describe("AuthProvider", () => {
     expect(tokenStore.clear).toHaveBeenCalled();
   });
 
-  it("logout succeeds even if server call fails", async () => {
+  it("logout throws when server call fails (session not terminated)", async () => {
     bootstrapSession.mockResolvedValue({
       accessToken: "token",
       refreshToken: "refresh",
@@ -160,12 +160,21 @@ describe("AuthProvider", () => {
     });
     api.post.mockRejectedValue(new Error("Network error"));
 
+    let logoutError: Error | null = null;
+
     function LogoutConsumer() {
       const auth = useAuth();
       return (
         <>
           <Text testID="status">{auth.status}</Text>
-          <Text testID="logout" onPress={() => auth.logout()} />
+          <Text
+            testID="logout"
+            onPress={() => {
+              auth.logout().catch((err) => {
+                logoutError = err;
+              });
+            }}
+          />
         </>
       );
     }
@@ -184,9 +193,13 @@ describe("AuthProvider", () => {
       getByTestId("logout").props.onPress();
     });
 
+    // Server failed — session is NOT terminated, user stays authenticated
     await waitFor(() => {
-      expect(getByTestId("status").props.children).toBe("unauthenticated");
+      expect(logoutError).not.toBeNull();
     });
+    expect(getByTestId("status").props.children).toBe("authenticated");
+    // Tokens should NOT be cleared since the server didn't confirm logout
+    expect(tokenStore.clear).not.toHaveBeenCalled();
   });
 });
 

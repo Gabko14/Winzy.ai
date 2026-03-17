@@ -92,10 +92,8 @@ public static class AuthEndpoints
 
         SetRefreshCookie(httpContext, refreshToken.Token, refreshToken.ExpiresAt);
 
-        return Results.Created($"/auth/profile", new AuthResponse(
-            accessToken,
-            refreshToken.Token,
-            ToProfile(user)));
+        return Results.Created($"/auth/profile",
+            BuildAuthResponse(httpContext, accessToken, refreshToken.Token, user));
     }
 
     private static async Task<IResult> Login(
@@ -125,10 +123,8 @@ public static class AuthEndpoints
 
         SetRefreshCookie(httpContext, refreshToken.Token, refreshToken.ExpiresAt);
 
-        return Results.Ok(new AuthResponse(
-            accessToken,
-            refreshToken.Token,
-            ToProfile(user)));
+        return Results.Ok(
+            BuildAuthResponse(httpContext, accessToken, refreshToken.Token, user));
     }
 
     private static async Task<IResult> Refresh(
@@ -160,10 +156,8 @@ public static class AuthEndpoints
 
         SetRefreshCookie(httpContext, newRefreshToken.Token, newRefreshToken.ExpiresAt);
 
-        return Results.Ok(new AuthResponse(
-            accessToken,
-            newRefreshToken.Token,
-            ToProfile(existing.User)));
+        return Results.Ok(
+            BuildAuthResponse(httpContext, accessToken, newRefreshToken.Token, existing.User));
     }
 
     private static async Task<IResult> Logout(
@@ -515,6 +509,18 @@ public static class AuthEndpoints
         var header = httpContext.Request.Headers["X-User-Id"].FirstOrDefault();
         return Guid.TryParse(header, out var id) ? id : null;
     }
+
+    /// <summary>
+    /// Browsers send Sec-Fetch-Site on every request. Its presence reliably
+    /// distinguishes a web client from a native/API client.
+    /// When the caller is a browser, the refresh token travels exclusively
+    /// in the HttpOnly cookie — never in the JSON body.
+    /// </summary>
+    private static bool IsWebClient(HttpContext httpContext)
+        => httpContext.Request.Headers.ContainsKey("Sec-Fetch-Site");
+
+    private static AuthResponse BuildAuthResponse(HttpContext httpContext, string accessToken, string refreshToken, User user)
+        => new(accessToken, IsWebClient(httpContext) ? null : refreshToken, ToProfile(user));
 
     private static async Task<RefreshToken> CreateRefreshToken(
         AuthDbContext db,
