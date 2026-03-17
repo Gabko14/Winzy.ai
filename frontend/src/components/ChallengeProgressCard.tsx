@@ -58,7 +58,9 @@ export function getEncouragementMessage(trend: TrendIndicator): string {
  * Backend returns progress as a 0.0–1.0 fraction (already normalized against targetValue).
  */
 export function getProgressPercent(challenge: ChallengeDetail): number {
-  return Math.min(Math.max(challenge.progress * 100, 0), 100);
+  const raw = challenge.progress * 100;
+  if (Number.isNaN(raw)) return 0;
+  return Math.min(Math.max(raw, 0), 100);
 }
 
 export function getDaysRemaining(challenge: ChallengeDetail): number {
@@ -110,8 +112,9 @@ function getMilestoneLabel(type: MilestoneType): string {
  */
 function formatProgressValue(challenge: ChallengeDetail): string {
   const type = challenge.milestoneType;
+  const progress = Number.isNaN(challenge.progress) ? 0 : (challenge.progress ?? 0);
   if (type === "consistencyTarget" || type === "customDateRange" || type === "improvementMilestone") {
-    const currentValue = Math.round(challenge.progress * challenge.targetValue);
+    const currentValue = Math.round(progress * challenge.targetValue);
     return `${currentValue}% → ${Math.round(challenge.targetValue)}%`;
   }
   return `${challenge.completionCount} / ${Math.round(challenge.targetValue)}`;
