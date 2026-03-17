@@ -248,6 +248,18 @@ describe("getProgressPercent", () => {
   it("returns 100 for progress=1.0 (fully complete)", () => {
     expect(getProgressPercent(makeChallengeDetail({ progress: 1.0 }))).toBe(100);
   });
+
+  it("returns 0 for NaN progress (defensive against malformed data)", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: NaN }))).toBe(0);
+  });
+
+  it("returns 0 for undefined progress (defensive against missing field)", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: undefined as any }))).toBe(0);
+  });
+
+  it("clamps floating-point values slightly above 1.0", () => {
+    expect(getProgressPercent(makeChallengeDetail({ progress: 1.0000000000000002 }))).toBe(100);
+  });
 });
 
 describe("getDaysRemaining", () => {
@@ -330,6 +342,18 @@ describe("backend contract regression", () => {
       status: "completed",
     });
     expect(getProgressPercent(challenge)).toBe(100);
+  });
+
+  it("renders 0% display when progress is NaN (no 'NaN%' in UI)", () => {
+    const challenge = makeChallengeDetail({
+      milestoneType: "consistencyTarget",
+      progress: NaN,
+      targetValue: 80,
+    });
+    render(<ChallengeProgressCard challenge={challenge} />);
+    // Should show "0% -> 80%", not "NaN% -> 80%"
+    expect(screen.getByText("0% → 80%")).toBeTruthy();
+    expect(getProgressPercent(challenge)).toBe(0);
   });
 
   it("handles fractional progress near boundaries correctly", () => {
