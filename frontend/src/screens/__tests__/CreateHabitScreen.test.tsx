@@ -383,7 +383,20 @@ describe("CreateHabitScreen", () => {
       fireEvent.press(screen.getByText("Create habit"));
     });
 
-    expect(screen.getByText("Select at least one day for custom frequency.")).toBeTruthy();
+    expect(screen.getByText("Select at least one day.")).toBeTruthy();
+    expect(createHabit).not.toHaveBeenCalled();
+  });
+
+  it("shows error when weekly frequency has no days selected", async () => {
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test habit");
+    fireEvent.press(screen.getByTestId("freq-weekly"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    expect(screen.getByText("Select at least one day.")).toBeTruthy();
     expect(createHabit).not.toHaveBeenCalled();
   });
 
@@ -412,6 +425,51 @@ describe("CreateHabitScreen", () => {
 
     fireEvent.press(screen.getByTestId("freq-custom"));
     expect(screen.getByTestId("days-picker")).toBeTruthy();
+  });
+
+  it("shows day picker when weekly frequency is selected", () => {
+    renderCreateForm();
+    expect(screen.queryByTestId("days-picker")).toBeNull();
+
+    fireEvent.press(screen.getByTestId("freq-weekly"));
+    expect(screen.getByTestId("days-picker")).toBeTruthy();
+  });
+
+  it("sends customDays when weekly frequency is submitted with days selected", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Gym",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "weekly",
+      customDays: [1, 3, 5],
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Gym");
+    fireEvent.press(screen.getByTestId("freq-weekly"));
+
+    // Select Mon, Wed, Fri
+    fireEvent.press(screen.getByTestId("day-Mon"));
+    fireEvent.press(screen.getByTestId("day-Wed"));
+    fireEvent.press(screen.getByTestId("day-Fri"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(createHabit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Gym",
+          frequency: "weekly",
+          customDays: [1, 3, 5],
+        }),
+      );
+    });
   });
 
   it("toggles custom day selection", () => {
@@ -515,7 +573,7 @@ describe("CreateHabitScreen", () => {
     });
   });
 
-  it("does not include customDays when frequency is not custom", async () => {
+  it("does not include customDays when frequency is daily", async () => {
     const newHabit = {
       id: "h1",
       name: "Test",

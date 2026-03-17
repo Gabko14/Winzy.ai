@@ -145,13 +145,13 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
         habit.Color = request.Color.Trim();
     if (request.Frequency.HasValue)
     {
-        if (request.Frequency.Value is FrequencyType.Custom or FrequencyType.Weekly
+        if ((request.Frequency.Value is FrequencyType.Custom or FrequencyType.Weekly)
             && (request.CustomDays is null || request.CustomDays.Count == 0))
             return Results.BadRequest(new { error = "CustomDays required for Weekly and Custom frequency" });
         habit.Frequency = request.Frequency.Value;
         habit.CustomDays = request.Frequency.Value is FrequencyType.Weekly or FrequencyType.Custom ? request.CustomDays : null;
     }
-    else if (request.CustomDays is not null && habit.Frequency is FrequencyType.Custom or FrequencyType.Weekly)
+    else if (request.CustomDays is not null && (habit.Frequency is FrequencyType.Custom or FrequencyType.Weekly))
     {
         if (request.CustomDays.Count == 0)
             return Results.BadRequest(new { error = "CustomDays cannot be empty for Weekly and Custom frequency" });

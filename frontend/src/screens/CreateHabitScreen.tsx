@@ -149,7 +149,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
           icon,
           color,
           frequency,
-          ...(frequency === "custom" ? { customDays } : {}),
+          ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
         };
         savedHabit = await update(editHabit.id, request);
       } else {
@@ -158,7 +158,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
           icon,
           color,
           frequency,
-          ...(frequency === "custom" ? { customDays } : {}),
+          ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
         };
         savedHabit = await create(request);
       }
@@ -336,8 +336,8 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
           </View>
         </View>
 
-        {/* Custom days picker */}
-        {frequency === "custom" && (
+        {/* Day-of-week picker (weekly and custom frequencies) */}
+        {(frequency === "weekly" || frequency === "custom") && (
           <View style={styles.section}>
             <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Days</Text>
             <View style={styles.daysRow} testID="days-picker">
