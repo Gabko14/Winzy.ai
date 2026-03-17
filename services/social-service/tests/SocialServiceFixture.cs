@@ -81,9 +81,11 @@ public sealed class SocialServiceFixture : IAsyncLifetime
                     services.AddHostedService<HabitCreatedSubscriber>();
                     services.AddHostedService<HabitArchivedSubscriber>();
 
-                    // Replace HabitService HttpClient with mock handler
+                    // Replace HabitService and AuthService HttpClients with mock handlers
                     services.AddHttpClient("HabitService")
                         .ConfigurePrimaryHttpMessageHandler(() => new MockHabitHandler());
+                    services.AddHttpClient("AuthService")
+                        .ConfigurePrimaryHttpMessageHandler(() => new MockAuthHandler());
                 });
             });
 
@@ -115,6 +117,7 @@ public sealed class SocialServiceFixture : IAsyncLifetime
     public async Task ResetDataAsync()
     {
         MockHabitHandler.HabitResponses.Clear();
+        MockAuthHandler.ProfileResponses.Clear();
         using var db = CreateDbContext();
         await db.VisibilitySettings.ExecuteDeleteAsync();
         await db.SocialPreferences.ExecuteDeleteAsync();
@@ -154,4 +157,49 @@ internal class MockHabitHandler : HttpMessageHandler
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
+}
+
+internal class MockAuthHandler : HttpMessageHandler
+{
+    /// <summary>
+    /// Map of userId -> profile data for POST /auth/internal/profiles
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, (string Username, string? DisplayName)> ProfileResponses = new();
+
+    public static void SetProfile(Guid userId, string username, string? displayName = null)
+    {
+        ProfileResponses[userId] = (username, displayName);
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+
+        if (path == "/auth/internal/profiles" && request.Method == HttpMethod.Post)
+        {
+            var body = await request.Content!.ReadFromJsonAsync<BatchProfilesRequestDto>(cancellationToken: cancellationToken);
+            var ids = body?.UserIds ?? [];
+
+            var profiles = ids
+                .Where(id => ProfileResponses.ContainsKey(id))
+                .Select(id =>
+                {
+                    var (username, displayName) = ProfileResponses[id];
+                    return new { userId = id, username, displayName };
+                })
+                .ToList();
+
+            var json = System.Text.Json.JsonSerializer.Serialize(profiles,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+            };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
+    private record BatchProfilesRequestDto(List<Guid>? UserIds);
 }
