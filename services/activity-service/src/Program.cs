@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Winzy.ActivityService.Data;
+using Winzy.ActivityService.Jobs;
 using Winzy.ActivityService.Subscribers;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
@@ -23,6 +24,7 @@ builder.Services.AddHostedService<ChallengeCompletedSubscriber>();
 builder.Services.AddHostedService<UserDeletedSubscriber>();
 builder.Services.AddHostedService<VisibilityChangedSubscriber>();
 builder.Services.AddHostedService<FriendRemovedSubscriber>();
+builder.Services.AddHostedService<ActorNameBackfillJob>();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ActivityDbContext>()
@@ -278,24 +280,6 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
                             };
                         }
                     }
-
-                    // Persist resolved names back to DB so future requests skip the lookup
-                    var resolvedActorIds = profileMap.Keys.ToList();
-                    var entriesToBackfill = await db.FeedEntries
-                        .Where(e => resolvedActorIds.Contains(e.ActorId) && e.ActorUsername == null)
-                        .ToListAsync();
-
-                    foreach (var entry in entriesToBackfill)
-                    {
-                        if (profileMap.TryGetValue(entry.ActorId, out var p))
-                        {
-                            entry.ActorUsername = p.Username;
-                            entry.ActorDisplayName = p.DisplayName;
-                        }
-                    }
-
-                    if (entriesToBackfill.Count > 0)
-                        await db.SaveChangesAsync();
                 }
             }
             else

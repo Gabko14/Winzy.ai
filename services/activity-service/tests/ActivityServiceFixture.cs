@@ -9,6 +9,7 @@ using NATS.Client.Hosting;
 using Testcontainers.Nats;
 using Testcontainers.PostgreSql;
 using Winzy.ActivityService.Data;
+using Winzy.ActivityService.Jobs;
 using Winzy.ActivityService.Subscribers;
 using Winzy.Common.Messaging;
 using Xunit;
@@ -60,7 +61,7 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
                     services.AddDbContext<ActivityDbContext>(options =>
                         options.UseNpgsql(PostgresConnectionString));
 
-                    // Remove ALL NATS + subscriber registrations so we can re-add in correct order
+                    // Remove ALL NATS + subscriber + background job registrations so we can re-add in correct order
                     var natsDescriptors = services
                         .Where(d =>
                             d.ServiceType == typeof(INatsConnection) ||
@@ -68,6 +69,7 @@ public sealed class ActivityServiceFixture : IAsyncLifetime
                             d.ImplementationType?.FullName?.Contains("Nats", StringComparison.OrdinalIgnoreCase) == true ||
                             d.ImplementationType == typeof(JetStreamSetup) ||
                             d.ImplementationType == typeof(NatsEventPublisher) ||
+                            d.ImplementationType == typeof(ActorNameBackfillJob) ||
                             d.ImplementationType == typeof(UserRegisteredSubscriber) ||
                             d.ImplementationType == typeof(HabitCreatedSubscriber) ||
                             d.ImplementationType == typeof(HabitCompletedSubscriber) ||

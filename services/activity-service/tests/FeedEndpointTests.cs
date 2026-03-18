@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Winzy.ActivityService.Entities;
 using Xunit;
 
@@ -401,6 +402,34 @@ public class FeedEndpointTests : IAsyncLifetime
         Assert.Equal(1, items.GetArrayLength());
         // actorUsername should be present in JSON (as null)
         Assert.True(items[0].TryGetProperty("actorUsername", out _));
+    }
+
+    // --- Idempotency (no DB writes from GET) ---
+
+    [Fact]
+    public async Task GetFeed_DoesNotWriteActorNamesToDb()
+    {
+        // Seed an entry with null ActorUsername (simulates old data before denormalization)
+        await SeedFeedEntry(_userId, "habit.created", new { habitId = Guid.NewGuid(), name = "Read" });
+
+        // Set up auth profiles so the endpoint CAN resolve names in-memory
+        MockAuthHandler.SetProfile(_userId, "testuser", "Test User");
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/activity/feed", CT);
+
+        // The response should have the enriched actor name
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal("testuser", items[0].GetProperty("actorUsername").GetString());
+
+        // But the DB row should still have null ActorUsername (no write-through)
+        using var db = _fixture.CreateDbContext();
+        var dbEntry = await db.FeedEntries.FirstAsync(CT);
+        Assert.Null(dbEntry.ActorUsername);
+        Assert.Null(dbEntry.ActorDisplayName);
     }
 
     // --- GET /health ---
