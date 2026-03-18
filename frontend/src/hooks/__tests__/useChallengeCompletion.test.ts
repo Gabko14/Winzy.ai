@@ -3,10 +3,12 @@ import { Platform } from "react-native";
 import { useChallengeCompletion } from "../useChallengeCompletion";
 
 const mockFetchChallenges = jest.fn();
+const mockFetchChallengesByStatus = jest.fn();
 const mockClaimChallenge = jest.fn();
 
 jest.mock("../../api/challenges", () => ({
   fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
+  fetchChallengesByStatus: (...args: unknown[]) => mockFetchChallengesByStatus(...args),
   claimChallenge: (...args: unknown[]) => mockClaimChallenge(...args),
 }));
 
@@ -47,7 +49,7 @@ describe("useChallengeCompletion", () => {
   // --- Happy path ---
 
   it("detects a newly completed challenge after initial load", async () => {
-    // Initial load: only active challenges
+    // Initial load: only active challenges (uses fetchChallenges)
     mockFetchChallenges.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-1", status: "active" })],
       page: 1,
@@ -63,8 +65,8 @@ describe("useChallengeCompletion", () => {
     });
     expect(result.current.current).toBeNull();
 
-    // Next poll: challenge is now completed
-    mockFetchChallenges.mockResolvedValueOnce({
+    // Next poll: uses filtered endpoint (fetchChallengesByStatus)
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-1", status: "completed" })],
       page: 1,
       pageSize: 100,
@@ -81,6 +83,8 @@ describe("useChallengeCompletion", () => {
     });
     expect(result.current.current?.id).toBe("ch-1");
     expect(result.current.current?.status).toBe("completed");
+    // Verify it used the filtered endpoint
+    expect(mockFetchChallengesByStatus).toHaveBeenCalledWith("completed", expect.any(String));
   });
 
   it("claim succeeds and removes challenge from queue", async () => {
@@ -97,8 +101,8 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    // Poll detects completion
-    mockFetchChallenges.mockResolvedValueOnce({
+    // Poll detects completion (uses filtered endpoint)
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-1", status: "completed" })],
       page: 1,
       pageSize: 100,
@@ -155,8 +159,8 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    // Both complete
-    mockFetchChallenges.mockResolvedValueOnce({
+    // Both complete (filtered endpoint)
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [
         makeChallenge({ id: "ch-1", status: "completed" }),
         makeChallenge({ id: "ch-2", status: "completed" }),
@@ -202,7 +206,7 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    mockFetchChallenges.mockResolvedValueOnce({
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-empty", status: "completed", rewardDescription: "" })],
       page: 1,
       pageSize: 100,
@@ -257,12 +261,13 @@ describe("useChallengeCompletion", () => {
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
-    // Still only the initial call
+    // Still only the initial call (fetchChallenges), no filtered polls
     expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
 
-    // Simulate tab becoming visible again
+    // Simulate tab becoming visible again — resumes with filtered endpoint
     mockDocument.hidden = false;
-    mockFetchChallenges.mockResolvedValueOnce({
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [],
       page: 1,
       pageSize: 100,
@@ -272,9 +277,9 @@ describe("useChallengeCompletion", () => {
       for (const handler of listeners["visibilitychange"] || []) handler();
     });
 
-    // Should have fetched immediately on becoming visible
+    // Should have fetched immediately on becoming visible (via filtered endpoint)
     await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(2);
+      expect(mockFetchChallengesByStatus).toHaveBeenCalledTimes(1);
     });
 
     unmount();
@@ -297,7 +302,8 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    mockFetchChallenges.mockResolvedValueOnce({
+    // triggerCheck after initial load uses filtered endpoint
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-push", status: "completed" })],
       page: 1,
       pageSize: 100,
@@ -328,7 +334,7 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    mockFetchChallenges.mockResolvedValueOnce({
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-fail", status: "completed" })],
       page: 1,
       pageSize: 100,
@@ -367,8 +373,8 @@ describe("useChallengeCompletion", () => {
       expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
     });
 
-    // Next poll fails
-    mockFetchChallenges.mockRejectedValueOnce(new Error("Network error"));
+    // Next poll fails (filtered endpoint)
+    mockFetchChallengesByStatus.mockRejectedValueOnce(new Error("Network error"));
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
@@ -376,7 +382,7 @@ describe("useChallengeCompletion", () => {
     expect(result.current.current).toBeNull();
 
     // Next poll works fine — recovery
-    mockFetchChallenges.mockResolvedValueOnce({
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
       items: [makeChallenge({ id: "ch-recover", status: "completed" })],
       page: 1,
       pageSize: 100,

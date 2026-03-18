@@ -281,6 +281,141 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(0, items.GetArrayLength());
     }
 
+    // --- GET /challenges?status=...&since=... ---
+
+    [Fact]
+    public async Task ListChallenges_StatusFilter_ReturnsOnlyMatching()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // Create a challenge (active)
+        var createResponse = await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        // Filtering by "completed" should return nothing (challenge is active)
+        var response = await client.GetAsync("/challenges?status=completed", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
+
+        // Filtering by "active" should return the challenge
+        response = await client.GetAsync("/challenges?status=active", CT);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task ListChallenges_StatusFilterCaseInsensitive()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        // Mixed case should still work
+        var response = await client.GetAsync("/challenges?status=Active", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListChallenges_InvalidStatusFilter_ReturnsAll()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        // Invalid status value should be ignored — returns all
+        var response = await client.GetAsync("/challenges?status=nonsense", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListChallenges_SinceFilter_FiltersOlderChallenges()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        // Since filter set to the future — should return nothing
+        var futureDate = DateTimeOffset.UtcNow.AddHours(1).ToString("o");
+        var response = await client.GetAsync($"/challenges?since={Uri.EscapeDataString(futureDate)}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+
+        // Since filter set to the past — should return the challenge
+        var pastDate = DateTimeOffset.UtcNow.AddHours(-1).ToString("o");
+        response = await client.GetAsync($"/challenges?since={Uri.EscapeDataString(pastDate)}", CT);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListChallenges_StatusAndSinceCombined()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        await client.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee"
+        }, CT);
+
+        var pastDate = DateTimeOffset.UtcNow.AddHours(-1).ToString("o");
+
+        // status=active + since=past -> should return the challenge
+        var response = await client.GetAsync($"/challenges?status=active&since={Uri.EscapeDataString(pastDate)}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+
+        // status=completed + since=past -> should return nothing (challenge is active)
+        response = await client.GetAsync($"/challenges?status=completed&since={Uri.EscapeDataString(pastDate)}", CT);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+    }
+
     // --- GET /challenges/{id} ---
 
     [Fact]
