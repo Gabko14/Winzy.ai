@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import {
   fetchChallenges,
+  fetchChallengesByStatus,
   claimChallenge,
   type ChallengeDetail,
 } from "../api/challenges";
@@ -39,6 +40,8 @@ export function useChallengeCompletion() {
   const mountedRef = useRef(true);
   const initialLoadDone = useRef(false);
   const checkInFlight = useRef(false);
+  // Tracks when we last polled — used with the `since` server filter
+  const lastPollTime = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -53,8 +56,20 @@ export function useChallengeCompletion() {
     checkInFlight.current = true;
 
     try {
-      const data = await fetchChallenges(1, 100);
+      // First load: fetch all to seed the seen set.
+      // Subsequent polls: use server-side status+since filter.
+      // Capture timestamp BEFORE fetch to avoid clock-skew gaps — if the
+      // client clock is slightly ahead of the server, setting it after the
+      // fetch could miss completions. The seenCompletedIds set deduplicates
+      // any overlap from the slight backwards reach.
+      const pollTimestamp = new Date().toISOString();
+      const data = initialLoadDone.current
+        ? await fetchChallengesByStatus("completed", lastPollTime.current)
+        : await fetchChallenges(1, 100);
+
       if (!mountedRef.current) return;
+
+      lastPollTime.current = pollTimestamp;
 
       // On first load, just seed the seen set — don't celebrate pre-existing completions
       if (!initialLoadDone.current) {

@@ -13,6 +13,7 @@ using Winzy.Contracts.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("challenge-service");
 builder.Services.AddServiceDatabase<ChallengeDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddHostedService<HabitCompletedSubscriber>();
@@ -180,7 +181,8 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
 
 // --- GET /challenges ---
 
-app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int page = 1, int pageSize = 20) =>
+app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int page = 1, int pageSize = 20,
+    string? status = null, DateTimeOffset? since = null) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -190,6 +192,18 @@ app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int pag
 
     var query = db.Challenges
         .Where(c => c.CreatorId == userId || c.RecipientId == userId);
+
+    // Optional status filter (e.g., ?status=completed)
+    if (!string.IsNullOrEmpty(status) && Enum.TryParse<ChallengeStatus>(status, ignoreCase: true, out var statusEnum))
+    {
+        query = query.Where(c => c.Status == statusEnum);
+    }
+
+    // Optional since filter — only return challenges updated after this timestamp
+    if (since is not null)
+    {
+        query = query.Where(c => c.UpdatedAt >= since.Value);
+    }
 
     var total = await query.CountAsync();
     var challenges = await query

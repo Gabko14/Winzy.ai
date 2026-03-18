@@ -50,6 +50,17 @@ export function fetchChallenges(page = 1, pageSize = 20): Promise<ChallengesPage
   return api.get<ChallengesPage>(`/challenges?page=${page}&pageSize=${pageSize}`);
 }
 
+export function fetchChallengesByStatus(
+  status: ChallengeStatus,
+  since?: string,
+  page = 1,
+  pageSize = 100,
+): Promise<ChallengesPage> {
+  let url = `/challenges?page=${page}&pageSize=${pageSize}&status=${status}`;
+  if (since) url += `&since=${encodeURIComponent(since)}`;
+  return api.get<ChallengesPage>(url);
+}
+
 export function fetchChallengeDetail(id: string): Promise<ChallengeDetail> {
   return api.get<ChallengeDetail>(`/challenges/${id}`);
 }

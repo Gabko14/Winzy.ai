@@ -8,6 +8,8 @@ type Props = {
   challenge: ChallengeDetail;
   /** Creator's display name (the friend who set the challenge) */
   creatorName?: string;
+  /** When true, renders in a subdued past-challenge style (no encouragement, no active badges) */
+  isPast?: boolean;
 };
 
 // --- Encouragement messages (aligned with VISION.md) ---
@@ -120,7 +122,7 @@ function formatProgressValue(challenge: ChallengeDetail): string {
   return `${challenge.completionCount} / ${Math.round(challenge.targetValue)}`;
 }
 
-export function ChallengeProgressCard({ challenge, creatorName }: Props) {
+export function ChallengeProgressCard({ challenge, creatorName, isPast }: Props) {
   const colors = lightTheme;
   const progressPercent = getProgressPercent(challenge);
   const daysRemaining = getDaysRemaining(challenge);
@@ -138,11 +140,11 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
 
   return (
     <View testID="challenge-progress-card">
-    <Card style={styles.card}>
+    <Card style={{ ...styles.card, ...(isPast ? styles.pastCard : undefined) }}>
       {/* Header: title + milestone badge */}
       <View style={styles.header}>
         <Text
-          style={[styles.title, { color: colors.textPrimary }]}
+          style={[styles.title, { color: isPast ? colors.textSecondary : colors.textPrimary }]}
           testID="challenge-title"
           numberOfLines={2}
         >
@@ -154,6 +156,16 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
           testID="challenge-milestone-badge"
         />
       </View>
+
+      {/* Creator info — shown prominently before reward for friend context */}
+      {creatorName && (
+        <Text
+          style={[styles.creatorInfo, { color: colors.textTertiary }]}
+          testID="challenge-creator"
+        >
+          Set by {creatorName}
+        </Text>
+      )}
 
       {/* Reward */}
       <Text
@@ -171,7 +183,7 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
             style={[
               styles.progressFill,
               {
-                backgroundColor: colors.brandPrimary,
+                backgroundColor: isPast ? colors.textTertiary : colors.brandPrimary,
                 width: `${Math.min(progressPercent, 100)}%`,
               },
             ]}
@@ -179,7 +191,7 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
           />
         </View>
         <Text
-          style={[styles.progressValue, { color: colors.brandPrimary }]}
+          style={[styles.progressValue, { color: isPast ? colors.textTertiary : colors.brandPrimary }]}
           testID="challenge-progress-value"
         >
           {formatProgressValue(challenge)}
@@ -192,34 +204,30 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
           style={[styles.daysRemaining, { color: colors.textSecondary }]}
           testID="challenge-days-remaining"
         >
-          {daysRemaining === 0
-            ? "Time's up"
-            : `${daysRemaining} day${daysRemaining !== 1 ? "s" : ""} remaining`}
+          {isPast
+            ? "Ended"
+            : daysRemaining === 0
+              ? "Time's up"
+              : `${daysRemaining} day${daysRemaining !== 1 ? "s" : ""} remaining`}
         </Text>
-        <Badge
-          label={trend === "onTrack" ? "On track" : trend === "needsPush" ? "Room to grow" : trend === "almostThere" ? "Almost there" : trend === "completed" ? "Completed" : trend === "starting" ? "Just started" : "Grace period"}
-          variant={trendVariant}
-          testID="challenge-trend-badge"
-        />
+        {!isPast && (
+          <Badge
+            label={trend === "onTrack" ? "On track" : trend === "needsPush" ? "Room to grow" : trend === "almostThere" ? "Almost there" : trend === "completed" ? "Completed" : trend === "starting" ? "Just started" : "Grace period"}
+            variant={trendVariant}
+            testID="challenge-trend-badge"
+          />
+        )}
       </View>
 
-      {/* Creator info */}
-      {creatorName && (
+      {/* Encouragement — hidden for past challenges */}
+      {!isPast && (
         <Text
-          style={[styles.creatorInfo, { color: colors.textTertiary }]}
-          testID="challenge-creator"
+          style={[styles.encouragement, { color: colors.textSecondary }]}
+          testID="challenge-encouragement"
         >
-          Set by {creatorName}
+          {encouragement}
         </Text>
       )}
-
-      {/* Encouragement */}
-      <Text
-        style={[styles.encouragement, { color: colors.textSecondary }]}
-        testID="challenge-encouragement"
-      >
-        {encouragement}
-      </Text>
     </Card>
     </View>
   );
@@ -228,6 +236,9 @@ export function ChallengeProgressCard({ challenge, creatorName }: Props) {
 const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.md,
+  },
+  pastCard: {
+    opacity: 0.7,
   },
   header: {
     flexDirection: "row",

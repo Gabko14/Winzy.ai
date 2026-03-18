@@ -140,6 +140,56 @@ describe("ChallengeProgressCard", () => {
     // Both title and milestone badge fall back to "Challenge"
     expect(screen.getAllByText("Challenge").length).toBeGreaterThanOrEqual(1);
   });
+
+  // --- Past challenge rendering (isPast prop) ---
+
+  it("hides encouragement text when isPast is true", () => {
+    const challenge = makeChallengeDetail({ status: "expired" });
+    render(<ChallengeProgressCard challenge={challenge} isPast />);
+
+    expect(screen.queryByTestId("challenge-encouragement")).toBeNull();
+  });
+
+  it("hides trend badge when isPast is true", () => {
+    const challenge = makeChallengeDetail({ status: "expired" });
+    render(<ChallengeProgressCard challenge={challenge} isPast />);
+
+    expect(screen.queryByTestId("challenge-trend-badge")).toBeNull();
+  });
+
+  it("shows 'Ended' instead of days remaining when isPast is true", () => {
+    const challenge = makeChallengeDetail({
+      status: "expired",
+      endsAt: new Date(Date.now() - 86400000).toISOString(),
+    });
+    render(<ChallengeProgressCard challenge={challenge} isPast />);
+
+    expect(screen.getByText("Ended")).toBeTruthy();
+    expect(screen.queryByText("Time's up")).toBeNull();
+  });
+
+  it("shows creator name for past challenges", () => {
+    const challenge = makeChallengeDetail({ status: "completed" });
+    render(<ChallengeProgressCard challenge={challenge} creatorName="Jamie" isPast />);
+
+    expect(screen.getByText("Set by Jamie")).toBeTruthy();
+  });
+
+  it("renders progress bar and value in past mode without crashing", () => {
+    const challenge = makeChallengeDetail({ status: "completed", progress: 1.0 });
+    render(<ChallengeProgressCard challenge={challenge} isPast />);
+
+    expect(screen.getByTestId("challenge-progress-bar")).toBeTruthy();
+    expect(screen.getByTestId("challenge-progress-value")).toBeTruthy();
+  });
+
+  it("still shows encouragement and trend badge when isPast is not set", () => {
+    const challenge = makeChallengeDetail({ status: "active" });
+    render(<ChallengeProgressCard challenge={challenge} />);
+
+    expect(screen.getByTestId("challenge-encouragement")).toBeTruthy();
+    expect(screen.getByTestId("challenge-trend-badge")).toBeTruthy();
+  });
 });
 
 // --- Unit tests for helper functions ---
