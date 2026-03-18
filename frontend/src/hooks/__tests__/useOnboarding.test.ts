@@ -219,4 +219,5 @@ describe("useOnboarding", () => {
     });
     expect(result.current.hasSeenWelcome).toBe(true);
   });
+
 });
