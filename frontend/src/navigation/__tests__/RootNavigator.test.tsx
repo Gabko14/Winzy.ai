@@ -608,14 +608,16 @@ describe("RootNavigator", () => {
 
   it("shows flame intro modal after first habit creation", () => {
     mockOnboarding.hasSeenFlameIntro = false;
-    const { getByTestId } = render(<RootNavigator />);
+    const { getByTestId, queryByTestId } = render(<RootNavigator />);
 
     // Navigate to habits overlay
     fireEvent.press(getByTestId("create-habit-press"));
     expect(getByTestId("habit-list-screen")).toBeTruthy();
 
-    // Simulate habit creation callback
+    // Simulate habit creation callback — should return to TodayScreen with flame intro
     fireEvent.press(getByTestId("habit-created-trigger"));
+    expect(queryByTestId("habit-list-screen")).toBeNull();
+    expect(getByTestId("today-screen")).toBeTruthy();
     expect(getByTestId("flame-intro-modal")).toBeTruthy();
   });
 
@@ -626,6 +628,8 @@ describe("RootNavigator", () => {
     fireEvent.press(getByTestId("create-habit-press"));
     fireEvent.press(getByTestId("habit-created-trigger"));
     expect(queryByTestId("flame-intro-modal")).toBeNull();
+    // Returning user stays on management screen
+    expect(getByTestId("habit-list-screen")).toBeTruthy();
   });
 
   // --- Edit habit direct to form (winzy.ai-2yc9) ---

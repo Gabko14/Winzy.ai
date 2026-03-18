@@ -76,9 +76,9 @@ export function RootNavigator() {
   const [selectedFriendName, setSelectedFriendName] = useState<string | null>(null);
   const [editHabitData, setEditHabitData] = useState<Habit | null>(null);
 
-  const unreadCount = useUnreadCount();
+  const unreadCount = useUnreadCount(auth.status === "authenticated");
   const pendingFriendCount = usePendingFriendCount();
-  const onboarding = useOnboarding();
+  const onboarding = useOnboarding(auth.status === "authenticated" ? auth.user.id : "");
   const visibility = useVisibility();
   const challengeCompletion = useChallengeCompletion();
   const [showFlameIntro, setShowFlameIntro] = useState(false);
@@ -300,15 +300,12 @@ export function RootNavigator() {
           onBack={dismissOverlay}
           onHabitCreated={() => {
             if (!onboarding.hasSeenFlameIntro) {
+              // First habit: return to daily loop and show flame intro
+              setOverlay(null);
+              setActiveTab("today");
               setShowFlameIntro(true);
             }
-          }}
-        />
-        <FlameIntroModal
-          visible={showFlameIntro}
-          onDismiss={() => {
-            setShowFlameIntro(false);
-            onboarding.markFlameIntroSeen();
+            // Returning users stay on HabitListScreen
           }}
         />
         <StatusBar style="auto" />
