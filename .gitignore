@@ -11,7 +11,7 @@
 
 # Migration artifacts
 .beads-go-backup/
-.beads/backup/backup/
+.beads/backup/
 
 # Beadspace generated data (pipeline regenerates from .beads/issues.jsonl)
 .beadspace/*.json
