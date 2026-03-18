@@ -320,4 +320,79 @@ describe("usePendingFriendCount", () => {
       resolveRequest({ count: 1 });
     });
   });
+
+  // --- Auth-aware polling tests (winzy.ai-2pb1) ---
+
+  it("does not poll when isAuthenticated is false", async () => {
+    fetchPendingFriendCount.mockResolvedValue({ count: 5 });
+
+    renderHook(() => usePendingFriendCount(false));
+
+    await flushPromises();
+
+    expect(fetchPendingFriendCount).not.toHaveBeenCalled();
+  });
+
+  it("resets count to 0 when isAuthenticated transitions to false", async () => {
+    mockRequests(8);
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => usePendingFriendCount(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await flushPromises();
+
+    expect(result.current.count).toBe(8);
+
+    // Simulate logout
+    rerender({ authed: false });
+
+    expect(result.current.count).toBe(0);
+  });
+
+  it("stops polling when isAuthenticated becomes false", async () => {
+    mockRequests(3);
+
+    const { rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => usePendingFriendCount(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await flushPromises();
+
+    expect(fetchPendingFriendCount).toHaveBeenCalledTimes(1);
+
+    fetchPendingFriendCount.mockClear();
+
+    // Logout
+    rerender({ authed: false });
+
+    // Advance past poll interval — should not fire
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(fetchPendingFriendCount).not.toHaveBeenCalled();
+  });
+
+  it("fetches immediately when isAuthenticated transitions to true", async () => {
+    fetchPendingFriendCount.mockResolvedValue({ count: 4 });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => usePendingFriendCount(authed),
+      { initialProps: { authed: false } },
+    );
+
+    expect(fetchPendingFriendCount).not.toHaveBeenCalled();
+    expect(result.current.count).toBe(0);
+
+    // Login
+    rerender({ authed: true });
+
+    await flushPromises();
+
+    expect(result.current.count).toBe(4);
+    expect(fetchPendingFriendCount).toHaveBeenCalledTimes(1);
+  });
 });

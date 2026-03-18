@@ -27,8 +27,11 @@ type ChallengeCompletionState = {
  * Detection: polls challenges every 30s. When a challenge with
  * status "completed" appears that hasn't been seen before, it's
  * queued for celebration.
+ *
+ * @param isAuthenticated - Gate polling on auth status. When false, polling stops
+ *   and the queue is cleared so public/unauthenticated surfaces don't hit protected APIs.
  */
-export function useChallengeCompletion() {
+export function useChallengeCompletion(isAuthenticated = true) {
   const [state, setState] = useState<ChallengeCompletionState>({
     queue: [],
     claiming: false,
@@ -42,6 +45,8 @@ export function useChallengeCompletion() {
   const checkInFlight = useRef(false);
   // Tracks when we last polled — used with the `since` server filter
   const lastPollTime = useRef<string | undefined>(undefined);
+  // Prevents a slow in-flight fetch from writing stale data after auth drops
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -67,7 +72,7 @@ export function useChallengeCompletion() {
         ? await fetchChallengesByStatus("completed", lastPollTime.current)
         : await fetchChallenges(1, 100);
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || cancelledRef.current) return;
 
       lastPollTime.current = pollTimestamp;
 
@@ -103,8 +108,23 @@ export function useChallengeCompletion() {
     }
   }, []);
 
+  // Clear state when auth drops
+  useEffect(() => {
+    if (!isAuthenticated) {
+      cancelledRef.current = true;
+      setState({ queue: [], claiming: false, claimError: null });
+      initialLoadDone.current = false;
+      checkInFlight.current = false;
+      seenCompletedIds.current.clear();
+      lastPollTime.current = undefined;
+    }
+  }, [isAuthenticated]);
+
   // Initial load + polling with page visibility pause
   useEffect(() => {
+    if (!isAuthenticated) return;
+    cancelledRef.current = false;
+
     checkForCompletions();
     let interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
 
@@ -129,7 +149,7 @@ export function useChallengeCompletion() {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
     };
-  }, [checkForCompletions]);
+  }, [checkForCompletions, isAuthenticated]);
 
   /** The challenge currently being celebrated (front of queue) */
   const current = state.queue.length > 0 ? state.queue[0] : null;
