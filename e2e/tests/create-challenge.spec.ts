@@ -121,16 +121,25 @@ test.describe("Create Challenge flow", () => {
       expect(resB.status()).toBe(200);
     });
 
-    await test.step("user B creates a habit", async () => {
+    await test.step("user B creates a habit and sets visibility to friends", async () => {
       const res = await request.post(`${API_BASE}/habits`, {
         headers: { Authorization: `Bearer ${userBToken}` },
         data: {
           name: "Daily Meditation",
           frequency: "daily",
-          visibility: "friends",
         },
       });
       expect(res.status()).toBe(201);
+      const habit = await res.json();
+
+      // Habit service ignores `visibility` — it's managed by the social service.
+      // Set per-habit visibility so user A can see it on friend B's profile.
+      const visRes = await request.put(`${API_BASE}/social/visibility/${habit.id}`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+        data: { visibility: "friends" },
+      });
+      expect(visRes.status()).toBe(200);
+
       test.info().annotations.push({
         type: "step",
         description: "User B has a visible habit: Daily Meditation",

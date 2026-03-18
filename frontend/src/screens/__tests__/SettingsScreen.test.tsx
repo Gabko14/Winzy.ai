@@ -133,7 +133,10 @@ describe("SettingsScreen — Account Section", () => {
     });
   });
 
-  it("does not clear local state when sign out API fails", async () => {
+  it("does not clear local state when sign out API fails on web", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
     const { tokenStore } = jest.requireMock("../../api");
     api.post.mockRejectedValue(new Error("network error"));
 
@@ -143,8 +146,8 @@ describe("SettingsScreen — Account Section", () => {
     });
 
     fireEvent.press(screen.getByText("Sign out"));
-    // The logout error propagates — tokens are NOT cleared because the server
-    // did not confirm revocation. The HttpOnly cookie is still alive.
+    // On web, the logout error propagates — tokens are NOT cleared because the
+    // server did not confirm revocation. The HttpOnly cookie is still alive.
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith("/auth/logout", undefined);
     });
@@ -153,6 +156,38 @@ describe("SettingsScreen — Account Section", () => {
     await waitFor(() => {
       expect(screen.getByTestId("sign-out-error")).toBeTruthy();
     });
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("clears local state when sign out API fails on native", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "ios", writable: true });
+
+    const { tokenStore } = jest.requireMock("../../api");
+    api.post.mockRejectedValue(new Error("network error"));
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByText("Sign out")).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByText("Sign out"));
+    // On native, tokens are in local storage and should be cleared regardless
+    // of whether the server confirmed revocation.
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith("/auth/logout", undefined);
+    });
+    await waitFor(() => {
+      expect(tokenStore.clear).toHaveBeenCalled();
+    });
+    // State moves to unauthenticated, so SettingsScreen unmounts (returns null).
+    // No sign-out-error visible because the screen is no longer rendered.
+    await waitFor(() => {
+      expect(screen.queryByTestId("settings-screen")).toBeNull();
+    });
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
   });
 });
 
