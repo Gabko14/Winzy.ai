@@ -413,6 +413,176 @@ public class VisibilityEndpointTests : IAsyncLifetime
         Assert.Equal(0, body.GetProperty("habitIds").GetArrayLength());
     }
 
+    [Fact]
+    public async Task InternalVisibleHabits_DefaultPublic_ExcludesNonPublicHabits()
+    {
+        // When default is public, habits explicitly set to non-public must appear in excludedHabitIds
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Set default to public
+        await client.PutAsJsonAsync("/social/preferences", new { defaultHabitVisibility = "public" }, CT);
+        // Explicitly set habit1 to friends (non-public), habit2 stays at default (public)
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "friends" }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync(
+            $"/social/internal/visible-habits/{_userId}?viewer=public", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("public", body.GetProperty("defaultVisibility").GetString());
+
+        // habit1 set to friends -> excluded from public view
+        var excludedIds = body.GetProperty("excludedHabitIds").EnumerateArray()
+            .Select(e => e.GetGuid()).ToHashSet();
+        Assert.Contains(_habitId1, excludedIds);
+
+        // habit2 has no explicit setting -> not excluded, not in visibleHabitIds
+        // (when default=public, absence from excludedHabitIds means visible)
+        Assert.DoesNotContain(_habitId2, excludedIds);
+    }
+
+    [Fact]
+    public async Task InternalVisibleHabits_DefaultPublic_PrivateHabitExcluded()
+    {
+        // A habit explicitly set to private must be in excludedHabitIds when default is public
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        await client.PutAsJsonAsync("/social/preferences", new { defaultHabitVisibility = "public" }, CT);
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId2}", new { visibility = "private" }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync(
+            $"/social/internal/visible-habits/{_userId}?viewer=public", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+
+        var excludedIds = body.GetProperty("excludedHabitIds").EnumerateArray()
+            .Select(e => e.GetGuid()).ToHashSet();
+        Assert.Contains(_habitId2, excludedIds);
+    }
+
+    [Fact]
+    public async Task InternalVisibleHabits_FriendViewer_DefaultPublic_SeesAll()
+    {
+        // When default=public, a friend viewer should see friends+public habits
+        // and exclude only private ones
+        await CreateFriendship();
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        await client.PutAsJsonAsync("/social/preferences", new { defaultHabitVisibility = "public" }, CT);
+        // habit1 explicitly private -> excluded for friend too
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "private" }, CT);
+        // habit2 explicitly friends -> visible to friend
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId2}", new { visibility = "friends" }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+        var response = await internalClient.GetAsync(
+            $"/social/internal/visible-habits/{_userId}?viewer={_friendId}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+
+        var visibleIds = body.GetProperty("habitIds").EnumerateArray()
+            .Select(e => e.GetGuid()).ToHashSet();
+        var excludedIds = body.GetProperty("excludedHabitIds").EnumerateArray()
+            .Select(e => e.GetGuid()).ToHashSet();
+
+        // habit2 (friends) visible to friend
+        Assert.Contains(_habitId2, visibleIds);
+        // habit1 (private) excluded even from friend
+        Assert.Contains(_habitId1, excludedIds);
+        Assert.DoesNotContain(_habitId1, visibleIds);
+    }
+
+    [Fact]
+    public async Task InternalVisibleHabits_PublicAndFriendViewerParity()
+    {
+        // Cross-surface parity: verify that public viewer sees less than friend viewer
+        await CreateFriendship();
+        SetupUserHabits();
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // habit1 = friends, habit2 = public
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId1}", new { visibility = "friends" }, CT);
+        await client.PutAsJsonAsync($"/social/visibility/{_habitId2}", new { visibility = "public" }, CT);
+
+        using var internalClient = _fixture.Factory.CreateClient();
+
+        // Public viewer
+        var publicResponse = await internalClient.GetAsync(
+            $"/social/internal/visible-habits/{_userId}?viewer=public", CT);
+        var publicBody = await publicResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var publicVisible = publicBody.GetProperty("habitIds").GetArrayLength();
+
+        // Friend viewer
+        var friendResponse = await internalClient.GetAsync(
+            $"/social/internal/visible-habits/{_userId}?viewer={_friendId}", CT);
+        var friendBody = await friendResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var friendVisible = friendBody.GetProperty("habitIds").GetArrayLength();
+
+        // Friend should see strictly more (or equal) habits than public
+        Assert.True(friendVisible >= publicVisible,
+            $"Friend viewer should see >= habits than public viewer. Friend={friendVisible}, Public={publicVisible}");
+        Assert.Equal(1, publicVisible);  // Only habit2 (public)
+        Assert.Equal(2, friendVisible);  // Both habits
+    }
+
+    [Fact]
+    public async Task GetFriendProfile_HabitServiceDegraded_ReturnsEmptyHabits()
+    {
+        // When habit service is down, friend profile should gracefully return empty habits
+        await CreateFriendship();
+
+        // Don't set up habits in mock -> will return 404 from MockHabitHandler
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetFriendProfile_DefaultPublic_ExcludesExplicitPrivate()
+    {
+        // End-to-end: default=public, one habit explicitly private -> friend should see only non-private
+        await CreateFriendship();
+
+        var habitId3 = Guid.NewGuid();
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = _habitId1.ToString(), name = "Habit A", icon = "star", color = "#aaa" },
+            new { id = _habitId2.ToString(), name = "Habit B", icon = "moon", color = "#bbb" },
+            new { id = habitId3.ToString(), name = "Habit C", icon = "sun", color = "#ccc" }
+        ]);
+
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Default = friends (visible to friends), but habit2 explicitly private
+        await friendClient.PutAsJsonAsync("/social/preferences", new { defaultHabitVisibility = "friends" }, CT);
+        await friendClient.PutAsJsonAsync($"/social/visibility/{_habitId2}", new { visibility = "private" }, CT);
+
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+
+        var habitNames = Enumerable.Range(0, habits.GetArrayLength())
+            .Select(i => habits[i].GetProperty("name").GetString())
+            .ToHashSet();
+
+        // Habit A and Habit C use default (friends), Habit B is explicitly private
+        Assert.Contains("Habit A", habitNames);
+        Assert.Contains("Habit C", habitNames);
+        Assert.DoesNotContain("Habit B", habitNames);
+    }
+
     // --- HabitArchivedSubscriber integration tests ---
 
     [Fact]

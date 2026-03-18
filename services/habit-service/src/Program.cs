@@ -522,8 +522,13 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
     {
         var authClient = httpClientFactory.CreateClient("AuthService");
         using var resolveResponse = await authClient.GetAsync($"/auth/internal/resolve/{Uri.EscapeDataString(username)}");
-        if (!resolveResponse.IsSuccessStatusCode)
+        if (resolveResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
             return Results.NotFound();
+        if (!resolveResponse.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Auth service returned {StatusCode} resolving username {Username}", resolveResponse.StatusCode, username);
+            return Results.StatusCode(503);
+        }
 
         var resolved = await resolveResponse.Content.ReadFromJsonAsync<ResolvedUserResponse>();
         if (resolved is null)
@@ -534,13 +539,14 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
         logger.LogWarning(ex, "Failed to resolve username {Username} via auth service", username);
-        return Results.NotFound();
+        return Results.StatusCode(503);
     }
 
     // Check visibility with Social Service (fail-safe: empty habits if unavailable)
     HashSet<Guid> visibleHabitIds;
     HashSet<Guid> excludedHabitIds;
     bool defaultIsPublic;
+    bool socialDegraded = false;
     try
     {
         var socialClient = httpClientFactory.CreateClient("SocialService");
@@ -549,18 +555,26 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         if (!visResponse.IsSuccessStatusCode)
         {
             logger.LogWarning("Social service returned {StatusCode} for visibility check, failing safe", visResponse.StatusCode);
-            return Results.Ok(new { username, habits = Array.Empty<object>() });
+            visibleHabitIds = [];
+            excludedHabitIds = [];
+            defaultIsPublic = false;
+            socialDegraded = true;
         }
-
-        var visData = await visResponse.Content.ReadFromJsonAsync<VisibilityResponse>();
-        visibleHabitIds = visData?.HabitIds?.ToHashSet() ?? [];
-        excludedHabitIds = visData?.ExcludedHabitIds?.ToHashSet() ?? [];
-        defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
+        else
+        {
+            var visData = await visResponse.Content.ReadFromJsonAsync<VisibilityResponse>();
+            visibleHabitIds = visData?.HabitIds?.ToHashSet() ?? [];
+            excludedHabitIds = visData?.ExcludedHabitIds?.ToHashSet() ?? [];
+            defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
+        }
     }
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
         logger.LogWarning(ex, "Failed to check visibility via social service for user {UserId}, failing safe", resolvedUserId);
-        return Results.Ok(new { username, habits = Array.Empty<object>() });
+        visibleHabitIds = [];
+        excludedHabitIds = [];
+        defaultIsPublic = false;
+        socialDegraded = true;
     }
 
     var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
@@ -605,7 +619,7 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         };
     });
 
-    return Results.Ok(new { username, habits = result });
+    return Results.Ok(new { username, habits = result, degraded = socialDegraded });
 });
 
 // --- SVG flame badge endpoint (embeddable, no auth) ---
@@ -618,8 +632,13 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
     {
         var authClient = httpClientFactory.CreateClient("AuthService");
         using var resolveResponse = await authClient.GetAsync($"/auth/internal/resolve/{Uri.EscapeDataString(username)}");
-        if (!resolveResponse.IsSuccessStatusCode)
+        if (resolveResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
             return Results.NotFound();
+        if (!resolveResponse.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Auth service returned {StatusCode} resolving username {Username} for badge", resolveResponse.StatusCode, username);
+            return Results.StatusCode(503);
+        }
 
         var resolved = await resolveResponse.Content.ReadFromJsonAsync<ResolvedUserResponse>();
         if (resolved is null)
@@ -630,7 +649,7 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
         logger.LogWarning(ex, "Failed to resolve username {Username} for flame badge", username);
-        return Results.NotFound();
+        return Results.StatusCode(503);
     }
 
     // Check visibility with Social Service (fail-safe: show "none" flame if unavailable)

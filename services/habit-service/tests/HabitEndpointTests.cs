@@ -742,7 +742,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
     }
 
     [Fact]
-    public async Task PublicFlame_SocialServiceUnavailable_ReturnsEmptyHabits()
+    public async Task PublicFlame_SocialServiceUnavailable_ReturnsDegradedWithEmptyHabits()
     {
         using var client = _fixture.CreateAuthenticatedClient(_userId);
         await client.PostAsJsonAsync("/habits", new { name = "Should Not Show", frequency = 0 }, CT);
@@ -756,6 +756,37 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+        // Degraded flag must be true so callers can distinguish from "user has no public habits"
+        Assert.True(body.GetProperty("degraded").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PublicFlame_HealthySocialService_ReturnsNotDegraded()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        await client.PostAsJsonAsync("/habits", new { name = "Visible", frequency = 0 }, CT);
+
+        MockAuthHandler.UsernameToUserId["healthy"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [], "private");
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        var response = await publicClient.GetAsync("/habits/public/healthy", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.False(body.GetProperty("degraded").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PublicFlame_AuthServiceDegraded_Returns503()
+    {
+        // Auth service returning a server error should produce 503, not 404
+        MockAuthHandler.SimulateFailure();
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        var response = await publicClient.GetAsync("/habits/public/anyuser", CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 
     [Fact]
@@ -766,6 +797,68 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         var response = await publicClient.GetAsync("/habits/public/nonexistent", CT);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PublicFlame_DefaultPublic_WithExclusions_NarrowsCorrectly()
+    {
+        // End-to-end visibility narrowing: default=public, one habit explicitly excluded
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var r1 = await client.PostAsJsonAsync("/habits", new { name = "Public Habit", frequency = 0 }, CT);
+        var h1 = (await r1.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        var r2 = await client.PostAsJsonAsync("/habits", new { name = "Excluded Habit", frequency = 0 }, CT);
+        var h2 = (await r2.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync("/habits", new { name = "Also Public", frequency = 0 }, CT);
+
+        // default=public, but h2 is explicitly excluded (marked non-public)
+        MockAuthHandler.UsernameToUserId["narrowed"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [], "public", excludedHabitIds: [h2]);
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
+
+        var response = await publicClient.GetAsync("/habits/public/narrowed", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+        Assert.Equal(2, habits.GetArrayLength()); // 3 habits minus 1 excluded = 2
+
+        var habitNames = Enumerable.Range(0, habits.GetArrayLength())
+            .Select(i => habits[i].GetProperty("name").GetString())
+            .ToHashSet();
+        Assert.Contains("Public Habit", habitNames);
+        Assert.Contains("Also Public", habitNames);
+        Assert.DoesNotContain("Excluded Habit", habitNames);
+    }
+
+    [Fact]
+    public async Task PublicFlame_DefaultPrivate_ExplicitPublicOnly()
+    {
+        // When default=private, only explicitly public habits should show
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var r1 = await client.PostAsJsonAsync("/habits", new { name = "Explicitly Public", frequency = 0 }, CT);
+        var h1 = (await r1.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync("/habits", new { name = "Implicitly Private", frequency = 0 }, CT);
+
+        MockAuthHandler.UsernameToUserId["privateby_default"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [h1], "private");
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
+
+        var response = await publicClient.GetAsync("/habits/public/privateby_default", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+        Assert.Equal(1, habits.GetArrayLength());
+        Assert.Equal("Explicitly Public", habits[0].GetProperty("name").GetString());
     }
 
     // --- GET /habits/public/{username}/flame.svg ---
@@ -804,8 +897,51 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var svg = await response.Content.ReadAsStringAsync(CT);
-        // With no visible habits, consistency is 0 → "none" flame → gray colors
+        // With no visible habits, consistency is 0 -> "none" flame -> gray colors
         Assert.Contains("#9CA3AF", svg);
+    }
+
+    [Fact]
+    public async Task FlameBadge_AuthServiceDegraded_Returns503()
+    {
+        MockAuthHandler.SimulateFailure();
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        var response = await publicClient.GetAsync("/habits/public/anyuser/flame.svg", CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FlameBadge_UnknownUser_Returns404()
+    {
+        // Auth returns 404 for unknown username -> badge should return 404
+        using var publicClient = _fixture.Factory.CreateClient();
+        var response = await publicClient.GetAsync("/habits/public/doesnotexist/flame.svg", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FlameBadge_DefaultPublic_WithExclusions_NarrowsCorrectly()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var r1 = await client.PostAsJsonAsync("/habits", new { name = "Badge Public", frequency = 0 }, CT);
+        var h1 = (await r1.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        var r2 = await client.PostAsJsonAsync("/habits", new { name = "Badge Excluded", frequency = 0 }, CT);
+        var h2 = (await r2.Content.ReadFromJsonAsync<JsonElement>(CT)).GetProperty("id").GetGuid();
+
+        MockAuthHandler.UsernameToUserId["badgenarrow"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [], "public", excludedHabitIds: [h2]);
+
+        using var publicClient = _fixture.Factory.CreateClient();
+        var response = await publicClient.GetAsync("/habits/public/badgenarrow/flame.svg", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("image/svg+xml", response.Content.Headers.ContentType?.MediaType);
+        // Badge should render (excluded habit filtered out, only "Badge Public" contributing)
     }
 
     // --- GET /habits/completions?date=YYYY-MM-DD ---
