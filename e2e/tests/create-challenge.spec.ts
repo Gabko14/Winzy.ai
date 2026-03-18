@@ -272,12 +272,17 @@ test.describe("Create Challenge flow", () => {
       await expect(page.getByTestId("step-1-select-habit")).toBeVisible({ timeout: 10_000 });
     });
 
-    await test.step("continue button is disabled without selecting a habit", async () => {
+    await test.step("habit is auto-selected when only one exists", async () => {
+      // When there's only one shared habit, CreateChallengeScreen auto-selects it
+      // (line 97: setSelectedHabit(profile.habits[0]))
+      const radio = page.getByRole("radio", { name: /Daily Meditation/i });
+      await expect(radio).toBeVisible({ timeout: 5_000 });
+      // The continue button should be enabled since the habit is auto-selected
       const continueBtn = page.getByRole("button", { name: "Continue to next step" });
-      await expect(continueBtn).toBeDisabled();
+      await expect(continueBtn).toBeEnabled({ timeout: 5_000 });
       test.info().annotations.push({
         type: "step",
-        description: "Continue disabled when no habit selected",
+        description: "Habit auto-selected, continue button enabled",
       });
     });
   });

@@ -54,6 +54,13 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   await expect(page.getByLabel("Habit name")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Habit name").fill(habitName);
   await page.getByRole("button", { name: "Create habit" }).click();
+
+  // Dismiss FlameIntroModal if shown (first habit triggers onboarding)
+  try {
+    await page.getByText("Got it").waitFor({ state: "visible", timeout: 3_000 });
+    await page.getByText("Got it").click();
+  } catch { /* not shown */ }
+
   await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
 
   // Now on HabitListScreen with the habit. Navigate back to TodayScreen
