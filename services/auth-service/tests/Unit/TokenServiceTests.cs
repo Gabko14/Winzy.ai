@@ -142,6 +142,112 @@ public class TokenServiceTests
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
 
-        Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("Jwt:Secret", ex.Message);
+        Assert.Contains("not configured", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t")]
+    public void Constructor_ThrowsWhenSecretEmptyOrWhitespace(string secret)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = secret
+            })
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("Jwt:Secret", ex.Message);
+        Assert.Contains("not configured", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_ThrowsWhenSecretTooShort()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = new string('x', 31)
+            })
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("at least 32 characters", ex.Message);
+        Assert.Contains("31", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("your-secret-key")]
+    [InlineData("change-me")]
+    [InlineData("secret")]
+    [InlineData("placeholder")]
+    [InlineData("your-jwt-secret")]
+    public void Constructor_ThrowsForKnownPlaceholders(string secret)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = secret
+            })
+            .Build();
+
+        // All placeholders are < 32 chars, so they hit the length check first.
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("Jwt:Secret", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_ThrowsForLongPlaceholder()
+    {
+        // This placeholder is >= 32 chars — must still be rejected
+        const string legacy = "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long";
+        Assert.True(legacy.Length >= 32);
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = legacy
+            })
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("placeholder", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("YOUR-SECRET-KEY")]
+    [InlineData("CHANGE-ME")]
+    [InlineData("SECRET")]
+    public void Constructor_PlaceholderCheckIsCaseInsensitive(string secret)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = secret
+            })
+            .Build();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => new TokenService(config));
+        Assert.Contains("Jwt:Secret", ex.Message);
+    }
+
+    [Fact]
+    public void Constructor_AcceptsExactly32CharSecret()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Secret"] = new string('a', 32),
+                ["Jwt:AccessTokenMinutes"] = "15",
+                ["Jwt:RefreshTokenDays"] = "7"
+            })
+            .Build();
+
+        var exception = Record.Exception(() => new TokenService(config));
+        Assert.Null(exception);
     }
 }
