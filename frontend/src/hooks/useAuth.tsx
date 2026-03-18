@@ -73,11 +73,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    // The server must revoke the refresh token and clear the HttpOnly cookie.
-    // If that call fails, the cookie is still alive and the session persists.
-    // On web, JS cannot clear HttpOnly cookies — only the server can.
-    // Surface the error so the UI can inform the user truthfully.
-    await api.post("/auth/logout", undefined);
+    try {
+      await api.post("/auth/logout", undefined);
+    } catch (err) {
+      // On web, only the server can clear the HttpOnly cookie — surface the error.
+      // On native, we own the tokens and can clear them regardless of server state.
+      if (Platform.OS !== "web") {
+        await tokenStore.clear();
+        setState({ status: "unauthenticated" });
+      }
+      throw err;
+    }
     await tokenStore.clear();
     setState({ status: "unauthenticated" });
   }, []);

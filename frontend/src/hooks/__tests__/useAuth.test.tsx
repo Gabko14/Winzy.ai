@@ -152,7 +152,8 @@ describe("AuthProvider", () => {
     expect(tokenStore.clear).toHaveBeenCalled();
   });
 
-  it("logout throws when server call fails (session not terminated)", async () => {
+  it("logout on native clears tokens even when server call fails", async () => {
+    // jest-expo defaults Platform.OS to "ios" (native)
     bootstrapSession.mockResolvedValue({
       accessToken: "token",
       refreshToken: "refresh",
@@ -193,13 +194,70 @@ describe("AuthProvider", () => {
       getByTestId("logout").props.onPress();
     });
 
-    // Server failed — session is NOT terminated, user stays authenticated
+    // Server failed — but on native we own the tokens, so clear them anyway
+    await waitFor(() => {
+      expect(logoutError).not.toBeNull();
+    });
+    expect(getByTestId("status").props.children).toBe("unauthenticated");
+    expect(tokenStore.clear).toHaveBeenCalled();
+  });
+
+  it("logout on web does NOT clear tokens when server call fails", async () => {
+    // Temporarily set Platform.OS to "web" for this test
+    const Platform = require("react-native").Platform;
+    const originalOS = Platform.OS;
+    Platform.OS = "web";
+
+    bootstrapSession.mockResolvedValue({
+      accessToken: "token",
+      refreshToken: "refresh",
+      user: { id: "1", email: "a@b.com", username: "test" },
+    });
+    api.post.mockRejectedValue(new Error("Network error"));
+
+    let logoutError: Error | null = null;
+
+    function LogoutConsumer() {
+      const auth = useAuth();
+      return (
+        <>
+          <Text testID="status">{auth.status}</Text>
+          <Text
+            testID="logout"
+            onPress={() => {
+              auth.logout().catch((err) => {
+                logoutError = err;
+              });
+            }}
+          />
+        </>
+      );
+    }
+
+    const { getByTestId } = render(
+      <AuthProvider>
+        <LogoutConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("status").props.children).toBe("authenticated");
+    });
+
+    await act(async () => {
+      getByTestId("logout").props.onPress();
+    });
+
+    // Server failed — on web, only the server can clear the HttpOnly cookie
     await waitFor(() => {
       expect(logoutError).not.toBeNull();
     });
     expect(getByTestId("status").props.children).toBe("authenticated");
     // Tokens should NOT be cleared since the server didn't confirm logout
     expect(tokenStore.clear).not.toHaveBeenCalled();
+
+    // Restore Platform.OS
+    Platform.OS = originalOS;
   });
 });
 
