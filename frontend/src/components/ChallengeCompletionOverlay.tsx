@@ -52,7 +52,10 @@ export function ChallengeCompletionOverlay({
             <Text style={[styles.rewardLabel, { color: colors.textSecondary }]}>
               Time to celebrate together
             </Text>
-            <Text style={[styles.rewardDescription, { color: colors.textPrimary }]}>
+            <Text
+              style={[styles.rewardDescription, { color: colors.textPrimary }]}
+              numberOfLines={4}
+            >
               {challenge.rewardDescription}
             </Text>
           </View>
@@ -71,6 +74,7 @@ export function ChallengeCompletionOverlay({
           <Text
             style={[styles.errorText, { color: colors.error }]}
             testID="celebration-claim-error"
+            accessibilityRole="alert"
           >
             Let's try that again — something went wrong.
           </Text>
