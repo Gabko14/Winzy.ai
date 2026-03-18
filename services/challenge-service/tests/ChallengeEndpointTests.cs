@@ -21,7 +21,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
     public async ValueTask InitializeAsync()
     {
         await _fixture.ResetDataAsync();
-        MockSocialHandler.AddFriendship(_creatorId, _recipientId);
+        _fixture.SocialHandler.AddFriendship(_creatorId, _recipientId);
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -988,7 +988,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
     {
         // Test that concurrent requests for the same triple don't both succeed
         var habitId = Guid.NewGuid();
-        MockSocialHandler.AddFriendship(_creatorId, _recipientId);
+        _fixture.SocialHandler.AddFriendship(_creatorId, _recipientId);
 
         var tasks = Enumerable.Range(0, 5).Select(_ =>
         {
@@ -1142,7 +1142,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
     [Fact]
     public async Task CreateChallenge_SocialServiceReturns500_Returns503()
     {
-        MockSocialHandler.ForceStatusCode = HttpStatusCode.InternalServerError;
+        _fixture.SocialHandler.ForceStatusCode = HttpStatusCode.InternalServerError;
         using var client = _fixture.CreateAuthenticatedClient(_creatorId);
 
         var response = await client.PostAsJsonAsync("/challenges", new
@@ -1161,7 +1161,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
     [Fact]
     public async Task CreateChallenge_SocialServiceReturns502_Returns503()
     {
-        MockSocialHandler.ForceStatusCode = HttpStatusCode.BadGateway;
+        _fixture.SocialHandler.ForceStatusCode = HttpStatusCode.BadGateway;
         using var client = _fixture.CreateAuthenticatedClient(_creatorId);
 
         var response = await client.PostAsJsonAsync("/challenges", new
@@ -1180,7 +1180,7 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
     [Fact]
     public async Task CreateChallenge_SocialServiceTimeout_Returns503()
     {
-        MockSocialHandler.ForceTimeout = true;
+        _fixture.SocialHandler.ForceTimeout = true;
         using var client = _fixture.CreateAuthenticatedClient(_creatorId);
 
         var response = await client.PostAsJsonAsync("/challenges", new

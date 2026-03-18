@@ -33,6 +33,18 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     public string PostgresConnectionString => _postgres.GetConnectionString();
     public string NatsUrl => _nats.GetConnectionString();
 
+    /// <summary>
+    /// Instance-scoped mock handler for the Social Service HTTP client.
+    /// Each fixture instance owns its own state — no cross-class interference.
+    /// </summary>
+    public MockSocialHandler SocialHandler { get; } = new();
+
+    /// <summary>
+    /// Instance-scoped mock handler for the Habit Service HTTP client.
+    /// Each fixture instance owns its own state — no cross-class interference.
+    /// </summary>
+    public MockHabitHandler HabitHandler { get; } = new();
+
     public async ValueTask InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _nats.StartAsync());
@@ -88,13 +100,14 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
                     services.AddHostedService<HabitCompletedSubscriber>();
                     services.AddHostedService<UserDeletedSubscriber>();
 
-                    // Replace SocialService HttpClient with mock handler
+                    // Replace SocialService HttpClient with instance-scoped mock handler.
+                    // Each fixture owns its handler — parallel test classes don't share state.
                     services.AddHttpClient("SocialService")
-                        .ConfigurePrimaryHttpMessageHandler(() => new MockSocialHandler());
+                        .ConfigurePrimaryHttpMessageHandler(() => SocialHandler);
 
-                    // Replace HabitService HttpClient with mock handler
+                    // Replace HabitService HttpClient with instance-scoped mock handler.
                     services.AddHttpClient("HabitService")
-                        .ConfigurePrimaryHttpMessageHandler(() => new MockHabitHandler());
+                        .ConfigurePrimaryHttpMessageHandler(() => HabitHandler);
                 });
             });
 
@@ -156,35 +169,39 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     {
         using var db = CreateDbContext();
         await db.Challenges.ExecuteDeleteAsync();
-        MockHabitHandler.Reset();
-        MockSocialHandler.Reset();
+        HabitHandler.Reset();
+        SocialHandler.Reset();
     }
 }
 
-internal class MockSocialHandler : HttpMessageHandler
+/// <summary>
+/// Mock handler for Social Service HTTP calls. Instance-scoped — each fixture
+/// gets its own handler so parallel test classes don't interfere with each other.
+/// </summary>
+public class MockSocialHandler : HttpMessageHandler
 {
     /// <summary>
     /// Set of friend pairs. Key format: "{userId1}|{userId2}" (both orderings stored).
     /// </summary>
-    public static readonly ConcurrentDictionary<string, bool> FriendPairs = new();
+    public readonly ConcurrentDictionary<string, bool> FriendPairs = new();
 
     /// <summary>
     /// When set, all requests return this status code instead of normal logic.
     /// </summary>
-    public static HttpStatusCode? ForceStatusCode;
+    public HttpStatusCode? ForceStatusCode;
 
     /// <summary>
     /// When true, all requests throw TaskCanceledException (simulates timeout).
     /// </summary>
-    public static bool ForceTimeout;
+    public bool ForceTimeout;
 
-    public static void AddFriendship(Guid userId1, Guid userId2)
+    public void AddFriendship(Guid userId1, Guid userId2)
     {
         FriendPairs[$"{userId1}|{userId2}"] = true;
         FriendPairs[$"{userId2}|{userId1}"] = true;
     }
 
-    public static void Reset()
+    public void Reset()
     {
         FriendPairs.Clear();
         ForceStatusCode = null;
@@ -223,29 +240,47 @@ internal class MockSocialHandler : HttpMessageHandler
     }
 }
 
-internal class MockHabitHandler : HttpMessageHandler
+/// <summary>
+/// Mock handler for Habit Service HTTP calls. Instance-scoped — each fixture
+/// gets its own handler so parallel test classes don't interfere with each other.
+/// </summary>
+public class MockHabitHandler : HttpMessageHandler
 {
     /// <summary>
     /// Maps habitId -> consistency value for range queries.
     /// </summary>
-    public static readonly ConcurrentDictionary<Guid, double> HabitConsistency = new();
+    public readonly ConcurrentDictionary<Guid, double> HabitConsistency = new();
 
     /// <summary>
     /// When set, all requests return this status code instead of normal logic.
+    /// Thread-safe: read/written via Volatile to ensure cross-thread visibility.
     /// </summary>
-    public static HttpStatusCode? ForceStatusCode;
+    private int _forceStatusCode = -1; // -1 = unset
+
+    public HttpStatusCode? ForceStatusCode
+    {
+        get { var v = Volatile.Read(ref _forceStatusCode); return v < 0 ? null : (HttpStatusCode)v; }
+        set { Volatile.Write(ref _forceStatusCode, value.HasValue ? (int)value.Value : -1); }
+    }
 
     /// <summary>
     /// When true, all requests throw HttpRequestException (simulates network failure).
+    /// Thread-safe: read/written via Volatile to ensure cross-thread visibility.
     /// </summary>
-    public static bool ForceFailure;
+    private int _forceFailure; // 0 = false, 1 = true
 
-    public static void SetConsistency(Guid habitId, double consistency)
+    public bool ForceFailure
+    {
+        get => Volatile.Read(ref _forceFailure) != 0;
+        set => Volatile.Write(ref _forceFailure, value ? 1 : 0);
+    }
+
+    public void SetConsistency(Guid habitId, double consistency)
     {
         HabitConsistency[habitId] = consistency;
     }
 
-    public static void Reset()
+    public void Reset()
     {
         HabitConsistency.Clear();
         ForceStatusCode = null;
