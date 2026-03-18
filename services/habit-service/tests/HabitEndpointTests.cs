@@ -691,8 +691,6 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         MockSocialHandler.SetVisibility(_userId, [h1], "private");
 
         using var publicClient = _fixture.Factory.CreateClient();
-        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
-
         var response = await publicClient.GetAsync("/habits/public/testuser", CT);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -715,8 +713,6 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         MockSocialHandler.SetVisibility(_userId, [], "public");
 
         using var publicClient = _fixture.Factory.CreateClient();
-        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
-
         var response = await publicClient.GetAsync("/habits/public/publicuser", CT);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -818,8 +814,6 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         MockSocialHandler.SetVisibility(_userId, [], "public", excludedHabitIds: [h2]);
 
         using var publicClient = _fixture.Factory.CreateClient();
-        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
-
         var response = await publicClient.GetAsync("/habits/public/narrowed", CT);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -850,8 +844,6 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         MockSocialHandler.SetVisibility(_userId, [h1], "private");
 
         using var publicClient = _fixture.Factory.CreateClient();
-        publicClient.DefaultRequestHeaders.Add("X-Timezone", "UTC");
-
         var response = await publicClient.GetAsync("/habits/public/privateby_default", CT);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -859,6 +851,46 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         var habits = body.GetProperty("habits");
         Assert.Equal(1, habits.GetArrayLength());
         Assert.Equal("Explicitly Public", habits[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task PublicFlame_IgnoresViewerTimezone_UsesUtc()
+    {
+        // The public endpoint must use UTC regardless of X-Timezone header.
+        // Two requests — one with a far-offset timezone, one without — must return identical consistency.
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        await client.PostAsJsonAsync("/habits", new { name = "TZ Test Habit", frequency = 0 }, CT);
+
+        MockAuthHandler.UsernameToUserId["tztest"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [], "public");
+
+        // Request 1: no X-Timezone header
+        using var client1 = _fixture.Factory.CreateClient();
+        var response1 = await client1.GetAsync("/habits/public/tztest", CT);
+        Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
+        var body1 = await response1.Content.ReadFromJsonAsync<JsonElement>(CT);
+
+        // Request 2: X-Timezone set to a far-offset timezone (UTC+12)
+        using var client2 = _fixture.Factory.CreateClient();
+        client2.DefaultRequestHeaders.Add("X-Timezone", "Pacific/Auckland");
+        var response2 = await client2.GetAsync("/habits/public/tztest", CT);
+        Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
+        var body2 = await response2.Content.ReadFromJsonAsync<JsonElement>(CT);
+
+        // Both must return identical habits with identical consistency values
+        var habits1 = body1.GetProperty("habits");
+        var habits2 = body2.GetProperty("habits");
+        Assert.Equal(habits1.GetArrayLength(), habits2.GetArrayLength());
+
+        for (var i = 0; i < habits1.GetArrayLength(); i++)
+        {
+            Assert.Equal(
+                habits1[i].GetProperty("consistency").GetDouble(),
+                habits2[i].GetProperty("consistency").GetDouble());
+            Assert.Equal(
+                habits1[i].GetProperty("flameLevel").GetString(),
+                habits2[i].GetProperty("flameLevel").GetString());
+        }
     }
 
     // --- GET /habits/public/{username}/flame.svg ---

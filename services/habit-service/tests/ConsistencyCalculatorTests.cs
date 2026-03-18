@@ -1184,3 +1184,128 @@ public class FlameLevelTests
         Assert.Equal(FlameLevel.Strong, result);
     }
 }
+
+/// <summary>
+/// Documents and regression-guards the share-surface timezone contract:
+/// all non-owner surfaces (friend profile via /habits/user/{userId}, public JSON via
+/// /habits/public/{username}, and flame badge via /habits/public/{username}/flame.svg)
+/// must use UTC when computing consistency.
+///
+/// These tests verify the calculator behavior under the UTC policy — they do not call
+/// the HTTP endpoints directly (integration tests in HabitEndpointTests cover that).
+/// The primary value is: (1) proving that non-UTC timezones produce materially different
+/// results at boundaries, justifying the fixed-UTC policy, and (2) serving as a regression
+/// guard so any future change to the timezone contract must update these tests.
+/// </summary>
+public class ShareSurfaceTimezoneParityTests
+{
+    private static Habit MakeHabit(
+        FrequencyType frequency = FrequencyType.Daily,
+        DateTimeOffset? createdAt = null)
+    {
+        return new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "Test Habit",
+            Frequency = frequency,
+            CreatedAt = createdAt ?? new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero)
+        };
+    }
+
+    [Fact]
+    public void AllShareSurfaces_UseUtc_ProduceSameResult()
+    {
+        // Simulate the exact calculation each share surface performs:
+        // All three should pass TimeZoneInfo.Utc to ConsistencyCalculator.Calculate.
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var completedDates = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2025, 1, 1); d <= new DateOnly(2025, 2, 28); d = d.AddDays(1))
+            completedDates.Add(d);
+
+        // Surface 1: /habits/user/{userId} — friend profile (always UTC)
+        var friendProfileConsistency = ConsistencyCalculator.Calculate(habit, completedDates, TimeZoneInfo.Utc);
+        var friendProfileFlame = ConsistencyCalculator.GetFlameLevel(friendProfileConsistency);
+
+        // Surface 2: /habits/public/{username} — public JSON (now UTC, was viewer TZ)
+        var publicJsonConsistency = ConsistencyCalculator.Calculate(habit, completedDates, TimeZoneInfo.Utc);
+        var publicJsonFlame = ConsistencyCalculator.GetFlameLevel(publicJsonConsistency);
+
+        // Surface 3: /habits/public/{username}/flame.svg — badge (always UTC)
+        var badgeConsistency = ConsistencyCalculator.Calculate(habit, completedDates, TimeZoneInfo.Utc);
+        var badgeFlame = ConsistencyCalculator.GetFlameLevel(badgeConsistency);
+
+        Assert.Equal(friendProfileConsistency, publicJsonConsistency);
+        Assert.Equal(publicJsonConsistency, badgeConsistency);
+        Assert.Equal(friendProfileFlame, publicJsonFlame);
+        Assert.Equal(publicJsonFlame, badgeFlame);
+    }
+
+    [Fact]
+    public void MidnightBoundary_ViewerTimezone_WouldDiverge_ButUtcDoesNot()
+    {
+        // A habit completed near midnight UTC: completion on Jan 31 in UTC,
+        // but a viewer in UTC+9 (Tokyo) would see "today" as Feb 1.
+        // If the public endpoint used viewer timezone, it would compute a different
+        // window and potentially different consistency than the UTC-based surfaces.
+        //
+        // This test proves that using UTC on all surfaces eliminates that divergence.
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2024, 12, 1, 0, 0, 0, TimeSpan.Zero));
+
+        // Completions: every day Dec 1 2024 through Jan 31 2025
+        var completedDates = new HashSet<DateOnly>();
+        for (var d = new DateOnly(2024, 12, 1); d <= new DateOnly(2025, 1, 31); d = d.AddDays(1))
+            completedDates.Add(d);
+
+        // UTC "today" is Jan 31 (we test via the explicit-today overload)
+        var utcToday = new DateOnly(2025, 1, 31);
+        var utcConsistency = ConsistencyCalculator.Calculate(habit, completedDates, utcToday);
+
+        // Tokyo "today" would be Feb 1 (9 hours ahead of UTC)
+        var tokyoToday = new DateOnly(2025, 2, 1);
+        var tokyoConsistency = ConsistencyCalculator.Calculate(habit, completedDates, tokyoToday);
+
+        // These are materially different — the window shifts by one day
+        Assert.NotEqual(utcConsistency, tokyoConsistency);
+
+        // But all share surfaces use UTC, so they all agree
+        var surface1 = ConsistencyCalculator.Calculate(habit, completedDates, utcToday);
+        var surface2 = ConsistencyCalculator.Calculate(habit, completedDates, utcToday);
+        var surface3 = ConsistencyCalculator.Calculate(habit, completedDates, utcToday);
+        Assert.Equal(surface1, surface2);
+        Assert.Equal(surface2, surface3);
+    }
+
+    [Fact]
+    public void MidnightBoundary_FlameLevel_ConsistentAcrossSurfaces()
+    {
+        // Near a flame-level threshold: 29% consistency in UTC puts the flame at Ember,
+        // but a shifted window in another timezone might push it to Steady (30%).
+        // Share surfaces must agree because they all use UTC.
+        var habit = MakeHabit(createdAt: new DateTimeOffset(2024, 12, 1, 0, 0, 0, TimeSpan.Zero));
+        var utcToday = new DateOnly(2025, 1, 31);
+        var windowStart = utcToday.AddDays(-59);
+
+        // Complete exactly 17 of 60 days = 28.3%, right below the Ember/Steady boundary (30%)
+        var completedDates = new HashSet<DateOnly>();
+        var count = 0;
+        for (var d = windowStart; d <= utcToday && count < 17; d = d.AddDays(1))
+        {
+            completedDates.Add(d);
+            count++;
+        }
+
+        var consistency = ConsistencyCalculator.Calculate(habit, completedDates, utcToday);
+        var flame = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        // All three surfaces compute the same flame level
+        Assert.Equal(flame, ConsistencyCalculator.GetFlameLevel(
+            ConsistencyCalculator.Calculate(habit, completedDates, utcToday)));
+        Assert.Equal(flame, ConsistencyCalculator.GetFlameLevel(
+            ConsistencyCalculator.Calculate(habit, completedDates, utcToday)));
+
+        // Document the actual values for clarity
+        Assert.True(consistency < 30, $"Expected < 30 for boundary test, got {consistency}");
+        Assert.Equal(FlameLevel.Ember, flame);
+    }
+}

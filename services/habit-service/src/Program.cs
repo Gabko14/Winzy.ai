@@ -435,6 +435,7 @@ app.MapGet("/habits/internal/export/{userId:guid}", async (Guid userId, HabitDbC
 });
 
 // --- Internal endpoint (service-to-service, no auth check) ---
+// Share-surface timezone contract: uses UTC — must match /habits/public/{username} and flame.svg.
 
 app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) =>
 {
@@ -587,19 +588,8 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         socialDegraded = true;
     }
 
-    var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
-    TimeZoneInfo tz;
-    try
-    {
-        tz = !string.IsNullOrWhiteSpace(timezoneHeader)
-            ? TimeZoneInfo.FindSystemTimeZoneById(timezoneHeader)
-            : TimeZoneInfo.Utc;
-    }
-    catch (TimeZoneNotFoundException)
-    {
-        tz = TimeZoneInfo.Utc;
-    }
-
+    // Share-surface timezone contract: uses UTC — must match /habits/user/{userId} and flame.svg.
+    // Authenticated endpoints (stats) use the owner's timezone via X-Timezone header.
     var habits = await db.Habits
         .Where(h => h.UserId == resolvedUserId && h.ArchivedAt == null)
         .Include(h => h.Completions)
@@ -615,7 +605,7 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
     var result = filteredHabits.Select(h =>
     {
         var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
-        var consistency = ConsistencyCalculator.Calculate(h, completedDates, tz);
+        var consistency = ConsistencyCalculator.Calculate(h, completedDates, TimeZoneInfo.Utc);
         var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
 
         return new
@@ -703,6 +693,7 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
         ? allHabits.Where(h => !excludedHabitIds.Contains(h.Id)).ToList()
         : allHabits.Where(h => visibleHabitIds.Contains(h.Id)).ToList();
 
+    // Share-surface timezone contract: uses UTC — must match /habits/public/{username} and /habits/user/{userId}.
     // Calculate aggregate consistency across visible habits
     double aggregateConsistency = 0;
     if (habits.Count > 0)
