@@ -104,7 +104,7 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
             friendIds = friendsResponse?.FriendIds ?? [];
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to fetch friends list from Social Service for UserId={UserId}", userId);
         friendIds = [];
@@ -289,7 +289,7 @@ app.MapGet("/activity/feed", async (HttpContext ctx, ActivityDbContext db, IHttp
                     profileResponse.StatusCode);
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             logger.LogWarning(ex, "Failed to fetch profiles from Auth Service");
         }

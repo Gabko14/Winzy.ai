@@ -14,11 +14,12 @@ export function useUnreadCount(isAuthenticated = true) {
   const [count, setCount] = useState(0);
   const mountedRef = useRef(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef(false);
 
   const poll = useCallback(async () => {
     try {
       const data = await fetchUnreadCount();
-      if (mountedRef.current) {
+      if (mountedRef.current && !cancelledRef.current) {
         setCount(data.unreadCount);
       }
     } catch {
@@ -41,9 +42,10 @@ export function useUnreadCount(isAuthenticated = true) {
     poll();
   }, [poll]);
 
-  // Clear stale state when auth drops
+  // Clear stale state and cancel in-flight fetches when auth drops
   useEffect(() => {
     if (!isAuthenticated) {
+      cancelledRef.current = true;
       setCount(0);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -55,6 +57,7 @@ export function useUnreadCount(isAuthenticated = true) {
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    cancelledRef.current = false;
     mountedRef.current = true;
 
     // Immediate fetch on auth (login or mount while authenticated)
