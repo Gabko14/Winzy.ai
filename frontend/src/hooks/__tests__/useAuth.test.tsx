@@ -204,6 +204,7 @@ describe("AuthProvider", () => {
 
   it("logout on web does NOT clear tokens when server call fails", async () => {
     // Temporarily set Platform.OS to "web" for this test
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Platform = require("react-native").Platform;
     const originalOS = Platform.OS;
     Platform.OS = "web";

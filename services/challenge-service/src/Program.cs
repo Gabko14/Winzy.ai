@@ -441,7 +441,7 @@ static async Task<Dictionary<Guid, string>> FetchDisplayNames(
             .Where(p => p.DisplayName is not null)
             .ToDictionary(p => p.UserId, p => p.DisplayName!) ?? [];
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to fetch batch profiles from Auth Service");
         return [];
