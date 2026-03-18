@@ -44,6 +44,8 @@ jobs:
         timeout-minutes: 5
         env:
           JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
+          DOCKER_BUILDKIT: "1"
+          COMPOSE_DOCKER_CLI_BUILD: "1"
 
       - name: Wait for gateway health
         run: |
@@ -63,9 +65,15 @@ jobs:
 
       - name: Install frontend and E2E dependencies
         run: |
-          cd frontend && npm ci &
-          cd e2e && npm ci &
-          wait
+          cd frontend && npm ci & pid1=$!
+          cd e2e && npm ci & pid2=$!
+          wait $pid1
+          wait $pid2
+
+      - name: Build frontend static bundle
+        run: cd frontend && npx expo export --platform web
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:5050
 
       - name: Cache Playwright browsers
         id: playwright-cache

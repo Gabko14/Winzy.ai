@@ -16,7 +16,7 @@ const API_BASE = process.env.API_URL ?? "http://localhost:5050";
  * Logs in with the test user and saves the authenticated storageState.
  * If the user doesn't exist yet (401), registers them first via API,
  * then retries login through the UI.
- * Falls back to empty state if the backend is unreachable.
+ * Fails loudly if auth cannot be established — downstream tests require a valid session.
  */
 setup("authenticate", async ({ page, request }) => {
   fs.mkdirSync(authDir, { recursive: true });
@@ -80,9 +80,14 @@ setup("authenticate", async ({ page, request }) => {
     // Save authenticated state
     await page.context().storageState({ path: authFile });
   } catch (error) {
-    // Log the error so auth failures don't silently pass downstream tests
-    console.error("[auth.setup] Authentication failed:", error instanceof Error ? error.message : error);
-    // Save empty state so dependent tests run (unauthenticated) rather than crashing
-    await page.context().storageState({ path: authFile });
+    // Fail loudly so the entire suite stops early with a clear message.
+    // Previously this saved empty state, which let downstream tests run
+    // unauthenticated — silently passing when they shouldn't.
+    // Use { cause } to preserve the original stack trace in Playwright's output.
+    throw new Error(
+      `[auth.setup] Authentication failed — aborting test suite. ` +
+      `All downstream tests depend on a valid session.`,
+      { cause: error },
+    );
   }
 });

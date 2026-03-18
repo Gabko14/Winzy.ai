@@ -19,6 +19,7 @@ concurrency:
 jobs:
   lint-typecheck-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +42,9 @@ jobs:
 
       - name: Test
         run: cd frontend && npm test -- --ci --coverage
+
+      - name: Build web bundle
+        run: cd frontend && npx expo export --platform web
 
       - name: Upload coverage
         if: ${{ !cancelled() }}

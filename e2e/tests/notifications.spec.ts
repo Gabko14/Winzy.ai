@@ -157,9 +157,6 @@ test.describe("Notifications", () => {
     });
 
     test("user B sees unread badge and can open notifications", async ({ unauthenticatedPage: page }) => {
-      // Polling-based badge: initial poll may fire before auth, next poll is 30s later
-      test.setTimeout(90_000);
-
       await test.step("sign in as user B", async () => {
         await page.goto("/");
         await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
@@ -194,11 +191,14 @@ test.describe("Notifications", () => {
 
       await test.step("verify bell icon has unread badge", async () => {
         await expect(page.getByTestId("notifications-bell")).toBeVisible();
-        // The useUnreadCount hook polls every 30s. The initial poll may fire before
-        // auth completes (returns 401). Wait up to 45s for the next successful poll.
-        // Scope to the bell's parent to avoid strict mode violation from the Friends tab badge.
+        // Instead of waiting up to 45s for the next 30s poll cycle, trigger
+        // a page reload which re-mounts hooks and fires the initial poll immediately.
+        await page.reload();
+        await expect(
+          page.getByTestId("today-empty").or(page.getByTestId("today-screen")),
+        ).toBeVisible({ timeout: 10_000 });
         const bellBadge = page.getByTestId("notifications-bell").getByTestId("unread-badge");
-        await expect(bellBadge).toBeVisible({ timeout: 45_000 });
+        await expect(bellBadge).toBeVisible({ timeout: 15_000 });
         test.info().annotations.push({
           type: "step",
           description: "Unread badge visible on bell icon",
