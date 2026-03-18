@@ -24,8 +24,9 @@ export function FadeIn({ children, delay = 0, duration = motion.normal, style }:
 
   useEffect(() => {
     if (reducedMotion) {
-      opacity.setValue(1);
-      translateY.setValue(0);
+      // No-op: refs are already initialized to their final values when
+      // reducedMotion is true. Calling setValue here would trigger Animated
+      // node updates that produce act() warnings in tests.
       return;
     }
 
@@ -45,7 +46,11 @@ export function FadeIn({ children, delay = 0, duration = motion.normal, style }:
     ]);
 
     animation.start();
-    return () => animation.stop();
+    return () => {
+      animation.stop();
+      opacity.setValue(1);
+      translateY.setValue(0);
+    };
   }, [reducedMotion, delay, duration, opacity, translateY]);
 
   return (

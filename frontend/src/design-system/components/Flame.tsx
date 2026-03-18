@@ -134,7 +134,9 @@ export function Flame({
 
   useEffect(() => {
     if (reducedMotion || config.pulseIntensity <= 0) {
-      pulseAnim.setValue(1);
+      // No-op: pulseAnim is already initialized to 1 via useRef.
+      // Calling setValue(1) here would trigger an Animated node update that
+      // produces act() warnings in tests.
       return;
     }
 
@@ -155,7 +157,10 @@ export function Flame({
       ]),
     );
     animation.start();
-    return () => animation.stop();
+    return () => {
+      animation.stop();
+      pulseAnim.setValue(1);
+    };
   }, [flameLevel, config.pulseIntensity, pulseAnim, reducedMotion]);
 
   // Grow animation when flame level increases

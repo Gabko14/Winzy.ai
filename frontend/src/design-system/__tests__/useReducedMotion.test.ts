@@ -4,15 +4,24 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 
 // Save original Platform.OS so we can restore it
 const originalPlatform = Platform.OS;
+const originalNodeEnv = process.env.NODE_ENV;
 
 afterEach(() => {
   Object.defineProperty(Platform, "OS", { value: originalPlatform, writable: true });
+  process.env.NODE_ENV = originalNodeEnv;
   jest.restoreAllMocks();
 });
 
 describe("useReducedMotion", () => {
+  it("returns true immediately in test environment", () => {
+    const { result } = renderHook(() => useReducedMotion());
+    expect(result.current).toBe(true);
+  });
+
   describe("native (iOS/Android)", () => {
     beforeEach(() => {
+      // Override NODE_ENV so the hook exercises the real runtime path
+      process.env.NODE_ENV = "development";
       Object.defineProperty(Platform, "OS", { value: "ios", writable: true });
     });
 
