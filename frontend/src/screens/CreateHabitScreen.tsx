@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -65,6 +65,20 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   const [customDays, setCustomDays] = useState<number[]>(editHabit?.customDays ?? []);
   const [visibility, setVisibility] = useState<HabitVisibility>(editVisibility ?? "private");
 
+  // Track whether user has manually touched the visibility picker — prevents
+  // async default visibility from overwriting the user's explicit choice
+  const userTouchedVisibility = useRef(false);
+
+  const handleVisibilityChange = useCallback((v: HabitVisibility) => {
+    userTouchedVisibility.current = true;
+    setVisibility(v);
+  }, []);
+
+  // Tracks a habit that was saved but whose visibility POST failed,
+  // so retrying submit only retries the visibility save.
+  // State (not ref) because the submit button label depends on it.
+  const [pendingVisibilityHabit, setPendingVisibilityHabit] = useState<Habit | null>(null);
+
   // Fetch default visibility from Social Service for new habits
   const { defaultVisibility, loading: loadingDefault } = useDefaultVisibility();
 
@@ -85,22 +99,33 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
     setShowTemplatePicker(false);
   }, []);
 
-  // Reset form when modal opens with different habit
+  // Reset form when modal opens — does NOT depend on defaultVisibility
+  // so async visibility fetch won't wipe in-progress edits
   const resetForm = useCallback(() => {
     setName(editHabit?.name ?? "");
     setIcon(editHabit?.icon ?? HABIT_ICONS[0]);
     setColor(editHabit?.color ?? HABIT_COLORS[0]);
     setFrequency(editHabit?.frequency ?? "daily");
     setCustomDays(editHabit?.customDays ?? []);
-    setVisibility(editVisibility ?? defaultVisibility);
+    setVisibility(editVisibility ?? "private");
     setErrors({});
     setServerError(null);
-  }, [editHabit, editVisibility, defaultVisibility]);
+    userTouchedVisibility.current = false;
+    setPendingVisibilityHabit(null);
+  }, [editHabit, editVisibility]);
 
-  // Reset form fields when deps change while visible (e.g. default visibility loads)
+  // Reset form fields on modal open
   React.useEffect(() => {
     if (visible) resetForm();
   }, [visible, resetForm]);
+
+  // Apply async default visibility only if user hasn't made a manual selection.
+  // Separated from resetForm so it doesn't wipe other form fields.
+  React.useEffect(() => {
+    if (visible && !isEditing && !loadingDefault && !userTouchedVisibility.current) {
+      setVisibility(defaultVisibility);
+    }
+  }, [visible, isEditing, loadingDefault, defaultVisibility]);
 
   // Reset template picker only on modal open (visible transitions to true)
   const prevVisible = React.useRef(false);
@@ -112,6 +137,16 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   }, [visible, isEditing]);
 
   const { update: updateVisibility } = useUpdateVisibility();
+
+  // Wrap onClose to flush any partially-saved habit before dismissing.
+  // If the user closes the modal after a partial success (habit saved but
+  // visibility failed), notify the parent so the habit appears in the list.
+  const handleClose = useCallback(() => {
+    if (pendingVisibilityHabit) {
+      onSaved(pendingVisibilityHabit);
+    }
+    onClose();
+  }, [onClose, onSaved, pendingVisibilityHabit]);
 
   const handleSaved = useCallback(
     (habit: Habit) => {
@@ -139,35 +174,43 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   // --- Submit ---
   const handleSubmit = useCallback(async () => {
     setServerError(null);
-    if (!validateForm()) return;
 
     try {
-      let savedHabit: Habit;
-      if (isEditing && editHabit) {
-        const request: UpdateHabitRequest = {
-          name: name.trim(),
-          icon,
-          color,
-          frequency,
-          ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
-        };
-        savedHabit = await update(editHabit.id, request);
-      } else {
-        const request: CreateHabitRequest = {
-          name: name.trim(),
-          icon,
-          color,
-          frequency,
-          ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
-        };
-        savedHabit = await create(request);
+      // If we already saved the habit but visibility failed, skip re-creating
+      let savedHabit: Habit | null = pendingVisibilityHabit;
+
+      if (!savedHabit) {
+        if (!validateForm()) return;
+
+        if (isEditing && editHabit) {
+          const request: UpdateHabitRequest = {
+            name: name.trim(),
+            icon,
+            color,
+            frequency,
+            ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
+          };
+          savedHabit = await update(editHabit.id, request);
+        } else {
+          const request: CreateHabitRequest = {
+            name: name.trim(),
+            icon,
+            color,
+            frequency,
+            ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
+          };
+          savedHabit = await create(request);
+        }
       }
 
       // Save visibility through Social Service
       try {
         await updateVisibility(savedHabit.id, visibility);
       } catch {
-        // Visibility save failed — show error, don't close modal so user can retry
+        // Stash the saved habit so retry only retries visibility.
+        // Don't call onSaved here — it would close the modal via the parent.
+        // The habit will be surfaced when the modal closes (via retry or dismiss).
+        setPendingVisibilityHabit(savedHabit);
         if (isEditing) {
           setServerError("Habit saved, but visibility could not be updated. Please try again.");
         } else {
@@ -176,6 +219,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         return;
       }
 
+      setPendingVisibilityHabit(null);
       handleSaved(savedHabit);
     } catch (err) {
       if (isApiError(err)) {
@@ -192,7 +236,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         setServerError("Something went wrong. Please try again.");
       }
     }
-  }, [name, icon, color, frequency, customDays, visibility, isEditing, editHabit, create, update, updateVisibility, validateForm, handleSaved]);
+  }, [name, icon, color, frequency, customDays, visibility, isEditing, editHabit, create, update, updateVisibility, validateForm, handleSaved, pendingVisibilityHabit]);
 
   // --- Custom day toggle ---
   const toggleDay = useCallback((day: number) => {
@@ -203,13 +247,16 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   }, []);
 
   const title = isEditing ? "Edit Habit" : "New Habit";
-  const submitLabel = isEditing ? "Save changes" : "Create habit";
+  const isRetryingVisibility = pendingVisibilityHabit !== null;
+  const submitLabel = isRetryingVisibility
+    ? "Retry visibility"
+    : isEditing ? "Save changes" : "Create habit";
 
   // Memoize day selection set for O(1) lookups in render
   const selectedDaysSet = useMemo(() => new Set(customDays), [customDays]);
 
   return (
-    <Modal visible={visible} onClose={onClose} title={title}>
+    <Modal visible={visible} onClose={handleClose} title={title}>
       <ScrollView
         style={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -379,7 +426,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         {/* Visibility picker */}
         <VisibilityPicker
           value={visibility}
-          onChange={setVisibility}
+          onChange={handleVisibilityChange}
           disabled={loadingDefault}
         />
 
