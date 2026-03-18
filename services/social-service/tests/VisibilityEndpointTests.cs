@@ -278,7 +278,8 @@ public class VisibilityEndpointTests : IAsyncLifetime
             .ToArray();
 
         MockHabitHandler.SetHabits(_friendId, [
-            new { id = _habitId1.ToString(), name = "Workout", icon = "dumbbell", color = "#ff0000", completions }
+            new { id = _habitId1.ToString(), name = "Workout", icon = "dumbbell", color = "#ff0000",
+                  consistency = 83.3, flameLevel = "blazing", completions }
         ]);
 
         using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
