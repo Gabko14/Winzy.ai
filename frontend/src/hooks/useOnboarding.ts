@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 
-const WELCOME_SEEN_KEY = "winzy_onboarding_welcome_seen";
-const FLAME_INTRO_SEEN_KEY = "winzy_onboarding_flame_intro_seen";
+const WELCOME_SEEN_PREFIX = "winzy_onboarding_welcome_seen_";
+const FLAME_INTRO_SEEN_PREFIX = "winzy_onboarding_flame_intro_seen_";
 
 type Storage = {
   getItem: (key: string) => Promise<string | null>;
@@ -40,17 +40,23 @@ export type OnboardingState = {
   markFlameIntroSeen: () => void;
 };
 
-export function useOnboarding(): OnboardingState {
+export function useOnboarding(userId: string): OnboardingState {
+  const welcomeKey = `${WELCOME_SEEN_PREFIX}${userId}`;
+  const flameKey = `${FLAME_INTRO_SEEN_PREFIX}${userId}`;
+
   const [loading, setLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [hasSeenFlameIntro, setHasSeenFlameIntro] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setHasSeenWelcome(false);
+    setHasSeenFlameIntro(false);
     const s = getStorage();
     Promise.all([
-      s.getItem(WELCOME_SEEN_KEY),
-      s.getItem(FLAME_INTRO_SEEN_KEY),
+      s.getItem(welcomeKey),
+      s.getItem(flameKey),
     ]).then(([welcome, flame]) => {
       if (cancelled) return;
       setHasSeenWelcome(welcome === "true");
@@ -60,17 +66,17 @@ export function useOnboarding(): OnboardingState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [welcomeKey, flameKey]);
 
   const markWelcomeSeen = useCallback(() => {
     setHasSeenWelcome(true);
-    getStorage().setItem(WELCOME_SEEN_KEY, "true").catch(() => {});
-  }, []);
+    getStorage().setItem(welcomeKey, "true").catch(() => {});
+  }, [welcomeKey]);
 
   const markFlameIntroSeen = useCallback(() => {
     setHasSeenFlameIntro(true);
-    getStorage().setItem(FLAME_INTRO_SEEN_KEY, "true").catch(() => {});
-  }, []);
+    getStorage().setItem(flameKey, "true").catch(() => {});
+  }, [flameKey]);
 
   return { loading, hasSeenWelcome, hasSeenFlameIntro, markWelcomeSeen, markFlameIntroSeen };
 }
