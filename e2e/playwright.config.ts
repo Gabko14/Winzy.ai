@@ -8,10 +8,10 @@ const authFile = path.join(__dirname, ".auth", "user.json");
 export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
-  retries: isCI ? 2 : 0,
-  workers: undefined,
+  retries: isCI ? 1 : 0,
+  workers: isCI ? 4 : undefined,
   reporter: isCI
-    ? [["html", { open: "never" }], ["github"]]
+    ? [["list"], ["html", { open: "never" }], ["github"]]
     : [["html", { open: "on-failure" }]],
 
   use: {
@@ -41,12 +41,21 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: "cd ../frontend && npx expo start --web --port 8081",
-    url: baseURL,
-    reuseExistingServer: !isCI,
-    timeout: 60_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: isCI
+    ? {
+        command: "npx serve ../frontend/dist -l 8081 -s",
+        url: baseURL,
+        reuseExistingServer: false,
+        timeout: 10_000,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    : {
+        command: "cd ../frontend && npx expo start --web --port 8081",
+        url: baseURL,
+        reuseExistingServer: true,
+        timeout: 60_000,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
 });
