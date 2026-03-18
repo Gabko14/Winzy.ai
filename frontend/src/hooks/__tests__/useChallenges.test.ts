@@ -43,6 +43,7 @@ const makeChallengeDetail = (
   baselineConsistency: null,
   customStartDate: null,
   customEndDate: null,
+  creatorDisplayName: null,
   ...overrides,
 });
 

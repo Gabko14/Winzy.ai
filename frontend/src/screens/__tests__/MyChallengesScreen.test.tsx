@@ -28,6 +28,7 @@ function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
     baselineConsistency: null,
     customStartDate: null,
     customEndDate: null,
+    creatorDisplayName: null,
     ...overrides,
   };
 }
@@ -145,6 +146,40 @@ describe("MyChallengesScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("My Challenges")).toBeTruthy();
     });
+  });
+
+  it("passes creator display name through to ChallengeProgressCard", async () => {
+    mockFetchChallenges.mockResolvedValue({
+      items: [
+        makeChallengeDetail({ id: "ch-1", status: "active", creatorDisplayName: "Alex" }),
+        makeChallengeDetail({ id: "ch-2", status: "completed", creatorDisplayName: "Jamie" }),
+      ],
+      page: 1,
+      pageSize: 100,
+      total: 2,
+    });
+
+    render(<MyChallengesScreen />);
+    await waitFor(() => {
+      expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
+    });
+    expect(screen.getByText("Set by Alex")).toBeTruthy();
+    expect(screen.getByText("Set by Jamie")).toBeTruthy();
+  });
+
+  it("renders without creator info when creatorDisplayName is null", async () => {
+    mockFetchChallenges.mockResolvedValue({
+      items: [makeChallengeDetail({ status: "active", creatorDisplayName: null })],
+      page: 1,
+      pageSize: 100,
+      total: 1,
+    });
+
+    render(<MyChallengesScreen />);
+    await waitFor(() => {
+      expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("challenge-creator")).toBeNull();
   });
 
   it("does not call fetchChallengeDetail — list endpoint includes all fields", async () => {

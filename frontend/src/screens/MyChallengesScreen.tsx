@@ -73,7 +73,7 @@ export function MyChallengesScreen({ onBack }: Props) {
             Active
           </Text>
           {activeChallenges.map((challenge) => (
-            <ChallengeProgressCard key={challenge.id} challenge={challenge} />
+            <ChallengeProgressCard key={challenge.id} challenge={challenge} creatorName={challenge.creatorDisplayName ?? undefined} />
           ))}
         </View>
       )}
@@ -85,7 +85,7 @@ export function MyChallengesScreen({ onBack }: Props) {
             Completed
           </Text>
           {completedChallenges.map((challenge) => (
-            <ChallengeProgressCard key={challenge.id} challenge={challenge} isPast />
+            <ChallengeProgressCard key={challenge.id} challenge={challenge} creatorName={challenge.creatorDisplayName ?? undefined} isPast />
           ))}
         </View>
       )}
@@ -97,7 +97,7 @@ export function MyChallengesScreen({ onBack }: Props) {
             Past
           </Text>
           {expiredChallenges.map((challenge) => (
-            <ChallengeProgressCard key={challenge.id} challenge={challenge} isPast />
+            <ChallengeProgressCard key={challenge.id} challenge={challenge} creatorName={challenge.creatorDisplayName ?? undefined} isPast />
           ))}
         </View>
       )}

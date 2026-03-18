@@ -30,6 +30,7 @@ function makeChallengeDetail(overrides: Partial<ChallengeDetail> = {}): Challeng
     baselineConsistency: null,
     customStartDate: null,
     customEndDate: null,
+    creatorDisplayName: null,
     createdAt: "2026-02-15T00:00:00Z",
     endsAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days from now
     completedAt: null,

@@ -45,6 +45,12 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     /// </summary>
     public MockHabitHandler HabitHandler { get; } = new();
 
+    /// <summary>
+    /// Instance-scoped mock handler for the Auth Service HTTP client.
+    /// Serves POST /auth/internal/profiles with display name lookups.
+    /// </summary>
+    public MockAuthHandler AuthHandler { get; } = new();
+
     public async ValueTask InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _nats.StartAsync());
@@ -108,6 +114,10 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
                     // Replace HabitService HttpClient with instance-scoped mock handler.
                     services.AddHttpClient("HabitService")
                         .ConfigurePrimaryHttpMessageHandler(() => HabitHandler);
+
+                    // Replace AuthService HttpClient with instance-scoped mock handler.
+                    services.AddHttpClient("AuthService")
+                        .ConfigurePrimaryHttpMessageHandler(() => AuthHandler);
                 });
             });
 
@@ -171,6 +181,7 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
         await db.Challenges.ExecuteDeleteAsync();
         HabitHandler.Reset();
         SocialHandler.Reset();
+        AuthHandler.Reset();
     }
 }
 
@@ -316,4 +327,55 @@ public class MockHabitHandler : HttpMessageHandler
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
+}
+
+/// <summary>
+/// Mock handler for Auth Service HTTP calls. Instance-scoped — each fixture
+/// gets its own handler so parallel test classes don't interfere with each other.
+/// Serves POST /auth/internal/profiles for batch display name lookups.
+/// </summary>
+public class MockAuthHandler : HttpMessageHandler
+{
+    /// <summary>
+    /// Maps userId -> display name for batch profile lookups.
+    /// </summary>
+    public readonly ConcurrentDictionary<Guid, string> DisplayNames = new();
+
+    public void SetDisplayName(Guid userId, string displayName)
+    {
+        DisplayNames[userId] = displayName;
+    }
+
+    public void Reset()
+    {
+        DisplayNames.Clear();
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? "";
+
+        if (path == "/auth/internal/profiles" && request.Method == HttpMethod.Post)
+        {
+            if (request.Content is null)
+                return new HttpResponseMessage(HttpStatusCode.BadRequest);
+
+            var body = await request.Content.ReadFromJsonAsync<BatchProfilesRequest>(cancellationToken: cancellationToken);
+            var userIds = body?.UserIds ?? [];
+
+            var profiles = userIds
+                .Where(id => DisplayNames.ContainsKey(id))
+                .Select(id => new { userId = id, username = $"user_{id:N}", displayName = DisplayNames[id] })
+                .ToList();
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(profiles)
+            };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
+    private record BatchProfilesRequest(List<Guid>? UserIds);
 }

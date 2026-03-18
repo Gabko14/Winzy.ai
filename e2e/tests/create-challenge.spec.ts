@@ -251,6 +251,82 @@ test.describe("Create Challenge flow", () => {
     });
   });
 
+  test("recipient sees challenge with creator context on My Challenges screen", async ({
+    unauthenticatedPage: page,
+  }) => {
+    await test.step("sign in as user B (the challenge recipient)", async () => {
+      await page.goto("/");
+      await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
+      await page.getByLabel("Email or username").fill(userBEmail);
+      await page.getByLabel("Password").fill(TEST_USER.password);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await dismissWelcomeIfPresent(page);
+    });
+
+    await test.step("navigate to Profile tab and open My Challenges", async () => {
+      const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
+      await expect(today).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId("tab-profile").click();
+      await expect(page.getByTestId("challenges-link")).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("challenges-link").click();
+    });
+
+    await test.step("verify challenge card shows creator context", async () => {
+      await expect(page.getByTestId("my-challenges-screen")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId("active-challenges-list")).toBeVisible({ timeout: 10_000 });
+
+      // The challenge card should show who set it
+      await expect(page.getByText("Set by Challenger A")).toBeVisible({ timeout: 10_000 });
+
+      // Verify the tracking elements are present
+      await expect(page.getByTestId("challenge-progress-card")).toBeVisible();
+      await expect(page.getByTestId("challenge-reward")).toBeVisible();
+      await expect(page.getByText("Grab coffee at the new place downtown")).toBeVisible();
+      await expect(page.getByTestId("challenge-progress-bar")).toBeVisible();
+      await expect(page.getByTestId("challenge-days-remaining")).toBeVisible();
+      await expect(page.getByTestId("challenge-trend-badge")).toBeVisible();
+      await expect(page.getByTestId("challenge-encouragement")).toBeVisible();
+    });
+  });
+
+  test("claim rejects active challenge and challenge list includes creator context via API", async ({
+    request,
+  }) => {
+    let challengeId: string;
+
+    await test.step("fetch user B's active challenge via API", async () => {
+      const res = await request.get(`${API_BASE}/challenges?status=active`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+      });
+      expect(res.status()).toBe(200);
+      const body = await res.json();
+      expect(body.items.length).toBeGreaterThanOrEqual(1);
+      challengeId = body.items[0].id;
+
+      // Verify the API response includes creator display name
+      expect(body.items[0].creatorDisplayName).toBe("Challenger A");
+    });
+
+    await test.step("claim rejects an active (not yet completed) challenge", async () => {
+      const claimRes = await request.put(`${API_BASE}/challenges/${challengeId}/claim`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+      });
+      expect(claimRes.status()).toBe(400);
+      const body = await claimRes.json();
+      expect(body.error).toBe("Only completed challenges can be claimed");
+    });
+
+    await test.step("challenge detail endpoint also includes creator display name", async () => {
+      const res = await request.get(`${API_BASE}/challenges/${challengeId}`, {
+        headers: { Authorization: `Bearer ${userBToken}` },
+      });
+      expect(res.status()).toBe(200);
+      const body = await res.json();
+      expect(body.creatorDisplayName).toBe("Challenger A");
+      expect(body.rewardDescription).toBe("Grab coffee at the new place downtown");
+    });
+  });
+
   test("validation blocks submit without required fields", async ({ unauthenticatedPage: page }) => {
     // Sign in as user A (profile already completed via API in setup)
     await page.goto("/");

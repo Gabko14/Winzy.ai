@@ -23,6 +23,7 @@ function makeChallenge(overrides: Partial<ChallengeDetail> = {}): ChallengeDetai
     baselineConsistency: null,
     customStartDate: null,
     customEndDate: null,
+    creatorDisplayName: null,
     ...overrides,
   };
 }
