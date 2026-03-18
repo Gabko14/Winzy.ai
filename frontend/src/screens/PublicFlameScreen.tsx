@@ -29,6 +29,7 @@ type PublicHabit = {
 type PublicFlameResponse = {
   username: string;
   habits: PublicHabit[];
+  degraded: boolean;
 };
 
 type Props = {
@@ -49,13 +50,9 @@ export function PublicFlameScreen({ username, onNavigateToSignUp }: Props) {
     setNotFound(false);
 
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const result = await apiRequest<PublicFlameResponse>(
         `/habits/public/${encodeURIComponent(username)}`,
-        {
-          noAuth: true,
-          headers: { "X-Timezone": tz },
-        },
+        { noAuth: true },
       );
       setData(result);
     } catch (err: unknown) {
@@ -139,7 +136,15 @@ export function PublicFlameScreen({ username, onNavigateToSignUp }: Props) {
       </View>
 
       {/* Habits list */}
-      {data.habits.length === 0 ? (
+      {data.degraded && data.habits.length === 0 ? (
+        <View style={styles.emptySection} testID="public-flame-degraded">
+          <ErrorState
+            title="Temporarily unavailable"
+            message={`We're having trouble loading @${data.username}'s habits right now. Please try again shortly.`}
+            onRetry={fetchProfile}
+          />
+        </View>
+      ) : data.habits.length === 0 ? (
         <View style={styles.emptySection}>
           <EmptyState
             title="No public habits yet"
