@@ -121,6 +121,43 @@ public class VisibilityEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task SetVisibility_HabitService5xx_Returns503()
+    {
+        MockHabitHandler.SetError(_userId, HttpStatusCode.InternalServerError);
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PutAsJsonAsync($"/social/visibility/{_habitId1}",
+            new { visibility = "friends" }, CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetVisibility_HabitServiceTimeout_Returns503()
+    {
+        MockHabitHandler.SetTimeout(_userId);
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PutAsJsonAsync($"/social/visibility/{_habitId1}",
+            new { visibility = "friends" }, CT);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetVisibility_HabitService404_Returns404()
+    {
+        // When habit-service returns 404 (user has no habits), that's a genuine not-found
+        MockHabitHandler.SetError(_userId, HttpStatusCode.NotFound);
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PutAsJsonAsync($"/social/visibility/{_habitId1}",
+            new { visibility = "friends" }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     // --- GET /social/visibility (batch) ---
 
     [Fact]
