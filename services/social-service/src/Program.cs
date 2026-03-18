@@ -243,18 +243,25 @@ app.MapGet("/social/friends", async (HttpContext ctx, SocialDbContext db,
     var friendIds = friends.Select(f => f.FriendId).ToList();
     var profileMap = await FetchProfileMap(httpClientFactory, friendIds, logger);
 
+    // Enrich with flame/consistency data from habit service
+    var flameMap = await FetchFlameMap(httpClientFactory, db, friendIds, jsonOptions, logger);
+
     return Results.Ok(new
     {
         items = friends.Select(f =>
         {
             profileMap.TryGetValue(f.FriendId, out var profile);
+            flameMap.TryGetValue(f.FriendId, out var flame);
             return new
             {
                 friendId = f.FriendId,
                 since = f.CreatedAt,
                 username = profile?.Username,
                 displayName = profile?.DisplayName,
-                avatarUrl = (string?)null
+                avatarUrl = (string?)null,
+                flameLevel = flame?.FlameLevel ?? "none",
+                consistency = flame?.Consistency ?? 0.0,
+                habitsUnavailable = flame?.HabitsUnavailable ?? false
             };
         }),
         page,
@@ -460,14 +467,20 @@ app.MapPut("/social/visibility/{habitId:guid}", async (Guid habitId, HttpContext
             if (!ownsHabit)
                 return Results.NotFound();
         }
+        else if (habitsResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            logger.LogInformation("Habit Service returned 404 during ownership check for UserId={UserId} — user has no habits",
+                userId);
+            return Results.NotFound();
+        }
         else
         {
             logger.LogWarning("Habit Service returned {StatusCode} during ownership check for UserId={UserId}",
-                habitsResponse.StatusCode, userId);
-            return Results.NotFound();
+                (int)habitsResponse.StatusCode, userId);
+            return Results.StatusCode(503);
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to validate habit ownership via Habit Service for UserId={UserId}", userId);
         return Results.StatusCode(503);
@@ -825,12 +838,114 @@ static async Task<Dictionary<Guid, ProfileInfo>> FetchProfileMap(
     }
 }
 
+static async Task<Dictionary<Guid, FlameInfo>> FetchFlameMap(
+    IHttpClientFactory httpClientFactory, SocialDbContext db,
+    List<Guid> friendIds, JsonSerializerOptions jsonOptions, ILogger logger)
+{
+    if (friendIds.Count == 0)
+        return [];
+
+    var result = new Dictionary<Guid, FlameInfo>();
+    var habitClient = httpClientFactory.CreateClient("HabitService");
+
+    // Batch-fetch visibility settings and preferences for all friends
+    var visibilityMap = await db.VisibilitySettings
+        .Where(v => friendIds.Contains(v.UserId))
+        .ToListAsync();
+    var visibilityLookup = visibilityMap
+        .GroupBy(v => v.UserId)
+        .ToDictionary(g => g.Key, g => g.ToDictionary(v => v.HabitId, v => v.Visibility));
+
+    var preferences = await db.SocialPreferences
+        .Where(p => friendIds.Contains(p.UserId))
+        .ToDictionaryAsync(p => p.UserId, p => p.DefaultHabitVisibility);
+
+    // Fetch habits per friend in parallel
+    var tasks = friendIds.Select(async friendId =>
+    {
+        try
+        {
+            using var response = await habitClient.GetAsync($"/habits/user/{friendId}");
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Habit Service returned {StatusCode} for flame enrichment of UserId={FriendId}",
+                    response.StatusCode, friendId);
+                return (friendId, new FlameInfo("none", 0.0, true));
+            }
+
+            var habits = await response.Content.ReadFromJsonAsync<List<JsonElement>>(jsonOptions);
+            if (habits is null || habits.Count == 0)
+                return (friendId, new FlameInfo("none", 0.0, false));
+
+            // Filter by visibility (same logic as friend profile endpoint)
+            var friendVisibility = visibilityLookup.TryGetValue(friendId, out var fv) ? fv : [];
+            var defaultVis = preferences.TryGetValue(friendId, out var dv) ? dv : HabitVisibility.Private;
+
+            var visibleHabits = habits.Where(h =>
+            {
+                if (h.TryGetProperty("id", out var idProp) && Guid.TryParse(idProp.GetString(), out var habitId))
+                {
+                    var visibility = friendVisibility.TryGetValue(habitId, out var v) ? v : defaultVis;
+                    return visibility is HabitVisibility.Friends or HabitVisibility.Public;
+                }
+                return false;
+            }).ToList();
+
+            if (visibleHabits.Count == 0)
+                return (friendId, new FlameInfo("none", 0.0, false));
+
+            // Aggregate: best flame level, average consistency
+            var flameLevelRank = new Dictionary<string, int>
+            {
+                ["none"] = 0,
+                ["ember"] = 1,
+                ["steady"] = 2,
+                ["strong"] = 3,
+                ["blazing"] = 4
+            };
+            var bestFlame = "none";
+            var bestRank = 0;
+            var totalConsistency = 0.0;
+
+            foreach (var h in visibleHabits)
+            {
+                var fl = h.TryGetProperty("flameLevel", out var flProp) ? flProp.GetString() ?? "none" : "none";
+                var cons = h.TryGetProperty("consistency", out var consProp) && consProp.ValueKind == JsonValueKind.Number
+                    ? consProp.GetDouble() : 0.0;
+
+                // Unknown levels (e.g. future "inferno") rank above all known levels
+                var rank = flameLevelRank.TryGetValue(fl, out var r) ? r : int.MaxValue;
+                if (rank > bestRank)
+                {
+                    bestRank = rank;
+                    bestFlame = fl;
+                }
+                totalConsistency += cons;
+            }
+
+            var avgConsistency = Math.Round(totalConsistency / visibleHabits.Count, 1);
+            return (friendId, new FlameInfo(bestFlame, avgConsistency, false));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            logger.LogWarning(ex, "Failed to fetch habits for flame enrichment of UserId={FriendId}", friendId);
+            return (friendId, new FlameInfo("none", 0.0, true));
+        }
+    });
+
+    foreach (var (friendId, flame) in await Task.WhenAll(tasks))
+        result[friendId] = flame;
+
+    return result;
+}
+
 // --- Request/Response DTOs ---
 
 internal record FriendRequestDto(Guid FriendId);
 internal record VisibilityUpdateDto(HabitVisibility Visibility);
 internal record PreferencesUpdateDto(HabitVisibility DefaultHabitVisibility);
 internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
+internal record FlameInfo(string FlameLevel, double Consistency, bool HabitsUnavailable);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;
