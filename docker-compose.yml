@@ -30,6 +30,7 @@ services:
 
   seq:
     image: datalust/seq:latest
+    profiles: ["dev"]
     environment:
       ACCEPT_EULA: "Y"
     ports:
@@ -40,11 +41,11 @@ services:
     networks:
       - winzy-network
     healthcheck:
-      test: ["CMD", "/seqsvr/Client/seqcli", "node", "health", "-s", "http://localhost"]
-      interval: 15s
-      timeout: 10s
-      retries: 2
-      start_period: 5s
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # --- Databases ---
   # Host port scheme: auth=5433, habit=5434, social=5435, challenge=5436, notification=5437, activity=5438
