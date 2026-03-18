@@ -133,7 +133,20 @@ public sealed class HabitCompletedSubscriber(
                 var rangeConsistency = await FetchRangeConsistencyAsync(
                     httpClientFactory, data.HabitId, challenge, data.Timezone, ct);
                 if (rangeConsistency.HasValue)
+                {
                     effectiveConsistency = rangeConsistency.Value;
+                }
+                else
+                {
+                    // Don't fall back to global 60-day consistency — it's the wrong metric
+                    // for a date-range challenge. Skip this event; the next habit.completed
+                    // will retry the range lookup.
+                    logger.LogWarning(
+                        "Skipping progress update for CustomDateRange challenge {ChallengeId} — " +
+                        "range consistency unavailable from habit service",
+                        challenge.Id);
+                    continue;
+                }
             }
             var ctx = new MilestoneContext(effectiveConsistency, data.Date);
 

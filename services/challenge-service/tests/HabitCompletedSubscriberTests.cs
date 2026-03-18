@@ -199,6 +199,107 @@ public class HabitCompletedSubscriberTests : IClassFixture<ChallengeServiceFixtu
     }
 
     // ============================================================
+    // CustomDateRange — habit-service failure (winzy.ai-1r4.6)
+    // ============================================================
+
+    [Fact]
+    public async Task CustomDateRange_HabitServiceNetworkFailure_DoesNotFallBackToGlobalConsistency()
+    {
+        // Seed a challenge with high global consistency that would cause incorrect progress
+        // if used as fallback when range-specific lookup fails
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.CustomDateRange,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customStartDate: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customEndDate: new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            targetValue: 80.0);
+
+        // Simulate habit-service network failure
+        MockHabitHandler.ForceFailure = true;
+
+        var publisher = _fixture.GetPublisher();
+        // Global consistency is 90% — above the 80% target. If the code falls back to
+        // this value, the challenge would incorrectly show progress or even complete.
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId, new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc), 90.0), CT);
+
+        // Give subscriber time to process and skip the event
+        await Task.Delay(1500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(0, challenge.CurrentProgress);
+        Assert.Equal(ChallengeStatus.Active, challenge.Status);
+    }
+
+    [Fact]
+    public async Task CustomDateRange_HabitServiceErrorStatus_DoesNotFallBackToGlobalConsistency()
+    {
+        // Simulate habit-service returning 500
+        MockHabitHandler.ForceStatusCode = System.Net.HttpStatusCode.InternalServerError;
+
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.CustomDateRange,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customStartDate: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customEndDate: new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            targetValue: 80.0);
+
+        var publisher = _fixture.GetPublisher();
+        // Global consistency 95% — would complete the challenge if used as fallback
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId, new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc), 95.0), CT);
+
+        await Task.Delay(1500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        Assert.Equal(0, challenge.CurrentProgress);
+        Assert.Equal(ChallengeStatus.Active, challenge.Status);
+    }
+
+    [Fact]
+    public async Task CustomDateRange_HabitServiceRecovers_ProgressUpdatesOnNextEvent()
+    {
+        var challengeId = await SeedChallengeAsync(
+            MilestoneType.CustomDateRange,
+            createdAt: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customStartDate: new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            customEndDate: new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            targetValue: 80.0);
+
+        // First event: habit-service is down
+        MockHabitHandler.ForceFailure = true;
+        var publisher = _fixture.GetPublisher();
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId, new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc), 90.0), CT);
+
+        await Task.Delay(1500, CT);
+
+        // Verify no progress from the failed event
+        {
+            using var db = _fixture.CreateDbContext();
+            var challenge = await db.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+            Assert.Equal(0, challenge.CurrentProgress);
+        }
+
+        // Second event: habit-service recovers with correct range consistency
+        MockHabitHandler.ForceFailure = false;
+        MockHabitHandler.SetConsistency(_habitId, 60.0); // 60% range-specific, below 80% target
+
+        await publisher.PublishAsync(Subjects.HabitCompleted,
+            new HabitCompletedEvent(_recipientId, _habitId, new DateTime(2026, 3, 11, 12, 0, 0, DateTimeKind.Utc), 90.0), CT);
+
+        await WaitForProgressAsync(challengeId);
+
+        using var verifyDb = _fixture.CreateDbContext();
+        var updated = await verifyDb.Challenges.FirstAsync(c => c.Id == challengeId, CT);
+        // Progress should reflect range-specific 60%, not global 90%
+        Assert.Equal(0.75, updated.CurrentProgress, precision: 2); // 60/80 = 0.75
+        Assert.Equal(ChallengeStatus.Active, updated.Status);
+    }
+
+    // ============================================================
     // ImprovementMilestone — date validation
     // ============================================================
 

@@ -156,7 +156,7 @@ public sealed class ChallengeServiceFixture : IAsyncLifetime
     {
         using var db = CreateDbContext();
         await db.Challenges.ExecuteDeleteAsync();
-        MockHabitHandler.HabitConsistency.Clear();
+        MockHabitHandler.Reset();
         MockSocialHandler.Reset();
     }
 }
@@ -230,13 +230,36 @@ internal class MockHabitHandler : HttpMessageHandler
     /// </summary>
     public static readonly ConcurrentDictionary<Guid, double> HabitConsistency = new();
 
+    /// <summary>
+    /// When set, all requests return this status code instead of normal logic.
+    /// </summary>
+    public static HttpStatusCode? ForceStatusCode;
+
+    /// <summary>
+    /// When true, all requests throw HttpRequestException (simulates network failure).
+    /// </summary>
+    public static bool ForceFailure;
+
     public static void SetConsistency(Guid habitId, double consistency)
     {
         HabitConsistency[habitId] = consistency;
     }
 
+    public static void Reset()
+    {
+        HabitConsistency.Clear();
+        ForceStatusCode = null;
+        ForceFailure = false;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (ForceFailure)
+            throw new HttpRequestException("Simulated habit-service failure");
+
+        if (ForceStatusCode is { } statusCode)
+            return Task.FromResult(new HttpResponseMessage(statusCode));
+
         var path = request.RequestUri?.AbsolutePath ?? "";
         var prefix = "/habits/internal/";
 
