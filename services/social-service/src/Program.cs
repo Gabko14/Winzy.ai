@@ -13,6 +13,7 @@ using Winzy.SocialService.Subscribers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("social-service");
 builder.Services.AddServiceDatabase<SocialDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddHostedService<UserDeletedSubscriber>();
@@ -347,6 +348,7 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
 
     // Fetch habits from Habit Service (internal endpoint)
     List<JsonElement> habits;
+    var habitsUnavailable = false;
     try
     {
         var habitClient = httpClientFactory.CreateClient("HabitService");
@@ -356,6 +358,7 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
             logger.LogWarning("Habit Service returned {StatusCode} for UserId={FriendId}",
                 response.StatusCode, friendId);
             habits = [];
+            habitsUnavailable = true;
         }
         else
         {
@@ -363,10 +366,11 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
             habits = habitsArray ?? [];
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to fetch habits from Habit Service for UserId={FriendId}", friendId);
         habits = [];
+        habitsUnavailable = true;
     }
 
     // Get visibility settings for this friend's habits
@@ -420,7 +424,8 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
     return Results.Ok(new
     {
         friendId,
-        habits = visibleHabits
+        habits = visibleHabits,
+        habitsUnavailable
     });
 });
 

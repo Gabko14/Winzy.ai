@@ -27,6 +27,7 @@ function makeProfileResponse(overrides: Partial<FriendProfileResponse> = {}): Fr
   return {
     friendId: "friend-123",
     habits: [makeHabit()],
+    habitsUnavailable: false,
     ...overrides,
   };
 }
@@ -173,13 +174,14 @@ describe("FriendProfileScreen", () => {
     });
   });
 
-  // --- Error condition: Social Service down returns degraded response ---
+  // --- Error condition: upstream habit-service failure shows degraded state ---
 
-  it("handles degraded response gracefully when Social Service returns empty habits", async () => {
-    // When Social Service is degraded, it may return the profile with empty habits
-    mockFetchFriendProfile.mockResolvedValue(makeProfileResponse({ habits: [] }));
+  it("shows degraded state when habitsUnavailable is true", async () => {
+    mockFetchFriendProfile.mockResolvedValue(
+      makeProfileResponse({ habits: [], habitsUnavailable: true }),
+    );
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText, queryByTestId } = render(
       <FriendProfileScreen friendId="friend-123" displayName="Diana" />,
     );
 
@@ -187,9 +189,40 @@ describe("FriendProfileScreen", () => {
       expect(getByTestId("friend-profile-screen")).toBeTruthy();
     });
 
-    // Should show empty state rather than crashing
+    // Should show degraded banner, NOT the misleading "No shared habits"
+    expect(getByTestId("habits-degraded")).toBeTruthy();
+    expect(getByText("Couldn't load habits")).toBeTruthy();
+    expect(getByText("Habit data is temporarily unavailable. Try again in a moment.")).toBeTruthy();
+    expect(queryByTestId("no-habits-empty")).toBeNull();
+
+    // Retry button should trigger a re-fetch
+    mockFetchFriendProfile.mockResolvedValue(makeProfileResponse());
+    await act(async () => {
+      fireEvent.press(getByText("Try again"));
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("habits-section")).toBeTruthy();
+    });
+  });
+
+  it("shows genuine empty state when habits are empty but available", async () => {
+    mockFetchFriendProfile.mockResolvedValue(
+      makeProfileResponse({ habits: [], habitsUnavailable: false }),
+    );
+
+    const { getByTestId, getByText, queryByTestId } = render(
+      <FriendProfileScreen friendId="friend-123" displayName="Diana" />,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("friend-profile-screen")).toBeTruthy();
+    });
+
+    // Should show genuine empty state
     expect(getByTestId("no-habits-empty")).toBeTruthy();
     expect(getByText("No shared habits")).toBeTruthy();
+    expect(queryByTestId("habits-degraded")).toBeNull();
   });
 
   // --- Back navigation ---

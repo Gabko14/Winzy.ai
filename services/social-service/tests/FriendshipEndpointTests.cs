@@ -499,4 +499,111 @@ public class FriendshipEndpointTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    // --- GET /social/friends/{id}/profile ---
+
+    [Fact]
+    public async Task FriendProfile_HappyPath_ReturnsHabitsAndAvailable()
+    {
+        await CreateFriendship();
+
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = Guid.NewGuid(), name = "Meditate", icon = (string?)null, color = (string?)null, consistency = 75.0, flameLevel = "strong" }
+        ]);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(_friendId, body.GetProperty("friendId").GetGuid());
+        Assert.False(body.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FriendProfile_EmptyHabits_ReturnsAvailable()
+    {
+        await CreateFriendship();
+
+        MockHabitHandler.SetHabits(_friendId, []);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+        Assert.False(body.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FriendProfile_HabitServiceError_ReturnsUnavailable()
+    {
+        await CreateFriendship();
+
+        MockHabitHandler.SetError(_friendId, HttpStatusCode.InternalServerError);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+        Assert.True(body.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FriendProfile_HabitServiceNotFound_ReturnsUnavailable()
+    {
+        await CreateFriendship();
+
+        // Don't set any habits — MockHabitHandler returns 404 by default
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FriendProfile_HabitServiceMalformedJson_ReturnsUnavailable()
+    {
+        await CreateFriendship();
+
+        // Habit service returns 200 but with non-array JSON
+        MockHabitHandler.SetRawResponse(_friendId, "not valid json");
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("habits").GetArrayLength());
+        Assert.True(body.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task FriendProfile_NotFriends_Returns404()
+    {
+        // Don't create friendship
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync($"/social/friends/{_friendId}/profile", CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // --- Helper ---
+
+    private async Task CreateFriendship()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        using var friendClient = _fixture.CreateAuthenticatedClient(_friendId);
+
+        var sendResp = await client.PostAsJsonAsync("/social/friends/request", new { friendId = _friendId }, CT);
+        var sendBody = await sendResp.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var requestId = sendBody.GetProperty("id").GetGuid();
+        await friendClient.PutAsJsonAsync($"/social/friends/request/{requestId}/accept", new { }, CT);
+    }
 }

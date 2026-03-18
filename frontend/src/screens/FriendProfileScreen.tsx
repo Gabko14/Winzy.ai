@@ -150,7 +150,15 @@ export function FriendProfileScreen({
         )}
 
         {/* Visible habits */}
-        {habits.length === 0 ? (
+        {habits.length === 0 && data?.habitsUnavailable ? (
+          <View style={styles.emptySection} testID="habits-degraded">
+            <ErrorState
+              title="Couldn't load habits"
+              message="Habit data is temporarily unavailable. Try again in a moment."
+              onRetry={loadProfile}
+            />
+          </View>
+        ) : habits.length === 0 ? (
           <View style={styles.emptySection} testID="no-habits-empty">
             <EmptyState
               title="No shared habits"
