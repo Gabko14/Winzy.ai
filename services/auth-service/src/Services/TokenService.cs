@@ -12,11 +12,31 @@ public sealed class TokenService
     private readonly TimeSpan _accessTokenLifetime;
     private readonly TimeSpan _refreshTokenLifetime;
 
+    private static readonly string[] _placeholders =
+    [
+        "your-secret-key",
+        "your-jwt-secret",
+        "change-me",
+        "secret",
+        "placeholder",
+        "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long"
+    ];
+
     public TokenService(IConfiguration config)
     {
         var secret = config["Jwt:Secret"];
         if (string.IsNullOrWhiteSpace(secret))
-            throw new InvalidOperationException("Missing or empty Jwt:Secret configuration.");
+            throw new InvalidOperationException(
+                "Jwt:Secret is not configured. Set it via environment variable Jwt__Secret or in appsettings.json.");
+
+        if (secret.Length < 32)
+            throw new InvalidOperationException(
+                $"Jwt:Secret must be at least 32 characters for HMAC-SHA256. Current length: {secret.Length}.");
+
+        if (_placeholders.Any(p => secret.Equals(p, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException(
+                "Jwt:Secret is still set to a placeholder value. Set a real secret before starting the auth service.");
+
         _secret = secret;
         _accessTokenLifetime = TimeSpan.FromMinutes(
             config.GetValue("Jwt:AccessTokenMinutes", 15));
