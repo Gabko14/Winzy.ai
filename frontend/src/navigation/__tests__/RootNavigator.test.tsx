@@ -312,8 +312,9 @@ const mockVisibility = {
   refresh: jest.fn(),
   getVisibility: jest.fn().mockReturnValue("private"),
 };
+const mockUseVisibility = jest.fn().mockReturnValue(mockVisibility);
 jest.mock("../../hooks/useVisibility", () => ({
-  useVisibility: () => mockVisibility,
+  useVisibility: (...args: boolean[]) => mockUseVisibility(...args),
 }));
 
 const mockChallengeCompletion = {
@@ -325,8 +326,9 @@ const mockChallengeCompletion = {
   dismiss: jest.fn(),
   triggerCheck: jest.fn(),
 };
+const mockUseChallengeCompletion = jest.fn().mockReturnValue(mockChallengeCompletion);
 jest.mock("../../hooks/useChallengeCompletion", () => ({
-  useChallengeCompletion: () => mockChallengeCompletion,
+  useChallengeCompletion: (...args: boolean[]) => mockUseChallengeCompletion(...args),
 }));
 
 jest.mock("../../components/ChallengeCompletionOverlay", () => ({
@@ -388,8 +390,9 @@ const mockUnreadCount = {
   resetToZero: jest.fn(),
   refresh: jest.fn(),
 };
+const mockUseUnreadCount = jest.fn().mockReturnValue(mockUnreadCount);
 jest.mock("../../hooks/useUnreadCount", () => ({
-  useUnreadCount: () => mockUnreadCount,
+  useUnreadCount: (...args: boolean[]) => mockUseUnreadCount(...args),
 }));
 
 // Mock usePendingFriendCount
@@ -397,8 +400,9 @@ const mockPendingFriendCount = {
   count: 0,
   refresh: jest.fn(),
 };
+const mockUsePendingFriendCount = jest.fn().mockReturnValue(mockPendingFriendCount);
 jest.mock("../../hooks/usePendingFriendCount", () => ({
-  usePendingFriendCount: () => mockPendingFriendCount,
+  usePendingFriendCount: (...args: boolean[]) => mockUsePendingFriendCount(...args),
 }));
 
 // Mock useAuth — default to authenticated
@@ -768,5 +772,37 @@ describe("RootNavigator", () => {
 
     expect(mockArchiveHabit).toHaveBeenCalledWith("h1");
     expect(getByTestId("habit-detail-screen")).toBeTruthy();
+  });
+
+  // --- Auth-gated polling (winzy.ai-2pb1) ---
+
+  it("passes isAuthenticated=true to all polling hooks when authenticated", () => {
+    mockAuth.status = "authenticated";
+    render(<RootNavigator />);
+
+    expect(mockUseUnreadCount).toHaveBeenCalledWith(true);
+    expect(mockUsePendingFriendCount).toHaveBeenCalledWith(true);
+    expect(mockUseVisibility).toHaveBeenCalledWith(true);
+    expect(mockUseChallengeCompletion).toHaveBeenCalledWith(true);
+  });
+
+  it("passes isAuthenticated=false to all polling hooks when unauthenticated", () => {
+    mockAuth.status = "unauthenticated";
+    render(<RootNavigator />);
+
+    expect(mockUseUnreadCount).toHaveBeenCalledWith(false);
+    expect(mockUsePendingFriendCount).toHaveBeenCalledWith(false);
+    expect(mockUseVisibility).toHaveBeenCalledWith(false);
+    expect(mockUseChallengeCompletion).toHaveBeenCalledWith(false);
+  });
+
+  it("passes isAuthenticated=false to all polling hooks when auth is loading", () => {
+    mockAuth.status = "loading";
+    render(<RootNavigator />);
+
+    expect(mockUseUnreadCount).toHaveBeenCalledWith(false);
+    expect(mockUsePendingFriendCount).toHaveBeenCalledWith(false);
+    expect(mockUseVisibility).toHaveBeenCalledWith(false);
+    expect(mockUseChallengeCompletion).toHaveBeenCalledWith(false);
   });
 });

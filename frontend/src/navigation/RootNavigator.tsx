@@ -76,11 +76,12 @@ export function RootNavigator() {
   const [selectedFriendName, setSelectedFriendName] = useState<string | null>(null);
   const [editHabitData, setEditHabitData] = useState<Habit | null>(null);
 
-  const unreadCount = useUnreadCount(auth.status === "authenticated");
-  const pendingFriendCount = usePendingFriendCount();
-  const onboarding = useOnboarding(auth.status === "authenticated" ? auth.user.id : "");
-  const visibility = useVisibility();
-  const challengeCompletion = useChallengeCompletion();
+  const isAuthenticated = auth.status === "authenticated";
+  const unreadCount = useUnreadCount(isAuthenticated);
+  const pendingFriendCount = usePendingFriendCount(isAuthenticated);
+  const onboarding = useOnboarding(isAuthenticated ? auth.user.id : "");
+  const visibility = useVisibility(isAuthenticated);
+  const challengeCompletion = useChallengeCompletion(isAuthenticated);
   const [showFlameIntro, setShowFlameIntro] = useState(false);
 
   const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);

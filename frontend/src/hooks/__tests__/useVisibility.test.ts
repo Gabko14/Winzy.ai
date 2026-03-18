@@ -14,6 +14,66 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+describe("useVisibility — auth gate (winzy.ai-2pb1)", () => {
+  it("does not fetch when isAuthenticated is false", async () => {
+    const { result } = renderHook(() => useVisibility(false));
+
+    // Should not start loading or call API
+    expect(result.current.loading).toBe(false);
+    expect(fetchVisibility).not.toHaveBeenCalled();
+    expect(result.current.defaultVisibility).toBe("private");
+  });
+
+  it("resets to inert defaults when isAuthenticated transitions to false", async () => {
+    fetchVisibility.mockResolvedValue({
+      defaultVisibility: "friends",
+      habits: [{ habitId: "h1", visibility: "public" }],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useVisibility(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.getVisibility("h1")).toBe("public");
+
+    // Logout
+    rerender({ authed: false });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.defaultVisibility).toBe("private");
+    expect(result.current.getVisibility("h1")).toBe("private");
+  });
+
+  it("fetches when isAuthenticated transitions to true", async () => {
+    fetchVisibility.mockResolvedValue({
+      defaultVisibility: "friends",
+      habits: [{ habitId: "h1", visibility: "public" }],
+    });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useVisibility(authed),
+      { initialProps: { authed: false } },
+    );
+
+    expect(fetchVisibility).not.toHaveBeenCalled();
+
+    // Login
+    rerender({ authed: true });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetchVisibility).toHaveBeenCalledTimes(1);
+    expect(result.current.getVisibility("h1")).toBe("public");
+  });
+});
+
 describe("useVisibility", () => {
   it("fetches batch visibility and builds a map", async () => {
     fetchVisibility.mockResolvedValue({

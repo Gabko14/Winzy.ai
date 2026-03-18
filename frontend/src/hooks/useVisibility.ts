@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchVisibility,
   fetchPreferences,
@@ -20,12 +20,15 @@ type VisibilityState = {
 /**
  * Fetches batch visibility for all of the user's habits and the default preference.
  * Returns a map of habitId -> visibility, plus the default.
+ *
+ * @param isAuthenticated - Gate fetch on auth status. When false, returns inert
+ *   defaults without hitting the API so public/unauthenticated surfaces stay clean.
  */
-export function useVisibility() {
+export function useVisibility(isAuthenticated = true) {
   const [state, setState] = useState<VisibilityState>({
     visibilityMap: {},
     defaultVisibility: "private",
-    loading: true,
+    loading: isAuthenticated,
     error: null,
   });
 
@@ -33,6 +36,7 @@ export function useVisibility() {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const data: BatchVisibilityResponse = await fetchVisibility();
+      if (cancelledRef.current) return;
       const map: Record<string, HabitVisibility> = {};
       for (const entry of data.habits) {
         map[entry.habitId] = entry.visibility;
@@ -44,13 +48,34 @@ export function useVisibility() {
         error: null,
       });
     } catch (err) {
+      if (cancelledRef.current) return;
       setState((s) => ({ ...s, loading: false, error: err as ApiError }));
     }
   }, []);
 
+  // Track whether the current fetch cycle is still valid.
+  // Prevents a slow in-flight fetch from overwriting the inert defaults
+  // that the auth-drop effect sets when isAuthenticated flips to false.
+  const cancelledRef = useRef(false);
+
+  // Reset to inert defaults when auth drops
   useEffect(() => {
+    if (!isAuthenticated) {
+      cancelledRef.current = true;
+      setState({
+        visibilityMap: {},
+        defaultVisibility: "private",
+        loading: false,
+        error: null,
+      });
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    cancelledRef.current = false;
     load();
-  }, [load]);
+  }, [load, isAuthenticated]);
 
   /** Get visibility for a specific habit, falling back to the user's default */
   const getVisibility = useCallback(

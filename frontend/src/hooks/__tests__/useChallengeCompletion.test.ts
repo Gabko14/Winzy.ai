@@ -32,6 +32,7 @@ function makeChallenge(overrides: Record<string, unknown> = {}) {
     baselineConsistency: null,
     customStartDate: null,
     customEndDate: null,
+    creatorDisplayName: null,
     ...overrides,
   };
 }
@@ -43,6 +44,118 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
+});
+
+describe("useChallengeCompletion — auth gate (winzy.ai-2pb1)", () => {
+  it("does not fetch or poll when isAuthenticated is false", async () => {
+    const { result } = renderHook(() => useChallengeCompletion(false));
+
+    // No initial fetch
+    expect(mockFetchChallenges).not.toHaveBeenCalled();
+    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+    expect(result.current.current).toBeNull();
+
+    // Advance past poll interval — still nothing
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(mockFetchChallenges).not.toHaveBeenCalled();
+    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+  });
+
+  it("clears queue when isAuthenticated transitions to false", async () => {
+    // Initial load with active challenge
+    mockFetchChallenges.mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      total: 0,
+    });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await waitFor(() => {
+      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+    });
+
+    // Poll detects completion
+    mockFetchChallengesByStatus.mockResolvedValueOnce({
+      items: [makeChallenge({ id: "ch-1", status: "completed" })],
+      page: 1,
+      pageSize: 100,
+      total: 1,
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+    });
+    await waitFor(() => {
+      expect(result.current.current).not.toBeNull();
+    });
+
+    // Logout — queue should clear
+    rerender({ authed: false });
+
+    expect(result.current.current).toBeNull();
+  });
+
+  it("stops polling when isAuthenticated becomes false", async () => {
+    mockFetchChallenges.mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      total: 0,
+    });
+
+    const { rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await waitFor(() => {
+      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+    });
+
+    mockFetchChallenges.mockClear();
+    mockFetchChallengesByStatus.mockClear();
+
+    // Logout
+    rerender({ authed: false });
+
+    // Advance past multiple poll intervals
+    await act(async () => {
+      jest.advanceTimersByTime(90_000);
+    });
+
+    expect(mockFetchChallenges).not.toHaveBeenCalled();
+    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+  });
+
+  it("starts fresh polling when isAuthenticated transitions to true", async () => {
+    const { rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
+      { initialProps: { authed: false } },
+    );
+
+    expect(mockFetchChallenges).not.toHaveBeenCalled();
+
+    // Login
+    mockFetchChallenges.mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pageSize: 100,
+      total: 0,
+    });
+
+    rerender({ authed: true });
+
+    await waitFor(() => {
+      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("useChallengeCompletion", () => {
