@@ -274,6 +274,137 @@ describe("HabitDetailScreen", () => {
     Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
   });
 
+  // --- Web error feedback ---
+
+  it("shows inline error banner on web when date toggle fails", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    mockCompleteHabit.mockRejectedValue({
+      status: 409,
+      code: "conflict",
+      message: "Habit already completed for this date",
+    });
+
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-detail-screen")).toBeTruthy();
+    });
+
+    const dayButton = screen.getByTestId("calendar-day-2026-03-12");
+    await act(async () => {
+      fireEvent.press(dayButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("toggle-error")).toBeTruthy();
+    });
+    expect(screen.getByText("Habit already completed for this date")).toBeTruthy();
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("shows generic error message on web for non-API errors", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    mockCompleteHabit.mockRejectedValue(new Error("Network failure"));
+
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-detail-screen")).toBeTruthy();
+    });
+
+    const dayButton = screen.getByTestId("calendar-day-2026-03-12");
+    await act(async () => {
+      fireEvent.press(dayButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("toggle-error")).toBeTruthy();
+    });
+    expect(screen.getByText("Something went wrong. Please try again.")).toBeTruthy();
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("auto-dismisses toggle error after timeout", async () => {
+    jest.useFakeTimers();
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    mockCompleteHabit.mockRejectedValue({
+      status: 500,
+      code: "server_error",
+      message: "Server error",
+    });
+
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-detail-screen")).toBeTruthy();
+    });
+
+    const dayButton = screen.getByTestId("calendar-day-2026-03-12");
+    await act(async () => {
+      fireEvent.press(dayButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("toggle-error")).toBeTruthy();
+    });
+
+    // Advance timers past the 4-second auto-dismiss
+    act(() => {
+      jest.advanceTimersByTime(4000);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("toggle-error")).toBeNull();
+    });
+
+    jest.useRealTimers();
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("reverts optimistic update and shows error on web toggle failure", async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    mockCompleteHabit.mockRejectedValue({
+      status: 409,
+      code: "conflict",
+      message: "Habit already completed for this date",
+    });
+
+    // Provide stats with a known completed date set
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: [],
+    });
+
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-detail-screen")).toBeTruthy();
+    });
+
+    const dayButton = screen.getByTestId("calendar-day-2026-03-12");
+
+    // Toggle should optimistically add, then revert on failure
+    await act(async () => {
+      fireEvent.press(dayButton);
+    });
+
+    // Error banner should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId("toggle-error")).toBeTruthy();
+    });
+
+    // The button should still be pressable (not stuck in mutating state)
+    expect(dayButton.props.accessibilityState?.disabled).toBeFalsy();
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
   // --- Actions ---
 
   it("calls onBack when back button is pressed", async () => {
