@@ -35,6 +35,8 @@ export type ChallengeDetail = Challenge & {
   baselineConsistency: number | null;
   customStartDate: string | null;
   customEndDate: string | null;
+  /** Creator's display name, enriched by challenge-service via auth batch profiles. */
+  creatorDisplayName: string | null;
 };
 
 export type ChallengesPage = {

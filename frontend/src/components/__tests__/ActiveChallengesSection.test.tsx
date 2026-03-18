@@ -28,6 +28,7 @@ function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
     baselineConsistency: null,
     customStartDate: null,
     customEndDate: null,
+    creatorDisplayName: null,
     ...overrides,
   };
 }
