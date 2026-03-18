@@ -37,6 +37,13 @@ builder.Services.AddHttpClient("HabitService", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    var authUrl = builder.Configuration["Services:AuthServiceUrl"] ?? "http://auth-service:5001";
+    client.BaseAddress = new Uri(authUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 app.UseObservability();
@@ -181,7 +188,9 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
 
 // --- GET /challenges ---
 
-app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int page = 1, int pageSize = 20,
+app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db,
+    IHttpClientFactory httpClientFactory, ILogger<Program> logger,
+    int page = 1, int pageSize = 20,
     string? status = null, DateTimeOffset? since = null) =>
 {
     if (!TryGetUserId(ctx, out var userId))
@@ -193,10 +202,20 @@ app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int pag
     var query = db.Challenges
         .Where(c => c.CreatorId == userId || c.RecipientId == userId);
 
-    // Optional status filter (e.g., ?status=completed)
+    // Optional status filter — operates on effective/derived status, not raw DB status.
+    // EffectiveStatus() rewrites overdue active challenges (Active + EndsAt in the past) as "expired",
+    // so the filter must match that same contract.
     if (!string.IsNullOrEmpty(status) && Enum.TryParse<ChallengeStatus>(status, ignoreCase: true, out var statusEnum))
     {
-        query = query.Where(c => c.Status == statusEnum);
+        var now = DateTimeOffset.UtcNow;
+        query = statusEnum switch
+        {
+            ChallengeStatus.Active => query.Where(c => c.Status == ChallengeStatus.Active && c.EndsAt > now),
+            ChallengeStatus.Expired => query.Where(c =>
+                c.Status == ChallengeStatus.Expired
+                || (c.Status == ChallengeStatus.Active && c.EndsAt <= now)),
+            _ => query.Where(c => c.Status == statusEnum)
+        };
     }
 
     // Optional since filter — only return challenges updated after this timestamp
@@ -212,12 +231,23 @@ app.MapGet("/challenges", async (HttpContext ctx, ChallengeDbContext db, int pag
         .Take(pageSize)
         .ToListAsync();
 
-    return Results.Ok(new { items = challenges.Select(MapToDetailResponse), page, pageSize, total });
+    // Enrich with creator display names from Auth Service
+    var creatorIds = challenges.Select(c => c.CreatorId).Distinct().ToList();
+    var displayNames = await FetchDisplayNames(httpClientFactory, creatorIds, logger);
+
+    return Results.Ok(new
+    {
+        items = challenges.Select(c => MapToDetailResponse(c, displayNames.GetValueOrDefault(c.CreatorId))),
+        page,
+        pageSize,
+        total
+    });
 });
 
 // --- GET /challenges/{id} ---
 
-app.MapGet("/challenges/{id:guid}", async (Guid id, HttpContext ctx, ChallengeDbContext db) =>
+app.MapGet("/challenges/{id:guid}", async (Guid id, HttpContext ctx, ChallengeDbContext db,
+    IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
 {
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
@@ -228,7 +258,9 @@ app.MapGet("/challenges/{id:guid}", async (Guid id, HttpContext ctx, ChallengeDb
     if (challenge is null)
         return Results.NotFound();
 
-    return Results.Ok(MapToDetailResponse(challenge));
+    var displayNames = await FetchDisplayNames(httpClientFactory, [challenge.CreatorId], logger);
+
+    return Results.Ok(MapToDetailResponse(challenge, displayNames.GetValueOrDefault(challenge.CreatorId)));
 });
 
 // --- PUT /challenges/{id}/claim ---
@@ -344,7 +376,7 @@ static object MapToResponse(Challenge c) => new
     claimedAt = c.ClaimedAt
 };
 
-static object MapToDetailResponse(Challenge c) => new
+static object MapToDetailResponse(Challenge c, string? creatorDisplayName = null) => new
 {
     id = c.Id,
     habitId = c.HabitId,
@@ -360,6 +392,7 @@ static object MapToDetailResponse(Challenge c) => new
     baselineConsistency = c.BaselineConsistency,
     customStartDate = c.CustomStartDate,
     customEndDate = c.CustomEndDate,
+    creatorDisplayName,
     createdAt = c.CreatedAt,
     endsAt = c.EndsAt,
     completedAt = c.CompletedAt,
@@ -383,6 +416,39 @@ static string? ValidateTargetValue(CreateChallengeRequest request)
         _ => null
     };
 }
+
+static async Task<Dictionary<Guid, string>> FetchDisplayNames(
+    IHttpClientFactory httpClientFactory, List<Guid> userIds, ILogger logger)
+{
+    if (userIds.Count == 0)
+        return [];
+
+    try
+    {
+        var authClient = httpClientFactory.CreateClient("AuthService");
+        using var response = await authClient.PostAsJsonAsync("/auth/internal/profiles",
+            new { userIds });
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Auth Service batch profiles returned {StatusCode}", response.StatusCode);
+            return [];
+        }
+
+        var profiles = await response.Content.ReadFromJsonAsync<List<ProfileInfo>>(
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        return profiles?
+            .Where(p => p.DisplayName is not null)
+            .ToDictionary(p => p.UserId, p => p.DisplayName!) ?? [];
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        logger.LogWarning(ex, "Failed to fetch batch profiles from Auth Service");
+        return [];
+    }
+}
+
+internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
 
 // --- Request DTOs ---
 

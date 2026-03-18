@@ -416,6 +416,207 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(0, body.GetProperty("items").GetArrayLength());
     }
 
+    // --- GET /challenges — EffectiveStatus contract regression tests ---
+
+    [Fact]
+    public async Task ListChallenges_OverdueActiveChallenge_ExcludedFromActiveFilter()
+    {
+        // Seed an overdue-active challenge directly in DB:
+        // Status = Active but EndsAt is in the past — EffectiveStatus returns "expired"
+        var challengeId = Guid.NewGuid();
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                Id = challengeId,
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Overdue coffee",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1), // expired yesterday
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // ?status=active must NOT include the overdue-active challenge
+        var response = await client.GetAsync("/challenges?status=active", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(0, body.GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task ListChallenges_OverdueActiveChallenge_IncludedInExpiredFilter()
+    {
+        // Seed an overdue-active challenge directly in DB
+        var challengeId = Guid.NewGuid();
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                Id = challengeId,
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Overdue coffee",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1),
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // ?status=expired must include the overdue-active challenge
+        var response = await client.GetAsync("/challenges?status=expired", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+
+        // The returned item's status field must say "expired", not "active"
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("expired", item.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ListChallenges_OverdueActiveChallenge_ExpiredFilterWithSince()
+    {
+        // Seed an overdue-active challenge with a known UpdatedAt
+        var challengeId = Guid.NewGuid();
+        {
+            using var db = _fixture.CreateDbContext();
+            db.Challenges.Add(new Challenge
+            {
+                Id = challengeId,
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Overdue coffee",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-1),
+            });
+            await db.SaveChangesAsync(CT);
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // status=expired + since=past -> should include the overdue-active challenge
+        var pastDate = DateTimeOffset.UtcNow.AddHours(-1).ToString("o");
+        var response = await client.GetAsync($"/challenges?status=expired&since={Uri.EscapeDataString(pastDate)}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+
+        // status=active + since=past -> should NOT include it
+        response = await client.GetAsync($"/challenges?status=active&since={Uri.EscapeDataString(pastDate)}", CT);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+
+        // status=expired + since=future -> should return nothing (UpdatedAt is in the past)
+        var futureDate = DateTimeOffset.UtcNow.AddHours(1).ToString("o");
+        response = await client.GetAsync($"/challenges?status=expired&since={Uri.EscapeDataString(futureDate)}", CT);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task ListChallenges_MixedStatuses_FilterReturnsCorrectBuckets()
+    {
+        // Seed three challenges: one truly active, one overdue-active, one DB-expired
+        {
+            using var db = _fixture.CreateDbContext();
+
+            // Truly active (EndsAt in the future)
+            db.Challenges.Add(new Challenge
+            {
+                Id = Guid.NewGuid(),
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = _habitId,
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Active challenge",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(10),
+            });
+
+            // Overdue-active (Status=Active but EndsAt in the past)
+            db.Challenges.Add(new Challenge
+            {
+                Id = Guid.NewGuid(),
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = Guid.NewGuid(), // different habit to avoid unique constraint
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Overdue challenge",
+                Status = ChallengeStatus.Active,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-5),
+            });
+
+            // DB-expired (Status already set to Expired)
+            db.Challenges.Add(new Challenge
+            {
+                Id = Guid.NewGuid(),
+                CreatorId = _creatorId,
+                RecipientId = _recipientId,
+                HabitId = Guid.NewGuid(),
+                MilestoneType = MilestoneType.ConsistencyTarget,
+                TargetValue = 80,
+                PeriodDays = 30,
+                RewardDescription = "Expired challenge",
+                Status = ChallengeStatus.Expired,
+                EndsAt = DateTimeOffset.UtcNow.AddDays(-10),
+            });
+
+            await db.SaveChangesAsync(CT);
+        }
+
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        // ?status=active -> only the truly active one
+        var response = await client.GetAsync("/challenges?status=active", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+        Assert.Equal(1, body.GetProperty("items").GetArrayLength());
+        Assert.Equal("active", body.GetProperty("items")[0].GetProperty("status").GetString());
+
+        // ?status=expired -> both the overdue-active and the DB-expired
+        response = await client.GetAsync("/challenges?status=expired", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(2, body.GetProperty("total").GetInt32());
+        Assert.Equal(2, body.GetProperty("items").GetArrayLength());
+        foreach (var item in body.GetProperty("items").EnumerateArray())
+        {
+            Assert.Equal("expired", item.GetProperty("status").GetString());
+        }
+
+        // No filter -> all 3
+        response = await client.GetAsync("/challenges", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(3, body.GetProperty("total").GetInt32());
+        Assert.Equal(3, body.GetProperty("items").GetArrayLength());
+    }
+
     // --- GET /challenges/{id} ---
 
     [Fact]
@@ -1498,6 +1699,87 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(HttpStatusCode.OK, cancelledResponse.StatusCode);
         var cancelledBody = await cancelledResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.Equal("cancelled", cancelledBody.GetProperty("status").GetString());
+    }
+
+    // --- Creator display name enrichment ---
+
+    [Fact]
+    public async Task ListChallenges_IncludesCreatorDisplayName()
+    {
+        _fixture.AuthHandler.SetDisplayName(_creatorId, "Test Creator");
+
+        using var creatorClient = _fixture.CreateAuthenticatedClient(_creatorId);
+        await creatorClient.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee together"
+        }, CT);
+
+        using var recipientClient = _fixture.CreateAuthenticatedClient(_recipientId);
+        var response = await recipientClient.GetAsync("/challenges", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal("Test Creator", items[0].GetProperty("creatorDisplayName").GetString());
+    }
+
+    [Fact]
+    public async Task GetChallengeDetail_IncludesCreatorDisplayName()
+    {
+        _fixture.AuthHandler.SetDisplayName(_creatorId, "Detail Creator");
+
+        using var creatorClient = _fixture.CreateAuthenticatedClient(_creatorId);
+        var createResponse = await creatorClient.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee together"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var challengeId = created.GetProperty("id").GetGuid();
+
+        using var recipientClient = _fixture.CreateAuthenticatedClient(_recipientId);
+        var response = await recipientClient.GetAsync($"/challenges/{challengeId}", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Detail Creator", body.GetProperty("creatorDisplayName").GetString());
+    }
+
+    [Fact]
+    public async Task ListChallenges_AuthServiceDown_ReturnsNullCreatorDisplayName()
+    {
+        // Don't set any display names — MockAuthHandler returns empty profiles for unknown IDs
+        // This simulates the degradation path (auth-service doesn't know the user)
+
+        using var creatorClient = _fixture.CreateAuthenticatedClient(_creatorId);
+        await creatorClient.PostAsJsonAsync("/challenges", new
+        {
+            habitId = _habitId,
+            recipientId = _recipientId,
+            milestoneType = 0,
+            targetValue = 80.0,
+            periodDays = 30,
+            rewardDescription = "Coffee together"
+        }, CT);
+
+        using var recipientClient = _fixture.CreateAuthenticatedClient(_recipientId);
+        var response = await recipientClient.GetAsync("/challenges", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var items = body.GetProperty("items");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, items[0].GetProperty("creatorDisplayName").ValueKind);
     }
 
     // --- GET /health ---
