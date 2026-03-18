@@ -53,12 +53,15 @@ jest.mock("../../api/account", () => ({
 
 const mockSubscribe = jest.fn();
 const mockUnsubscribe = jest.fn();
+const mockClearError = jest.fn();
 const mockPushState = {
   status: "unsubscribed" as string,
   platform: "web_push" as string,
   subscribing: false,
+  error: null as string | null,
   subscribe: mockSubscribe,
   unsubscribe: mockUnsubscribe,
+  clearError: mockClearError,
 };
 
 jest.mock("../../hooks/usePushNotifications", () => ({
@@ -85,8 +88,10 @@ beforeEach(() => {
   mockPushState.status = "unsubscribed";
   mockPushState.platform = "web_push";
   mockPushState.subscribing = false;
+  mockPushState.error = null;
   mockSubscribe.mockResolvedValue(undefined);
   mockUnsubscribe.mockResolvedValue(undefined);
+  mockClearError.mockReturnValue(undefined);
   fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "private" });
   updateDefaultVisibility.mockResolvedValue({ defaultHabitVisibility: "friends" });
   exportMyData.mockResolvedValue({
@@ -559,6 +564,40 @@ describe("SettingsScreen — Notifications Section", () => {
 
     const toggle = screen.getByTestId("push-toggle");
     expect(toggle.props.disabled).toBe(true);
+  });
+
+  it("shows push error when subscribe fails", async () => {
+    mockPushState.error = "Failed to enable push notifications. Please try again.";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-error")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Failed to enable push notifications/)).toBeTruthy();
+  });
+
+  it("shows push error when unsubscribe fails", async () => {
+    mockPushState.status = "subscribed";
+    mockPushState.error = "Failed to disable push notifications. Please try again.";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-error")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Failed to disable push notifications/)).toBeTruthy();
+  });
+
+  it("does not show push error when error is null", async () => {
+    mockPushState.error = null;
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("push-toggle-row")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("push-error")).toBeNull();
   });
 });
 

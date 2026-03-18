@@ -127,4 +127,83 @@ describe("useUnreadCount", () => {
       expect(result.current.count).toBe(7);
     });
   });
+
+  // --- Auth-aware polling tests ---
+
+  it("does not poll when isAuthenticated is false", async () => {
+    fetchUnreadCount.mockResolvedValue({ unreadCount: 5 });
+
+    renderHook(() => useUnreadCount(false));
+
+    // Wait a tick to ensure no async fetch fires
+    await act(async () => {
+      jest.advanceTimersByTime(0);
+    });
+
+    expect(fetchUnreadCount).not.toHaveBeenCalled();
+  });
+
+  it("resets count to 0 when isAuthenticated transitions to false", async () => {
+    fetchUnreadCount.mockResolvedValue({ unreadCount: 8 });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useUnreadCount(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.count).toBe(8);
+    });
+
+    // Simulate logout
+    rerender({ authed: false });
+
+    expect(result.current.count).toBe(0);
+  });
+
+  it("stops polling when isAuthenticated becomes false", async () => {
+    fetchUnreadCount.mockResolvedValue({ unreadCount: 3 });
+
+    const { rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useUnreadCount(authed),
+      { initialProps: { authed: true } },
+    );
+
+    await waitFor(() => {
+      expect(fetchUnreadCount).toHaveBeenCalledTimes(1);
+    });
+
+    fetchUnreadCount.mockClear();
+
+    // Logout
+    rerender({ authed: false });
+
+    // Advance past poll interval — should not fire
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(fetchUnreadCount).not.toHaveBeenCalled();
+  });
+
+  it("fetches immediately when isAuthenticated transitions to true", async () => {
+    fetchUnreadCount.mockResolvedValue({ unreadCount: 4 });
+
+    const { result, rerender } = renderHook(
+      ({ authed }: { authed: boolean }) => useUnreadCount(authed),
+      { initialProps: { authed: false } },
+    );
+
+    expect(fetchUnreadCount).not.toHaveBeenCalled();
+    expect(result.current.count).toBe(0);
+
+    // Login
+    rerender({ authed: true });
+
+    await waitFor(() => {
+      expect(result.current.count).toBe(4);
+    });
+
+    expect(fetchUnreadCount).toHaveBeenCalledTimes(1);
+  });
 });
