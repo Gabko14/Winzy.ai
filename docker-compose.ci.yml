@@ -1,0 +1,26 @@
+# CI override: pull pre-built images from ghcr.io instead of building locally.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml pull
+#        docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build
+# Requires IMAGE_TAG env var (e.g., sha-abc1234).
+
+services:
+  api-gateway:
+    image: ghcr.io/gabko14/winzy-gateway:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  auth-service:
+    image: ghcr.io/gabko14/winzy-auth-service:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  habit-service:
+    image: ghcr.io/gabko14/winzy-habit-service:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  social-service:
+    image: ghcr.io/gabko14/winzy-social-service:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  challenge-service:
+    image: ghcr.io/gabko14/winzy-challenge-service:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  notification-service:
+    image: ghcr.io/gabko14/winzy-notification-service:${IMAGE_TAG:?Set IMAGE_TAG}
+
+  activity-service:
+    image: ghcr.io/gabko14/winzy-activity-service:${IMAGE_TAG:?Set IMAGE_TAG}

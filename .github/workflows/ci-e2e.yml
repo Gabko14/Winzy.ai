@@ -8,6 +8,7 @@ on:
       - 'e2e/**'
       - 'services/**'
       - 'docker-compose.yml'
+      - 'docker-compose.ci.yml'
       - '.github/workflows/ci-e2e.yml'
   pull_request:
     branches: [main]
@@ -16,16 +17,23 @@ on:
       - 'e2e/**'
       - 'services/**'
       - 'docker-compose.yml'
+      - 'docker-compose.ci.yml'
       - '.github/workflows/ci-e2e.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  REGISTRY: ghcr.io
+  APP_SERVICES: api-gateway auth-service habit-service social-service challenge-service notification-service activity-service
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      packages: read
 
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +47,44 @@ jobs:
             frontend/package-lock.json
             e2e/package-lock.json
 
-      - name: Start backend services
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image tag
+        id: resolve-tag
+        run: |
+          SHA_TAG="sha-${{ github.sha }}"
+          REF_TAG="ref-$(echo '${{ github.ref_name }}' | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
+
+          # Try sha-exact first, then ref-branch fallback
+          for TAG in "$SHA_TAG" "$REF_TAG"; do
+            echo "Trying tag: $TAG"
+            IMAGE_TAG="$TAG" docker compose -f docker-compose.yml -f docker-compose.ci.yml pull --quiet ${{ env.APP_SERVICES }} 2>/dev/null && {
+              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              echo "pulled=true" >> "$GITHUB_OUTPUT"
+              echo "Successfully pulled all images with tag: $TAG"
+              exit 0
+            }
+            echo "Tag $TAG not available, trying next..."
+          done
+
+          echo "No pre-built images available, will build locally"
+          echo "pulled=false" >> "$GITHUB_OUTPUT"
+
+      - name: Start backend services (pre-built)
+        if: steps.resolve-tag.outputs.pulled == 'true'
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --wait
+        timeout-minutes: 3
+        env:
+          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
+          IMAGE_TAG: ${{ steps.resolve-tag.outputs.tag }}
+
+      - name: Start backend services (build fallback)
+        if: steps.resolve-tag.outputs.pulled != 'true'
         run: docker compose -f docker-compose.yml up -d --build --wait
         timeout-minutes: 5
         env:
@@ -58,7 +103,7 @@ jobs:
             sleep 1
           done
           echo "Gateway failed to become healthy within 60s"
-          docker compose -f docker-compose.yml logs --tail=50
+          docker compose logs --tail=50
           exit 1
         env:
           JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
@@ -98,7 +143,7 @@ jobs:
 
       - name: Docker compose logs
         if: failure()
-        run: docker compose -f docker-compose.yml logs --tail=100
+        run: docker compose logs --tail=100
         env:
           JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
@@ -120,6 +165,6 @@ jobs:
 
       - name: Stop backend services
         if: always()
-        run: docker compose -f docker-compose.yml down
+        run: docker compose down
         env:
           JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
