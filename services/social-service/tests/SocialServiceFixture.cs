@@ -117,6 +117,8 @@ public sealed class SocialServiceFixture : IAsyncLifetime
     public async Task ResetDataAsync()
     {
         MockHabitHandler.HabitResponses.Clear();
+        MockHabitHandler.ErrorResponses.Clear();
+        MockHabitHandler.RawResponses.Clear();
         MockAuthHandler.ProfileResponses.Clear();
         using var db = CreateDbContext();
         await db.VisibilitySettings.ExecuteDeleteAsync();
@@ -132,10 +134,31 @@ internal class MockHabitHandler : HttpMessageHandler
     /// </summary>
     public static readonly ConcurrentDictionary<Guid, string> HabitResponses = new();
 
+    /// <summary>
+    /// Map of userId -> HTTP status code to simulate error responses.
+    /// When set, returns this status instead of the habit data.
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, HttpStatusCode> ErrorResponses = new();
+
     public static void SetHabits(Guid userId, object[] habits)
     {
         HabitResponses[userId] = System.Text.Json.JsonSerializer.Serialize(habits,
             new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+    }
+
+    /// <summary>
+    /// Map of userId -> raw body string returned as 200 (for simulating malformed JSON).
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, string> RawResponses = new();
+
+    public static void SetError(Guid userId, HttpStatusCode statusCode)
+    {
+        ErrorResponses[userId] = statusCode;
+    }
+
+    public static void SetRawResponse(Guid userId, string body)
+    {
+        RawResponses[userId] = body;
     }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -146,12 +169,30 @@ internal class MockHabitHandler : HttpMessageHandler
         if (path.StartsWith(prefix))
         {
             var userIdStr = path[prefix.Length..].TrimEnd('/');
-            if (Guid.TryParse(userIdStr, out var userId) && HabitResponses.TryGetValue(userId, out var json))
+            if (Guid.TryParse(userIdStr, out var userId))
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                // Check for configured error first
+                if (ErrorResponses.TryGetValue(userId, out var errorStatus))
                 {
-                    Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
-                });
+                    return Task.FromResult(new HttpResponseMessage(errorStatus));
+                }
+
+                // Check for raw/malformed response
+                if (RawResponses.TryGetValue(userId, out var rawBody))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(rawBody, System.Text.Encoding.UTF8, "application/json")
+                    });
+                }
+
+                if (HabitResponses.TryGetValue(userId, out var json))
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+                    });
+                }
             }
         }
 

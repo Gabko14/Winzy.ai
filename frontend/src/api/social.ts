@@ -70,6 +70,8 @@ export type FriendHabit = {
 export type FriendProfileResponse = {
   friendId: string;
   habits: FriendHabit[];
+  /** True when habit-service was unreachable and habits data may be incomplete. */
+  habitsUnavailable?: boolean;
 };
 
 // --- User search types ---
