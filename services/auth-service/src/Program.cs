@@ -8,6 +8,7 @@ using Winzy.Common.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("auth-service");
 builder.Services.AddServiceDatabase<AuthDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddSingleton<PasswordHasher>();

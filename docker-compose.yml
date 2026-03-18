@@ -9,6 +9,7 @@ volumes:
   challenge-db-data:
   notification-db-data:
   activity-db-data:
+  seq-data:
 
 services:
   # --- Infrastructure ---
@@ -26,6 +27,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  seq:
+    image: datalust/seq:latest
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "5341:5341"
+      - "8080:80"
+    volumes:
+      - seq-data:/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD", "/seqsvr/Client/seqcli", "node", "health", "-s", "http://localhost"]
+      interval: 15s
+      timeout: 10s
+      retries: 2
+      start_period: 5s
 
   # --- Databases ---
   # Host port scheme: auth=5433, habit=5434, social=5435, challenge=5436, notification=5437, activity=5438
@@ -154,6 +173,7 @@ services:
       - "5050:5000"
     environment:
       ASPNETCORE_URLS: http://+:5000
+      Seq__Url: http://seq:5341
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example}
       RateLimiting__AuthPermitLimit: 1000
       ReverseProxy__Clusters__auth-cluster__Destinations__destination1__Address: http://auth-service:5001
@@ -187,6 +207,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       Jwt__Secret: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example}
       ASPNETCORE_URLS: http://+:5001
     depends_on:
@@ -206,6 +227,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=habit-db;Port=5432;Database=habit_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5002
       Services__AuthServiceUrl: http://auth-service:5001
       Services__SocialServiceUrl: http://social-service:5003
@@ -226,6 +248,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=social-db;Port=5432;Database=social_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5003
       Services__HabitServiceUrl: http://habit-service:5002
     depends_on:
@@ -245,6 +268,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=challenge-db;Port=5432;Database=challenge_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5004
       Services__SocialServiceUrl: http://social-service:5003
     depends_on:
@@ -264,6 +288,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=notification-db;Port=5432;Database=notification_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5005
     depends_on:
       notification-db:
@@ -282,6 +307,7 @@ services:
     environment:
       ConnectionStrings__DefaultConnection: Host=activity-db;Port=5432;Database=activity_db;Username=winzy;Password=winzy
       Nats__Url: nats://nats:4222
+      Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5006
       Services__SocialServiceUrl: http://social-service:5003
     depends_on:

@@ -11,6 +11,7 @@ using Winzy.Common.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("activity-service");
 builder.Services.AddServiceDatabase<ActivityDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddHostedService<UserRegisteredSubscriber>();
