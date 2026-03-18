@@ -117,7 +117,7 @@ public sealed class HabitServiceFixture : IAsyncLifetime
 
     public async Task ResetDataAsync()
     {
-        MockAuthHandler.UsernameToUserId.Clear();
+        MockAuthHandler.Reset();
         MockSocialHandler.Reset();
         using var db = CreateDbContext();
         await db.Completions.ExecuteDeleteAsync();
@@ -128,9 +128,21 @@ public sealed class HabitServiceFixture : IAsyncLifetime
 internal class MockAuthHandler : HttpMessageHandler
 {
     public static readonly ConcurrentDictionary<string, Guid> UsernameToUserId = new();
+    private static bool _simulateFailure;
+
+    public static void SimulateFailure() => _simulateFailure = true;
+
+    public static void Reset()
+    {
+        UsernameToUserId.Clear();
+        _simulateFailure = false;
+    }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (_simulateFailure)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
         var path = request.RequestUri?.AbsolutePath ?? "";
         var prefix = "/auth/internal/resolve/";
 
@@ -152,13 +164,14 @@ internal class MockAuthHandler : HttpMessageHandler
 
 internal class MockSocialHandler : HttpMessageHandler
 {
-    // userId -> (visibleHabitIds, defaultVisibility)
-    private static readonly ConcurrentDictionary<Guid, (List<Guid> HabitIds, string DefaultVisibility)> _visibilityData = new();
+    // userId -> (visibleHabitIds, excludedHabitIds, defaultVisibility)
+    private static readonly ConcurrentDictionary<Guid, (List<Guid> HabitIds, List<Guid> ExcludedHabitIds, string DefaultVisibility)> _visibilityData = new();
     private static bool _simulateFailure;
 
-    public static void SetVisibility(Guid userId, List<Guid> habitIds, string defaultVisibility = "private")
+    public static void SetVisibility(Guid userId, List<Guid> habitIds, string defaultVisibility = "private",
+        List<Guid>? excludedHabitIds = null)
     {
-        _visibilityData[userId] = (habitIds, defaultVisibility);
+        _visibilityData[userId] = (habitIds, excludedHabitIds ?? [], defaultVisibility);
     }
 
     public static void SimulateFailure() => _simulateFailure = true;
@@ -184,14 +197,24 @@ internal class MockSocialHandler : HttpMessageHandler
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(new { habitIds = data.HabitIds, defaultVisibility = data.DefaultVisibility })
+                    Content = JsonContent.Create(new
+                    {
+                        habitIds = data.HabitIds,
+                        excludedHabitIds = data.ExcludedHabitIds,
+                        defaultVisibility = data.DefaultVisibility
+                    })
                 });
             }
 
             // No visibility data configured: return empty with default=private
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new { habitIds = Array.Empty<Guid>(), defaultVisibility = "private" })
+                Content = JsonContent.Create(new
+                {
+                    habitIds = Array.Empty<Guid>(),
+                    excludedHabitIds = Array.Empty<Guid>(),
+                    defaultVisibility = "private"
+                })
             });
         }
 
