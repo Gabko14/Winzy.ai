@@ -272,7 +272,7 @@ test.describe("Habit CRUD", () => {
 
     await test.step("submit without selecting days — verify validation", async () => {
       await page.getByRole("button", { name: "Create habit" }).click();
-      await expect(page.getByText("Select at least one day for custom frequency.")).toBeVisible();
+      await expect(page.getByText("Select at least one day.")).toBeVisible();
       test.info().annotations.push({
         type: "step",
         description: "Custom days validation error displayed",

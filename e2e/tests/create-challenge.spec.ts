@@ -43,6 +43,7 @@ test.describe("Create Challenge flow", () => {
 
   let userAToken: string;
   let userAId: string;
+  let userAEmail: string;
   let userBToken: string;
   let userBId: string;
   let userBUsername: string;
@@ -52,6 +53,7 @@ test.describe("Create Challenge flow", () => {
     const tsA = Date.now();
     const tsB = tsA + 1;
     const usernameA = `e2e_challA_${tsA}`;
+    userAEmail = `${usernameA}@winzy.test`;
     userBUsername = `e2e_challB_${tsB}`;
     userBEmail = `${userBUsername}@winzy.test`;
 
@@ -139,20 +141,16 @@ test.describe("Create Challenge flow", () => {
   test("navigate from friend profile -> Set Challenge -> complete flow -> see Challenge sent", async ({
     unauthenticatedPage: page,
   }) => {
-    await test.step("sign in as user A via token", async () => {
+    await test.step("sign in as user A via UI", async () => {
       await page.goto("/");
-      await page.evaluate(
-        ([token]) => {
-          localStorage.setItem("access_token", token);
-          localStorage.setItem("winzy_onboarding_welcome_seen", "true");
-        },
-        [userAToken],
-      );
-      await page.goto("/");
+      await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
+      await page.getByLabel("Email or username").fill(userAEmail);
+      await page.getByLabel("Password").fill(TEST_USER.password);
+      await page.getByRole("button", { name: "Sign in" }).click();
       await dismissWelcomeIfPresent(page);
       test.info().annotations.push({
         type: "step",
-        description: "Signed in as user A via token",
+        description: "Signed in as user A via UI",
       });
     });
 
@@ -247,14 +245,10 @@ test.describe("Create Challenge flow", () => {
   test("validation blocks submit without required fields", async ({ unauthenticatedPage: page }) => {
     // Sign in as user A (profile already completed via API in setup)
     await page.goto("/");
-    await page.evaluate(
-      ([token]) => {
-        localStorage.setItem("access_token", token);
-        localStorage.setItem("winzy_onboarding_welcome_seen", "true");
-      },
-      [userAToken],
-    );
-    await page.goto("/");
+    await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
+    await page.getByLabel("Email or username").fill(userAEmail);
+    await page.getByLabel("Password").fill(TEST_USER.password);
+    await page.getByRole("button", { name: "Sign in" }).click();
     await dismissWelcomeIfPresent(page);
 
     const today = page.getByTestId("today-empty").or(page.getByTestId("today-screen"));
