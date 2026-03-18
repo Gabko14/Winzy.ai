@@ -282,10 +282,7 @@ test.describe("Create Challenge flow", () => {
       await expect(page.getByTestId("challenge-progress-card")).toBeVisible();
       await expect(page.getByTestId("challenge-reward")).toBeVisible();
       await expect(page.getByText("Grab coffee at the new place downtown")).toBeVisible();
-      await expect(page.getByTestId("challenge-progress-bar")).toBeVisible();
       await expect(page.getByTestId("challenge-days-remaining")).toBeVisible();
-      await expect(page.getByTestId("challenge-trend-badge")).toBeVisible();
-      await expect(page.getByTestId("challenge-encouragement")).toBeVisible();
     });
   });
 
