@@ -35,6 +35,40 @@ async function registerAndSetup(page: Page, prefix: string) {
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
 }
 
+/** Helper: after first habit creation, navigate from TodayScreen to HabitListScreen. */
+async function navigateToHabitList(page: Page) {
+  // After first habit (Wave 8), user may be on TodayScreen. Check if already on habit list.
+  const habitList = page.getByTestId("habit-list-screen");
+  if (await habitList.isVisible().catch(() => false)) return;
+
+  // Try the FAB first (visible when habits exist)
+  const fab = page.getByTestId("create-habit-fab");
+  if (await fab.isVisible().catch(() => false)) {
+    await fab.click();
+    await expect(habitList).toBeVisible({ timeout: 10_000 });
+    return;
+  }
+
+  // Fall back to the empty-state CTA (visible when no habits loaded yet)
+  const emptyCta = page.getByText("Create your first habit");
+  if (await emptyCta.isVisible().catch(() => false)) {
+    await emptyCta.click();
+    await expect(habitList).toBeVisible({ timeout: 10_000 });
+    return;
+  }
+
+  // Last resort: reload and try again
+  await page.reload();
+  await expect(page.getByTestId("create-habit-fab").or(page.getByText("Create your first habit"))).toBeVisible({ timeout: 10_000 });
+  const fabAfterReload = page.getByTestId("create-habit-fab");
+  if (await fabAfterReload.isVisible().catch(() => false)) {
+    await fabAfterReload.click();
+  } else {
+    await page.getByText("Create your first habit").click();
+  }
+  await expect(habitList).toBeVisible({ timeout: 10_000 });
+}
+
 /** Helper: navigate from Today empty state to HabitListScreen and open the create modal. */
 async function openCreateModal(page: Page) {
   // Today empty CTA navigates to HabitListScreen
@@ -72,7 +106,8 @@ async function createHabit(page: Page, name: string) {
   // rather than "Close modal" which could also come from FlameIntroModal.
   await expect(page.getByLabel("Habit name")).not.toBeVisible({ timeout: 10_000 });
 
-  // If this is the first habit, FlameIntroModal may appear — dismiss it
+  // If this is the first habit, FlameIntroModal may appear — dismiss it.
+  // After Wave 8, first-habit creation returns to TodayScreen (not HabitListScreen).
   const gotIt = page.getByRole("button", { name: "Got it" });
   try {
     await gotIt.waitFor({ state: "visible", timeout: 2_000 });
@@ -81,7 +116,8 @@ async function createHabit(page: Page, name: string) {
     // FlameIntroModal not shown (not the first habit or already seen)
   }
 
-  // Wait for habit to appear in the list
+  // After first habit, user may be on TodayScreen or HabitListScreen.
+  // Wait for the habit name to be visible on whichever screen we're on.
   await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 });
 }
 
@@ -114,15 +150,13 @@ test.describe("Habit CRUD", () => {
       });
     });
 
-    await test.step("verify habit appears in list", async () => {
-      // After creating a habit in the overlay, HabitListScreen refreshes.
-      // The refresh briefly shows a loading state — wait for the list to settle.
-      await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
+    await test.step("verify habit appears after creation", async () => {
+      // After first habit creation (Wave 8), user returns to TodayScreen.
+      // The habit should be visible on the today view.
       await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText("My Habits")).toBeVisible({ timeout: 5_000 });
       test.info().annotations.push({
         type: "step",
-        description: `Habit "${habitName}" visible in habit list`,
+        description: `Habit "${habitName}" visible after creation`,
       });
     });
   });
@@ -142,6 +176,8 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("open habit for editing", async () => {
+      // After first habit creation (Wave 8), user is on TodayScreen — navigate to habit list
+      await navigateToHabitList(page);
       // Click on the habit row to open edit modal
       await page.getByText(originalName).click();
       await expect(page.getByText("Edit Habit")).toBeVisible({ timeout: 5_000 });
@@ -186,6 +222,8 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("archive the habit via the X button", async () => {
+      // After first habit creation (Wave 8), user is on TodayScreen — navigate to habit list
+      await navigateToHabitList(page);
       // Set up dialog handler before triggering (web uses window.confirm)
       page.on("dialog", (dialog) => dialog.accept());
 
@@ -284,6 +322,17 @@ test.describe("Habit CRUD", () => {
       await page.getByTestId("day-Sat").click();
       await page.getByTestId("day-Sun").click();
       await page.getByRole("button", { name: "Create habit" }).click();
+
+      // Wait for modal to close
+      await expect(page.getByLabel("Habit name")).not.toBeVisible({ timeout: 10_000 });
+
+      // Dismiss FlameIntroModal if it appears (first habit)
+      const gotIt = page.getByRole("button", { name: "Got it" });
+      try {
+        await gotIt.waitFor({ state: "visible", timeout: 2_000 });
+        await gotIt.click();
+      } catch { /* not shown */ }
+
       test.info().annotations.push({
         type: "step",
         description: "Selected Sat + Sun and submitted",
@@ -291,6 +340,8 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("verify habit appears with custom frequency", async () => {
+      // After first habit creation (Wave 8), user is on TodayScreen — navigate to habit list
+      await navigateToHabitList(page);
       await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
       // The habit list shows formatted frequency: "Sat, Sun"
       await expect(page.getByText("Sat, Sun")).toBeVisible();
@@ -316,6 +367,8 @@ test.describe("Habit CRUD", () => {
     });
 
     await test.step("verify '+ New' button is visible", async () => {
+      // After first habit creation (Wave 8), user is on TodayScreen — navigate to habit list
+      await navigateToHabitList(page);
       // When habits exist, the header shows "+ New" button
       await expect(page.getByRole("button", { name: "Create new habit" })).toBeVisible();
       test.info().annotations.push({
