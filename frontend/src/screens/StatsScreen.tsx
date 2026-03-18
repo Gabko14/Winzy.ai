@@ -21,7 +21,7 @@ import {
   brand,
 } from "../design-system";
 import { useHabitDetail } from "../hooks/useHabitDetail";
-import type { FlameLevel } from "../api/habits";
+import type { FlameLevel, FrequencyType } from "../api/habits";
 
 type Props = {
   habitId: string;
@@ -33,11 +33,11 @@ type Props = {
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function getDaysOfData(completedDates: string[], today: string): number {
-  if (completedDates.length === 0) return 0;
-  const earliest = completedDates.length > 0 ? completedDates[0] : today;
-  const start = new Date(earliest);
-  const end = new Date(today);
+function getDaysOfData(createdAt: string, today: string): number {
+  // Normalize createdAt (ISO timestamp) to a bare date string for consistent parsing
+  const createdDate = createdAt.slice(0, 10);
+  const start = new Date(createdDate + "T12:00:00");
+  const end = new Date(today + "T12:00:00");
   return Math.max(1, Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 }
 
@@ -57,7 +57,30 @@ function getMostConsistentDay(completedDates: string[]): string | null {
   return DAY_NAMES[maxIdx];
 }
 
-function getMonthlyCompletion(completedDates: string[], today: string): { current: number; previous: number } | null {
+function getExpectedPerMonth(frequency: FrequencyType, customDays: number[] | null): number {
+  switch (frequency) {
+    case "daily": return 30;
+    case "weekly": return 4;
+    case "custom": return (customDays?.length ?? 0) * 4;
+    default: return 30;
+  }
+}
+
+function getExpectedPerWeek(frequency: FrequencyType, customDays: number[] | null): number {
+  switch (frequency) {
+    case "daily": return 7;
+    case "weekly": return 1;
+    case "custom": return customDays?.length ?? 0;
+    default: return 7;
+  }
+}
+
+function getMonthlyCompletion(
+  completedDates: string[],
+  today: string,
+  frequency: FrequencyType,
+  customDays: number[] | null,
+): { currentRate: number; previousRate: number; current: number; previous: number } | null {
   if (completedDates.length === 0) return null;
   const todayDate = new Date(today + "T12:00:00");
   const currentMonth = todayDate.getMonth();
@@ -72,10 +95,18 @@ function getMonthlyCompletion(completedDates: string[], today: string): { curren
     if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) current++;
     if (date.getMonth() === prevMonth && date.getFullYear() === prevYear) previous++;
   }
-  return { current, previous };
+  const expected = getExpectedPerMonth(frequency, customDays);
+  if (expected === 0) return null;
+  const currentRate = current / expected;
+  const previousRate = previous / expected;
+  return { currentRate, previousRate, current, previous };
 }
 
-function getBestMonth(completedDates: string[]): string | null {
+function getBestMonth(
+  completedDates: string[],
+  frequency: FrequencyType,
+  customDays: number[] | null,
+): string | null {
   if (completedDates.length === 0) return null;
   const counts: Record<string, number> = {};
   for (const d of completedDates) {
@@ -83,12 +114,15 @@ function getBestMonth(completedDates: string[]): string | null {
     const key = `${date.getFullYear()}-${date.getMonth()}`;
     counts[key] = (counts[key] || 0) + 1;
   }
+  const expected = getExpectedPerMonth(frequency, customDays);
+  if (expected === 0) return null;
   let bestKey = "";
-  let bestCount = 0;
+  let bestRate = 0;
   for (const [key, count] of Object.entries(counts)) {
-    if (count > bestCount) {
+    const rate = count / expected;
+    if (rate > bestRate) {
       bestKey = key;
-      bestCount = count;
+      bestRate = rate;
     }
   }
   if (!bestKey) return null;
@@ -145,12 +179,12 @@ function getConsistencyMessage(consistency: number): string {
   return "Ready to build your habit? One day at a time.";
 }
 
-function getMonthComparisonMessage(monthly: { current: number; previous: number }): string | null {
+function getMonthComparisonMessage(monthly: { currentRate: number; previousRate: number; current: number; previous: number }): string | null {
   if (monthly.previous === 0 && monthly.current === 0) return null;
   if (monthly.previous === 0) return `You've already logged ${monthly.current} time${monthly.current === 1 ? "" : "s"} this month. Great start!`;
-  if (monthly.current > monthly.previous) return "You're doing better this month than last month!";
-  if (monthly.current === monthly.previous) return "You're matching last month's pace. Keep it steady!";
-  return "Still time to build momentum this month!";
+  if (monthly.currentRate > monthly.previousRate) return "You're doing better this month than last month!";
+  if (Math.abs(monthly.currentRate - monthly.previousRate) < 0.001) return "You're matching last month's pace. Keep it steady!";
+  return "Keep it up! Every completion counts.";
 }
 
 // --- Main component ---
@@ -189,14 +223,19 @@ export function StatsScreen({ habitId, onBack }: Props) {
 
   const consistency = stats.consistency;
   const flameLevel = stats.flameLevel as FlameLevel;
-  const daysOfData = getDaysOfData(stats.completedDates, stats.today);
+  const daysOfData = getDaysOfData(habit.createdAt, stats.today);
   const isNewHabit = daysOfData < 7;
+  // Sparse = fewer completions than one week's expected amount, and habit is past the "new" phase.
+  // E.g., daily expects 7/week, weekly expects 1/week, custom MWF expects 3/week.
+  const expectedPerWeek = getExpectedPerWeek(habitFrequency, habit.customDays);
+  const isSparseHabit = daysOfData >= 7 && expectedPerWeek > 0
+    && stats.totalCompletions < expectedPerWeek;
 
   // Compute insights
   const bestDay = getMostConsistentDay(stats.completedDates);
-  const monthly = getMonthlyCompletion(stats.completedDates, stats.today);
-  const bestMonth = getBestMonth(stats.completedDates);
-  const monthMessage = monthly ? getMonthComparisonMessage(monthly) : null;
+  const monthly = getMonthlyCompletion(stats.completedDates, stats.today, habitFrequency, habit.customDays);
+  const bestMonth = getBestMonth(stats.completedDates, habitFrequency, habit.customDays);
+  const monthMessage = monthly && !isSparseHabit ? getMonthComparisonMessage(monthly) : null;
 
   // Heatmap
   const heatmapData = buildHeatmapData(stats.completedDates, stats.today);
@@ -355,6 +394,12 @@ export function StatsScreen({ habitId, onBack }: Props) {
           <View testID="new-habit-message">
             <Text style={[styles.insightText, { color: colors.textSecondary }]}>
               Just getting started! Check back after a week for trends and patterns.
+            </Text>
+          </View>
+        ) : isSparseHabit ? (
+          <View testID="sparse-habit-message">
+            <Text style={[styles.insightText, { color: colors.textSecondary }]}>
+              Building up data! A few more completions and you'll start seeing trends.
             </Text>
           </View>
         ) : (
