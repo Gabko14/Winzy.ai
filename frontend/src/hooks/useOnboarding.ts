@@ -3,6 +3,9 @@ import { Platform } from "react-native";
 
 const WELCOME_SEEN_PREFIX = "winzy_onboarding_welcome_seen_";
 const FLAME_INTRO_SEEN_PREFIX = "winzy_onboarding_flame_intro_seen_";
+// Legacy keys (pre-Wave 8, not user-scoped) — used for migration
+const LEGACY_WELCOME_KEY = "winzy_onboarding_welcome_seen";
+const LEGACY_FLAME_KEY = "winzy_onboarding_flame_intro_seen";
 
 type Storage = {
   getItem: (key: string) => Promise<string | null>;
@@ -54,13 +57,25 @@ export function useOnboarding(userId: string): OnboardingState {
     setHasSeenWelcome(false);
     setHasSeenFlameIntro(false);
     const s = getStorage();
+    // Read user-scoped keys first, fall back to legacy (pre-Wave 8) keys for migration
     Promise.all([
       s.getItem(welcomeKey),
       s.getItem(flameKey),
-    ]).then(([welcome, flame]) => {
+      s.getItem(LEGACY_WELCOME_KEY),
+      s.getItem(LEGACY_FLAME_KEY),
+    ]).then(([welcome, flame, legacyWelcome, legacyFlame]) => {
       if (cancelled) return;
-      setHasSeenWelcome(welcome === "true");
-      setHasSeenFlameIntro(flame === "true");
+      const seenWelcome = welcome === "true" || legacyWelcome === "true";
+      const seenFlame = flame === "true" || legacyFlame === "true";
+      setHasSeenWelcome(seenWelcome);
+      setHasSeenFlameIntro(seenFlame);
+      // Migrate legacy keys to user-scoped keys
+      if (userId && legacyWelcome === "true" && welcome !== "true") {
+        s.setItem(welcomeKey, "true").catch(() => {});
+      }
+      if (userId && legacyFlame === "true" && flame !== "true") {
+        s.setItem(flameKey, "true").catch(() => {});
+      }
       setLoading(false);
     });
     return () => {
