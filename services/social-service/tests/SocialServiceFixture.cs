@@ -119,6 +119,7 @@ public sealed class SocialServiceFixture : IAsyncLifetime
         MockHabitHandler.HabitResponses.Clear();
         MockHabitHandler.ErrorResponses.Clear();
         MockHabitHandler.RawResponses.Clear();
+        MockHabitHandler.TimeoutUserIds.Clear();
         MockAuthHandler.ProfileResponses.Clear();
         using var db = CreateDbContext();
         await db.VisibilitySettings.ExecuteDeleteAsync();
@@ -151,6 +152,11 @@ internal class MockHabitHandler : HttpMessageHandler
     /// </summary>
     public static readonly ConcurrentDictionary<Guid, string> RawResponses = new();
 
+    /// <summary>
+    /// Set of userIds that will throw TaskCanceledException (simulates timeout).
+    /// </summary>
+    public static readonly ConcurrentDictionary<Guid, bool> TimeoutUserIds = new();
+
     public static void SetError(Guid userId, HttpStatusCode statusCode)
     {
         ErrorResponses[userId] = statusCode;
@@ -159,6 +165,11 @@ internal class MockHabitHandler : HttpMessageHandler
     public static void SetRawResponse(Guid userId, string body)
     {
         RawResponses[userId] = body;
+    }
+
+    public static void SetTimeout(Guid userId)
+    {
+        TimeoutUserIds[userId] = true;
     }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -171,6 +182,10 @@ internal class MockHabitHandler : HttpMessageHandler
             var userIdStr = path[prefix.Length..].TrimEnd('/');
             if (Guid.TryParse(userIdStr, out var userId))
             {
+                // Check for timeout simulation first
+                if (TimeoutUserIds.ContainsKey(userId))
+                    throw new TaskCanceledException("The request was canceled due to the configured timeout.");
+
                 // Check for configured error first
                 if (ErrorResponses.TryGetValue(userId, out var errorStatus))
                 {
