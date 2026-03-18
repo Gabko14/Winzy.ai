@@ -234,6 +234,16 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   // Track completed dates locally for optimistic calendar updates
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set());
 
+  // Error feedback for failed date toggles (web only — native uses Alert.alert)
+  const [toggleError, setToggleError] = useState<string | null>(null);
+
+  // Auto-dismiss toggle error after 4 seconds
+  useEffect(() => {
+    if (!toggleError) return;
+    const timer = setTimeout(() => setToggleError(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toggleError]);
+
   // Calendar month state — default to current month
   const now = new Date();
   const [calMonth, setCalMonth] = useState(now.getMonth());
@@ -260,6 +270,9 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   const handleToggleDate = useCallback(
     async (date: string) => {
       const wasCompleted = completedDates.has(date);
+
+      // Clear any previous error when starting a new toggle
+      setToggleError(null);
 
       // Optimistic update
       setCompletedDates((prev) => {
@@ -292,8 +305,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
 
         const message = isApiError(err) ? err.message : "Something went wrong. Please try again.";
         if (Platform.OS === "web") {
-          // Alert.alert not supported on web
-          // The error is surfaced through the mutation state
+          setToggleError(message);
         } else {
           Alert.alert("Oops", message);
         }
@@ -476,6 +488,17 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           Completion History
         </Text>
+        {toggleError && (
+          <View
+            style={[styles.toggleError, { backgroundColor: colors.errorBackground }]}
+            accessibilityRole="alert"
+            testID="toggle-error"
+          >
+            <Text style={[styles.toggleErrorText, { color: colors.error }]}>
+              {toggleError}
+            </Text>
+          </View>
+        )}
         <Text style={[styles.calendarHint, { color: colors.textTertiary }]}>
           Tap a date to log or correct a completion
         </Text>
@@ -660,6 +683,15 @@ const styles = StyleSheet.create({
   // Calendar
   calendarCard: {
     marginBottom: spacing.base,
+  },
+  toggleError: {
+    padding: spacing.sm,
+    borderRadius: radii.sm,
+    marginBottom: spacing.sm,
+  },
+  toggleErrorText: {
+    ...typography.bodySmall,
+    fontWeight: "500",
   },
   calendarHint: {
     ...typography.caption,
