@@ -15,6 +15,7 @@ using Winzy.HabitService.Subscribers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("habit-service");
 builder.Services.AddServiceDatabase<HabitDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddHostedService<UserDeletedSubscriber>();

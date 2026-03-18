@@ -6,9 +6,24 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Events;
 using Winzy.Gateway.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Serilog (inline — gateway must not reference Winzy.Common)
+var seqUrl = builder.Configuration["Seq:Url"] ?? "http://seq:5341";
+builder.Services.AddSerilog((services, config) => config
+    .ReadFrom.Configuration(builder.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("ServiceName", "api-gateway")
+    .Enrich.WithMachineName()
+    .WriteTo.Console()
+    .WriteTo.Seq(seqUrl)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("NATS", LogEventLevel.Warning));
 
 // YARP reverse proxy
 builder.Services.AddReverseProxy()

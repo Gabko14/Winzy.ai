@@ -11,6 +11,7 @@ using Winzy.NotificationService.Subscribers;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddObservability("notification-service");
 builder.Services.AddServiceDatabase<NotificationDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddSingleton<PushDeliveryService>();
