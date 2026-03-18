@@ -50,6 +50,7 @@ describe("PublicFlameScreen", () => {
           flameLevel: "steady",
         },
       ],
+      degraded: false,
     });
 
     const { getByTestId, getByText } = renderScreen("alice");
@@ -65,7 +66,7 @@ describe("PublicFlameScreen", () => {
   });
 
   it("calls the API with correct path and noAuth", async () => {
-    mockApiRequest.mockResolvedValue({ username: "bob", habits: [] });
+    mockApiRequest.mockResolvedValue({ username: "bob", habits: [], degraded: false });
     renderScreen("bob");
 
     await waitFor(() => {
@@ -76,20 +77,17 @@ describe("PublicFlameScreen", () => {
     });
   });
 
-  it("passes X-Timezone header to the API", async () => {
-    mockApiRequest.mockResolvedValue({ username: "bob", habits: [] });
+  it("does not send X-Timezone header (share surfaces use UTC server-side)", async () => {
+    mockApiRequest.mockResolvedValue({ username: "bob", habits: [], degraded: false });
     renderScreen("bob");
 
     await waitFor(() => {
-      expect(mockApiRequest).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            "X-Timezone": expect.any(String),
-          }),
-        }),
-      );
+      expect(mockApiRequest).toHaveBeenCalled();
     });
+
+    const callArgs = mockApiRequest.mock.calls[0];
+    const options = callArgs[1];
+    expect(options.headers?.["X-Timezone"]).toBeUndefined();
   });
 
   // --- Single habit ---
@@ -100,6 +98,7 @@ describe("PublicFlameScreen", () => {
       habits: [
         { id: "1", name: "Run", icon: null, color: null, consistency: 90, flameLevel: "blazing" },
       ],
+      degraded: false,
     });
 
     const { getByText } = renderScreen("solo");
@@ -112,13 +111,58 @@ describe("PublicFlameScreen", () => {
   // --- Empty habits ---
 
   it("shows empty state when user has no public habits", async () => {
-    mockApiRequest.mockResolvedValue({ username: "quiet", habits: [] });
+    mockApiRequest.mockResolvedValue({ username: "quiet", habits: [], degraded: false });
 
-    const { getByText } = renderScreen("quiet");
+    const { getByText, queryByTestId } = renderScreen("quiet");
 
     await waitFor(() => {
       expect(getByText("No public habits yet")).toBeTruthy();
     });
+
+    expect(queryByTestId("public-flame-degraded")).toBeNull();
+  });
+
+  // --- Degraded reads ---
+
+  it("shows degraded banner when backend reports degraded with no habits", async () => {
+    mockApiRequest.mockResolvedValue({ username: "degraded-user", habits: [], degraded: true });
+
+    const { getByTestId, getByText, queryByText } = renderScreen("degraded-user");
+
+    await waitFor(() => {
+      expect(getByTestId("public-flame-degraded")).toBeTruthy();
+    });
+
+    // Renders inside the scroll view, not a full-screen takeover
+    expect(getByTestId("public-flame-screen")).toBeTruthy();
+    expect(getByText("@degraded-user")).toBeTruthy();
+    expect(getByText("Temporarily unavailable")).toBeTruthy();
+    expect(getByText(/trouble loading/)).toBeTruthy();
+    expect(getByText("Try again")).toBeTruthy();
+    // Does NOT show the genuine empty state
+    expect(queryByText("No public habits yet")).toBeNull();
+  });
+
+  it("shows habits normally when degraded but habits exist", async () => {
+    mockApiRequest.mockResolvedValue({
+      username: "partial",
+      habits: [
+        { id: "1", name: "Yoga", icon: null, color: null, consistency: 60, flameLevel: "strong" },
+      ],
+      degraded: true,
+    });
+
+    const { getByTestId, getByText, queryByTestId, queryByText } = renderScreen("partial");
+
+    await waitFor(() => {
+      expect(getByTestId("public-flame-screen")).toBeTruthy();
+    });
+
+    expect(getByText("Yoga")).toBeTruthy();
+    expect(getByText("1 habit")).toBeTruthy();
+    // Neither degraded banner nor empty state should appear
+    expect(queryByTestId("public-flame-degraded")).toBeNull();
+    expect(queryByText("No public habits yet")).toBeNull();
   });
 
   // --- Not found ---
@@ -164,7 +208,7 @@ describe("PublicFlameScreen", () => {
   // --- CTA ---
 
   it("renders the CTA section", async () => {
-    mockApiRequest.mockResolvedValue({ username: "cta", habits: [] });
+    mockApiRequest.mockResolvedValue({ username: "cta", habits: [], degraded: false });
 
     const { getByText } = renderScreen("cta");
 
@@ -186,6 +230,7 @@ describe("PublicFlameScreen", () => {
         { id: "4", name: "H4", icon: null, color: null, consistency: 65, flameLevel: "strong" },
         { id: "5", name: "H5", icon: null, color: null, consistency: 90, flameLevel: "blazing" },
       ],
+      degraded: false,
     });
 
     const { getByTestId, getByText } = renderScreen("flames");
@@ -207,6 +252,7 @@ describe("PublicFlameScreen", () => {
       habits: [
         { id: "1", name: "Run", icon: "🏃", color: null, consistency: 50, flameLevel: "steady" },
       ],
+      degraded: false,
     });
 
     const { getByText } = renderScreen("icons");
@@ -226,6 +272,7 @@ describe("PublicFlameScreen", () => {
         { id: "1", name: "H1", icon: null, color: null, consistency: 60, flameLevel: "strong" },
         { id: "2", name: "H2", icon: null, color: null, consistency: 40, flameLevel: "steady" },
       ],
+      degraded: false,
     });
 
     const { getByText } = renderScreen("agg");
@@ -239,7 +286,7 @@ describe("PublicFlameScreen", () => {
   // --- Footer ---
 
   it("renders the powered-by footer", async () => {
-    mockApiRequest.mockResolvedValue({ username: "footer", habits: [] });
+    mockApiRequest.mockResolvedValue({ username: "footer", habits: [], degraded: false });
 
     const { getByText } = renderScreen("footer");
 
@@ -251,7 +298,7 @@ describe("PublicFlameScreen", () => {
   // --- Encodes username in API path ---
 
   it("encodes special characters in username for API call", async () => {
-    mockApiRequest.mockResolvedValue({ username: "user-name", habits: [] });
+    mockApiRequest.mockResolvedValue({ username: "user-name", habits: [], degraded: false });
     renderScreen("user-name");
 
     await waitFor(() => {
