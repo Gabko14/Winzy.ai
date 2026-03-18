@@ -1,0 +1,19 @@
+### ==========================================================
+### Activity Service — 2 requests
+### Cursor-based pagination: first page, then use nextCursor
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+@nextCursor = <paste-from-first-feed-response>
+
+### 1. Get activity feed (first page)
+# Returns items from your friends' activity
+# Response includes nextCursor and hasMore for pagination
+GET {{baseUrl}}/activity/feed?limit=20
+Authorization: Bearer {{accessToken}}
+
+### 2. Get activity feed (next page)
+# Copy nextCursor from the previous response
+GET {{baseUrl}}/activity/feed?cursor={{nextCursor}}&limit=20
+Authorization: Bearer {{accessToken}}

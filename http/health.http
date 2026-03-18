@@ -1,0 +1,15 @@
+### ==========================================================
+### Health & Infrastructure — 2 requests
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+
+### 1. Gateway aggregated health check (no auth required)
+# Returns status of all downstream services (auth, habit, social, challenge, notification, activity)
+GET {{baseUrl}}/health
+
+### 2. NATS monitoring health
+# Requires debug compose overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+# Port 8222 is the NATS monitoring port (not 4222 which is the client port)
+GET http://localhost:8222/healthz

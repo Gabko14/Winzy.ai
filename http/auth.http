@@ -1,0 +1,83 @@
+### ==========================================================
+### Auth Service — 10 requests
+### Flow: register → login → use token for authenticated calls
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+
+### 1. Register a new user
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "username": "testuser",
+  "password": "TestPassword123!",
+  "displayName": "Test User"
+}
+
+### 2. Login
+# Copy accessToken from the response and paste into @accessToken above
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "emailOrUsername": "test@example.com",
+  "password": "TestPassword123!"
+}
+
+### 3. Refresh token
+# For native clients: pass refreshToken in body
+# For web clients: the HttpOnly cookie is sent automatically
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "<paste-refresh-token>"
+}
+
+### 4. Logout
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": "<paste-refresh-token>"
+}
+
+### 5. Get profile
+GET {{baseUrl}}/auth/profile
+Authorization: Bearer {{accessToken}}
+
+### 6. Update profile
+PUT {{baseUrl}}/auth/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "displayName": "Updated Name",
+  "avatarUrl": "https://example.com/avatar.png"
+}
+
+### 7. Change password
+PUT {{baseUrl}}/auth/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "TestPassword123!",
+  "newPassword": "NewPassword456!"
+}
+
+### 8. Search users
+GET {{baseUrl}}/auth/users/search?q=test
+Authorization: Bearer {{accessToken}}
+
+### 9. Export user data (GDPR)
+GET {{baseUrl}}/auth/export
+Authorization: Bearer {{accessToken}}
+
+### 10. Delete account (DESTRUCTIVE — run last)
+DELETE {{baseUrl}}/auth/account
+Authorization: Bearer {{accessToken}}

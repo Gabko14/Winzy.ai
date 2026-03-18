@@ -1,0 +1,106 @@
+### ==========================================================
+### Habit Service — 14 requests
+### Flow: create habits → complete → view stats → archive
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+@habitId = <paste-habit-guid>
+@testUsername = testuser
+
+### 1. Create habit (daily)
+POST {{baseUrl}}/habits
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Morning Run",
+  "icon": "🏃",
+  "frequency": "daily"
+}
+
+### 2. Create habit (weekly)
+POST {{baseUrl}}/habits
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Read Book",
+  "icon": "📖",
+  "frequency": "weekly",
+  "customDays": ["saturday", "sunday"]
+}
+
+### 3. Create habit (custom days)
+POST {{baseUrl}}/habits
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Gym",
+  "icon": "💪",
+  "frequency": "custom",
+  "customDays": ["monday", "wednesday", "friday"]
+}
+
+### 4. List all habits
+GET {{baseUrl}}/habits
+Authorization: Bearer {{accessToken}}
+
+### 5. Get single habit
+# Paste a habit ID from the create or list response
+GET {{baseUrl}}/habits/{{habitId}}
+Authorization: Bearer {{accessToken}}
+
+### 6. Update habit
+PUT {{baseUrl}}/habits/{{habitId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Evening Run",
+  "color": "#FF5733"
+}
+
+### 7. Complete habit (today)
+POST {{baseUrl}}/habits/{{habitId}}/complete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "timezone": "Europe/Vienna"
+}
+
+### 8. Complete habit (backfill a past date)
+POST {{baseUrl}}/habits/{{habitId}}/complete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "date": "2026-03-15",
+  "timezone": "Europe/Vienna"
+}
+
+### 9. Undo completion
+DELETE {{baseUrl}}/habits/{{habitId}}/completions/2026-03-15
+Authorization: Bearer {{accessToken}}
+
+### 10. Get habit stats
+# X-Timezone header is required — returns 400 without it
+GET {{baseUrl}}/habits/{{habitId}}/stats
+Authorization: Bearer {{accessToken}}
+X-Timezone: Europe/Vienna
+
+### 11. Get completions for a specific date
+GET {{baseUrl}}/habits/completions?date=2026-03-18
+Authorization: Bearer {{accessToken}}
+
+### 12. Public flame page (no auth required)
+GET {{baseUrl}}/habits/public/{{testUsername}}
+
+### 13. Public SVG flame badge (no auth required)
+GET {{baseUrl}}/habits/public/{{testUsername}}/flame.svg
+
+### 14. Archive habit (DESTRUCTIVE — run last)
+DELETE {{baseUrl}}/habits/{{habitId}}
+Authorization: Bearer {{accessToken}}

@@ -1,0 +1,79 @@
+### ==========================================================
+### Social Service — 12 requests
+### Flow: send request → accept → view friends → set visibility
+### Note: accept/decline require the OTHER user's token
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+@friendId = <paste-friend-guid>
+@habitId = <paste-habit-guid>
+@requestId = <paste-from-friend-request-response>
+
+### 1. Send friend request
+POST {{baseUrl}}/social/friends/request
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "friendId": "{{friendId}}"
+}
+
+### 2. List friend requests (incoming + outgoing)
+GET {{baseUrl}}/social/friends/requests
+Authorization: Bearer {{accessToken}}
+
+### 3. Get pending friend request count
+GET {{baseUrl}}/social/friends/requests/count
+Authorization: Bearer {{accessToken}}
+
+### 4. Accept friend request
+# Requires the RECIPIENT's token — paste the friend's accessToken above
+# Copy the request "id" from the friend requests list
+PUT {{baseUrl}}/social/friends/request/{{requestId}}/accept
+Authorization: Bearer {{accessToken}}
+
+### 5. Decline friend request
+PUT {{baseUrl}}/social/friends/request/{{requestId}}/decline
+Authorization: Bearer {{accessToken}}
+
+### 6. List friends (paginated)
+GET {{baseUrl}}/social/friends?page=1&pageSize=10
+Authorization: Bearer {{accessToken}}
+
+### 7. View friend's profile (visible habits)
+# Response includes habitsUnavailable: false|true for graceful degradation
+# when habit-service is unreachable. habits array may be empty in either case.
+GET {{baseUrl}}/social/friends/{{friendId}}/profile
+Authorization: Bearer {{accessToken}}
+
+### 8. Set habit visibility
+# Valid values: private, friends, public
+PUT {{baseUrl}}/social/visibility/{{habitId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "visibility": "friends"
+}
+
+### 9. Get all visibility settings (default + per-habit overrides)
+GET {{baseUrl}}/social/visibility
+Authorization: Bearer {{accessToken}}
+
+### 10. Get default visibility preference
+GET {{baseUrl}}/social/preferences
+Authorization: Bearer {{accessToken}}
+
+### 11. Update default visibility preference
+PUT {{baseUrl}}/social/preferences
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "defaultHabitVisibility": "friends"
+}
+
+### 12. Remove friendship (DESTRUCTIVE — run last)
+DELETE {{baseUrl}}/social/friends/{{friendId}}
+Authorization: Bearer {{accessToken}}
