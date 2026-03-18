@@ -401,27 +401,40 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
                   )}
                 </View>
               ) : (
-                <View style={styles.pushRow} testID="push-toggle-row">
-                  <View style={styles.actionContent}>
-                    <Text style={[styles.settingLabel, { color: colors.textPrimary, marginBottom: 0 }]}>
-                      Push notifications
-                    </Text>
-                    <Text style={[styles.settingHint, { color: colors.textTertiary, marginBottom: 0 }]}>
-                      {push.status === "subscribed"
-                        ? "You'll receive reminders and friend activity"
-                        : "Get reminders and friend activity updates"}
-                    </Text>
+                <View testID="push-toggle-row">
+                  {push.error && (
+                    <View
+                      style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
+                      accessibilityRole="alert"
+                      testID="push-error"
+                    >
+                      <Text style={[styles.inlineErrorText, { color: colors.error }]}>
+                        {push.error}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.pushRow}>
+                    <View style={styles.actionContent}>
+                      <Text style={[styles.settingLabel, { color: colors.textPrimary, marginBottom: 0 }]}>
+                        Push notifications
+                      </Text>
+                      <Text style={[styles.settingHint, { color: colors.textTertiary, marginBottom: 0 }]}>
+                        {push.status === "subscribed"
+                          ? "You'll receive reminders and friend activity"
+                          : "Get reminders and friend activity updates"}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={push.status === "subscribed"}
+                      onValueChange={handlePushToggle}
+                      disabled={push.subscribing}
+                      trackColor={{ false: colors.border, true: colors.brandPrimary }}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Push notifications"
+                      accessibilityState={{ checked: push.status === "subscribed" }}
+                      testID="push-toggle"
+                    />
                   </View>
-                  <Switch
-                    value={push.status === "subscribed"}
-                    onValueChange={handlePushToggle}
-                    disabled={push.subscribing}
-                    trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                    accessibilityRole="switch"
-                    accessibilityLabel="Push notifications"
-                    accessibilityState={{ checked: push.status === "subscribed" }}
-                    testID="push-toggle"
-                  />
                 </View>
               )}
             </Card>

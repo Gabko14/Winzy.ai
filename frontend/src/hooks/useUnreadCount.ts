@@ -4,7 +4,13 @@ import { fetchUnreadCount } from "../api/notifications";
 
 const POLL_INTERVAL_MS = 30_000;
 
-export function useUnreadCount() {
+/**
+ * Tracks unread notification count with polling.
+ *
+ * @param isAuthenticated - Gate polling on auth status. When false, count resets
+ *   to 0 and polling stops so the badge doesn't show stale data after logout.
+ */
+export function useUnreadCount(isAuthenticated = true) {
   const [count, setCount] = useState(0);
   const mountedRef = useRef(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -35,10 +41,23 @@ export function useUnreadCount() {
     poll();
   }, [poll]);
 
+  // Clear stale state when auth drops
   useEffect(() => {
+    if (!isAuthenticated) {
+      setCount(0);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     mountedRef.current = true;
 
-    // Initial fetch
+    // Immediate fetch on auth (login or mount while authenticated)
     poll();
 
     // Poll on interval
@@ -65,10 +84,11 @@ export function useUnreadCount() {
       mountedRef.current = false;
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       subscription.remove();
     };
-  }, [poll]);
+  }, [poll, isAuthenticated]);
 
   return { count, decrementBy, resetToZero, refresh };
 }
