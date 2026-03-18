@@ -326,6 +326,136 @@ public class FriendshipEndpointTests : IAsyncLifetime
         Assert.Equal(0, body.GetProperty("total").GetInt32());
     }
 
+    // --- GET /social/friends — flame enrichment (winzy.ai-3r2.5) ---
+
+    [Fact]
+    public async Task ListFriends_EnrichesWithFlameData()
+    {
+        await CreateFriendship();
+
+        // Friend has a habit with flame data — set visibility to friends
+        var habitId = Guid.NewGuid();
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = habitId, name = "Meditate", icon = (string?)null, color = (string?)null, consistency = 75.0, flameLevel = "strong" }
+        ]);
+
+        // Set habit visibility to friends so it's visible
+        using var db = _fixture.CreateDbContext();
+        db.VisibilitySettings.Add(new VisibilitySetting
+        {
+            UserId = _friendId,
+            HabitId = habitId,
+            Visibility = HabitVisibility.Friends
+        });
+        await db.SaveChangesAsync(CT);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/social/friends", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("strong", item.GetProperty("flameLevel").GetString());
+        Assert.Equal(75.0, item.GetProperty("consistency").GetDouble());
+        Assert.False(item.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ListFriends_FlameAggregation_UsesHighestFlameLevel()
+    {
+        await CreateFriendship();
+
+        var habitId1 = Guid.NewGuid();
+        var habitId2 = Guid.NewGuid();
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = habitId1, name = "Read", icon = (string?)null, color = (string?)null, consistency = 30.0, flameLevel = "ember" },
+            new { id = habitId2, name = "Meditate", icon = (string?)null, color = (string?)null, consistency = 80.0, flameLevel = "blazing" }
+        ]);
+
+        using var db = _fixture.CreateDbContext();
+        db.VisibilitySettings.AddRange(
+            new VisibilitySetting { UserId = _friendId, HabitId = habitId1, Visibility = HabitVisibility.Friends },
+            new VisibilitySetting { UserId = _friendId, HabitId = habitId2, Visibility = HabitVisibility.Friends }
+        );
+        await db.SaveChangesAsync(CT);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/social/friends", CT);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("blazing", item.GetProperty("flameLevel").GetString());
+        Assert.Equal(55.0, item.GetProperty("consistency").GetDouble()); // average of 30 + 80
+    }
+
+    [Fact]
+    public async Task ListFriends_FlameRespectsVisibility_PrivateHabitsExcluded()
+    {
+        await CreateFriendship();
+
+        var publicHabitId = Guid.NewGuid();
+        var privateHabitId = Guid.NewGuid();
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = publicHabitId, name = "Visible", icon = (string?)null, color = (string?)null, consistency = 40.0, flameLevel = "steady" },
+            new { id = privateHabitId, name = "Secret", icon = (string?)null, color = (string?)null, consistency = 95.0, flameLevel = "blazing" }
+        ]);
+
+        using var db = _fixture.CreateDbContext();
+        db.VisibilitySettings.AddRange(
+            new VisibilitySetting { UserId = _friendId, HabitId = publicHabitId, Visibility = HabitVisibility.Friends },
+            new VisibilitySetting { UserId = _friendId, HabitId = privateHabitId, Visibility = HabitVisibility.Private }
+        );
+        await db.SaveChangesAsync(CT);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/social/friends", CT);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        // Only the visible habit contributes — "steady" not "blazing"
+        Assert.Equal("steady", item.GetProperty("flameLevel").GetString());
+        Assert.Equal(40.0, item.GetProperty("consistency").GetDouble());
+    }
+
+    [Fact]
+    public async Task ListFriends_GracefulDegradation_WhenHabitServiceUnavailable()
+    {
+        await CreateFriendship();
+
+        MockHabitHandler.SetError(_friendId, HttpStatusCode.InternalServerError);
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/social/friends", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("none", item.GetProperty("flameLevel").GetString());
+        Assert.Equal(0.0, item.GetProperty("consistency").GetDouble());
+        Assert.True(item.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ListFriends_NoVisibleHabits_ReturnsNoneFlame()
+    {
+        await CreateFriendship();
+
+        // Friend has habits but all are private (default visibility is private)
+        MockHabitHandler.SetHabits(_friendId, [
+            new { id = Guid.NewGuid(), name = "Secret", icon = (string?)null, color = (string?)null, consistency = 90.0, flameLevel = "blazing" }
+        ]);
+        // No visibility settings → defaults to private
+
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var response = await client.GetAsync("/social/friends", CT);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var item = body.GetProperty("items")[0];
+        Assert.Equal("none", item.GetProperty("flameLevel").GetString());
+        Assert.Equal(0.0, item.GetProperty("consistency").GetDouble());
+        Assert.False(item.GetProperty("habitsUnavailable").GetBoolean());
+    }
+
     // --- GET /social/friends/requests/count ---
 
     [Fact]

@@ -66,7 +66,20 @@ export function FriendRow({ friend, onPress, onOptions, processing }: FriendRowP
         </View>
 
         <View style={styles.flameContainer} testID={`flame-${friend.friendId}`}>
-          <Flame flameLevel={flameLevel} size="sm" consistency={friend.consistency} />
+          {friend.habitsUnavailable ? (
+            <View
+              style={styles.flameUnavailable}
+              accessibilityLabel="Flame data temporarily unavailable"
+              testID={`flame-unavailable-${friend.friendId}`}
+            >
+              <View style={{ opacity: 0.3 }}>
+                <Flame flameLevel="none" size="sm" />
+              </View>
+              <Text style={[styles.unavailableBadge, { color: colors.textSecondary }]}>?</Text>
+            </View>
+          ) : (
+            <Flame flameLevel={flameLevel} size="sm" consistency={friend.consistency} />
+          )}
         </View>
 
         <Pressable
@@ -117,6 +130,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: spacing.xs,
+  },
+  flameUnavailable: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  unavailableBadge: {
+    position: "absolute",
+    bottom: 0,
+    fontSize: 10,
+    fontWeight: "700",
   },
   menuButton: {
     width: 32,

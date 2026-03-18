@@ -353,14 +353,53 @@ describe("FriendsScreen", () => {
     expect(getByTestId("flame-flame-friend")).toBeTruthy();
   });
 
-  it("renders flame with 'none' level when friend has no flame data", () => {
-    mockUseFriends.friends = [makeFriend({ friendId: "no-flame" })];
+  it("renders flame with 'none' level when friend has no visible habits", () => {
+    mockUseFriends.friends = [
+      makeFriend({ friendId: "no-flame", flameLevel: "none", consistency: 0 }),
+    ];
     mockUseFriends.totalFriends = 1;
 
     const { getByTestId } = render(<FriendsScreen />);
 
-    // Flame container should exist even without flame data
+    // Flame container should exist — "none" is a legitimate state (no visible habits)
     expect(getByTestId("flame-no-flame")).toBeTruthy();
+  });
+
+  it("shows unavailable indicator when habit-service was down (habitsUnavailable)", () => {
+    mockUseFriends.friends = [
+      makeFriend({
+        friendId: "degraded-friend",
+        flameLevel: "none",
+        consistency: 0,
+        habitsUnavailable: true,
+      }),
+    ];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId, getByText } = render(<FriendsScreen />);
+
+    // Flame container exists but shows unavailable state with "?" badge
+    expect(getByTestId("flame-degraded-friend")).toBeTruthy();
+    expect(getByTestId("flame-unavailable-degraded-friend")).toBeTruthy();
+    expect(getByText("?")).toBeTruthy();
+  });
+
+  it("does NOT show unavailable indicator for legitimate none flame", () => {
+    mockUseFriends.friends = [
+      makeFriend({
+        friendId: "legit-none",
+        flameLevel: "none",
+        consistency: 0,
+        habitsUnavailable: false,
+      }),
+    ];
+    mockUseFriends.totalFriends = 1;
+
+    const { getByTestId, queryByTestId } = render(<FriendsScreen />);
+
+    // Normal none flame — no unavailable badge
+    expect(getByTestId("flame-legit-none")).toBeTruthy();
+    expect(queryByTestId("flame-unavailable-legit-none")).toBeNull();
   });
 
   // --- Menu button on friend rows (winzy.ai-1wzg) ---

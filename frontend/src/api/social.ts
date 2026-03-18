@@ -10,9 +10,11 @@ export type Friend = {
   username?: string;
   displayName?: string | null;
   avatarUrl?: string | null;
-  // Optional flame/consistency fields — populated when habit-service enrichment is available (winzy.ai-779)
+  // Flame/consistency fields — enriched from habit-service via /social/friends (winzy.ai-3r2.5)
   flameLevel?: "none" | "ember" | "steady" | "strong" | "blazing";
   consistency?: number;
+  /** True when habit-service was unreachable during enrichment. */
+  habitsUnavailable?: boolean;
 };
 
 export type FriendsPage = {
