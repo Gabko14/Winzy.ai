@@ -379,10 +379,7 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
         .FirstOrDefaultAsync(p => p.UserId == friendId);
     var defaultVisibility = preference?.DefaultHabitVisibility ?? HabitVisibility.Private;
 
-    // Filter habits by visibility and enrich with consistency/flameLevel
-    var today = DateOnly.FromDateTime(DateTime.UtcNow);
-    var windowStart = today.AddDays(-59); // 60-day rolling window
-
+    // Filter habits by visibility and use pre-computed consistency/flameLevel from habit-service
     var visibleHabits = habits
         .Where(h =>
         {
@@ -400,23 +397,9 @@ app.MapGet("/social/friends/{friendId:guid}/profile", async (Guid friendId, Http
             var icon = h.TryGetProperty("icon", out var ic) && ic.ValueKind != JsonValueKind.Null ? ic.GetString() : null;
             var color = h.TryGetProperty("color", out var co) && co.ValueKind != JsonValueKind.Null ? co.GetString() : null;
 
-            // Compute consistency from completions in the 60-day window
-            var consistency = 0.0;
-            if (h.TryGetProperty("completions", out var completions) && completions.ValueKind == JsonValueKind.Array)
-            {
-                var uniqueDates = new HashSet<DateOnly>();
-                foreach (var c in completions.EnumerateArray())
-                {
-                    if (c.TryGetProperty("localDate", out var ld) && DateOnly.TryParse(ld.GetString(), out var d))
-                    {
-                        if (d >= windowStart && d <= today)
-                            uniqueDates.Add(d);
-                    }
-                }
-                consistency = Math.Round(uniqueDates.Count / 60.0 * 100, 1);
-            }
-
-            var flameLevel = GetFlameLevel(consistency);
+            // Use pre-computed values from habit-service (consistency calculator with hysteresis)
+            var consistency = h.TryGetProperty("consistency", out var cons) ? cons.GetDouble() : 0.0;
+            var flameLevel = h.TryGetProperty("flameLevel", out var fl) ? fl.GetString() ?? "none" : "none";
 
             return new
             {
@@ -835,19 +818,6 @@ static async Task<Dictionary<Guid, ProfileInfo>> FetchProfileMap(
         logger.LogWarning(ex, "Failed to fetch batch profiles from Auth Service");
         return [];
     }
-}
-
-static string GetFlameLevel(double consistency)
-{
-    if (consistency >= 80)
-        return "blazing";
-    if (consistency >= 55)
-        return "strong";
-    if (consistency >= 30)
-        return "steady";
-    if (consistency >= 10)
-        return "ember";
-    return "none";
 }
 
 // --- Request/Response DTOs ---

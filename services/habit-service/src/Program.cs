@@ -443,19 +443,28 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
         .OrderBy(h => h.CreatedAt)
         .ToListAsync();
 
-    return Results.Ok(habits.Select(h => new
+    return Results.Ok(habits.Select(h =>
     {
-        id = h.Id,
-        name = h.Name,
-        icon = h.Icon,
-        color = h.Color,
-        frequency = h.Frequency.ToString().ToLowerInvariant(),
-        createdAt = h.CreatedAt,
-        completions = h.Completions.Select(c => new
+        var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
+        var consistency = ConsistencyCalculator.Calculate(h, completedDates, TimeZoneInfo.Utc);
+        var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        return new
         {
-            localDate = c.LocalDate.ToString("yyyy-MM-dd"),
-            completedAt = c.CompletedAt
-        })
+            id = h.Id,
+            name = h.Name,
+            icon = h.Icon,
+            color = h.Color,
+            frequency = h.Frequency.ToString().ToLowerInvariant(),
+            createdAt = h.CreatedAt,
+            consistency,
+            flameLevel = flameLevel.ToString().ToLowerInvariant(),
+            completions = h.Completions.Select(c => new
+            {
+                localDate = c.LocalDate.ToString("yyyy-MM-dd"),
+                completedAt = c.CompletedAt
+            })
+        };
     }));
 });
 
