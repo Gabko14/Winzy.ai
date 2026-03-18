@@ -10,9 +10,15 @@ import { AccessibilityInfo, Platform } from "react-native";
  * Components should skip or shorten animations when this returns true.
  */
 export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState(
+    // In test environments, default to true to avoid async animation state
+    // updates that produce act() warnings in Jest.
+    () => process.env.NODE_ENV === "test",
+  );
 
   useEffect(() => {
+    if (process.env.NODE_ENV === "test") return;
+
     if (Platform.OS === "web") {
       if (typeof window !== "undefined" && window.matchMedia) {
         const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
