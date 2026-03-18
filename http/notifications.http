@@ -1,0 +1,60 @@
+### ==========================================================
+### Notification Service — 8 requests
+### Flow: get VAPID key → list notifications → manage settings
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+@notificationId = <paste-notification-guid>
+
+### 1. Get VAPID public key (no auth required)
+# Clients need this to subscribe to web push notifications
+GET {{baseUrl}}/notifications/vapid-public-key
+
+### 2. List notifications (paginated)
+GET {{baseUrl}}/notifications?page=1&pageSize=10
+Authorization: Bearer {{accessToken}}
+
+### 3. Get unread notification count
+GET {{baseUrl}}/notifications/unread-count
+Authorization: Bearer {{accessToken}}
+
+### 4. Mark single notification as read
+PUT {{baseUrl}}/notifications/{{notificationId}}/read
+Authorization: Bearer {{accessToken}}
+
+### 5. Mark all notifications as read
+PUT {{baseUrl}}/notifications/read-all
+Authorization: Bearer {{accessToken}}
+
+### 6. Update notification settings
+PUT {{baseUrl}}/notifications/settings
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "habitReminders": true,
+  "friendActivity": true,
+  "challengeUpdates": true
+}
+
+### 7. Register device for push notifications
+# Valid platform values: web_push, expo_push
+POST {{baseUrl}}/notifications/devices
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "platform": "web_push",
+  "token": "test-push-token",
+  "deviceId": "test-device-1"
+}
+
+### 8. Unregister device (DESTRUCTIVE — run last)
+DELETE {{baseUrl}}/notifications/devices
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "deviceId": "test-device-1"
+}

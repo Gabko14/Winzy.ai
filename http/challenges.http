@@ -1,0 +1,71 @@
+### ==========================================================
+### Challenge Service — 6 requests
+### Flow: create challenge → list → view detail → claim/cancel
+### Prerequisites: users must be friends, habit must exist
+### ==========================================================
+
+@baseUrl = http://localhost:5050
+@accessToken = <paste-after-login>
+@habitId = <paste-habit-guid>
+@friendId = <paste-friend-guid>
+@challengeId = <paste-challenge-guid>
+
+### 1. Create challenge (consistencyTarget)
+# Valid milestoneType values: consistencyTarget, daysInPeriod,
+#   totalCompletions, customDateRange, improvementMilestone
+POST {{baseUrl}}/challenges
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "habitId": "{{habitId}}",
+  "recipientId": "{{friendId}}",
+  "milestoneType": "consistencyTarget",
+  "targetValue": 80,
+  "periodDays": 30,
+  "rewardDescription": "Coffee at Starbucks"
+}
+
+### 2. Create challenge (daysInPeriod)
+POST {{baseUrl}}/challenges
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "habitId": "{{habitId}}",
+  "recipientId": "{{friendId}}",
+  "milestoneType": "daysInPeriod",
+  "targetValue": 20,
+  "periodDays": 30,
+  "rewardDescription": "Movie night"
+}
+
+### 3. List challenges (paginated)
+# Response: { items: [...], page, pageSize, total }
+# Items use detail shape: includes progress, completionCount, baselineConsistency
+GET {{baseUrl}}/challenges?page=1&pageSize=10
+Authorization: Bearer {{accessToken}}
+
+### 3b. List challenges (filtered by status)
+# Valid status values: active, completed, claimed, cancelled, expired
+# Note: "expired" only returns DB-level expired, not virtually-expired active challenges
+GET {{baseUrl}}/challenges?page=1&pageSize=10&status=completed
+Authorization: Bearer {{accessToken}}
+
+### 3c. List challenges (updated since timestamp)
+# Returns challenges updated after the given ISO 8601 timestamp
+GET {{baseUrl}}/challenges?page=1&pageSize=10&since=2026-03-01T00:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### 4. Get challenge detail (includes progress)
+GET {{baseUrl}}/challenges/{{challengeId}}
+Authorization: Bearer {{accessToken}}
+
+### 5. Claim completed challenge
+PUT {{baseUrl}}/challenges/{{challengeId}}/claim
+Authorization: Bearer {{accessToken}}
+
+### 6. Cancel challenge (DESTRUCTIVE — run last)
+# Only the creator can cancel; cannot cancel completed/claimed challenges
+DELETE {{baseUrl}}/challenges/{{challengeId}}
+Authorization: Bearer {{accessToken}}
