@@ -133,7 +133,11 @@ describe("StatsScreen", () => {
   // --- 4. Edge case: new habit with <7 days of data ---
 
   it("shows 'Just getting started' for habits with less than 7 days of data", async () => {
-    // Only 3 completed dates, all within last 3 days
+    // Habit created 3 days ago — daysOfData uses createdAt, not first completion
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      createdAt: "2026-03-10T00:00:00Z",
+    });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
       completedDates: ["2026-03-10", "2026-03-11", "2026-03-12"],
@@ -310,5 +314,276 @@ describe("StatsScreen", () => {
     renderStats();
     expect(screen.getByTestId("stats-loading")).toBeTruthy();
     expect(screen.getByText("Loading stats...")).toBeTruthy();
+  });
+
+  // --- Regression: days-of-data uses habit age, not first completion ---
+
+  it("uses habit createdAt for days-of-data, not first completion date", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      createdAt: "2026-02-10T00:00:00Z",
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: ["2026-03-10", "2026-03-12"],
+      totalCompletions: 2,
+      completionsInWindow: 2,
+      consistency: 5,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("stats-screen")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("new-habit-message")).toBeNull();
+    expect(screen.getByTestId("sparse-habit-message")).toBeTruthy();
+    expect(screen.getByText(/Building up data/)).toBeTruthy();
+  });
+
+  it("habit with zero completions still shows as new if created < 7 days ago", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      createdAt: "2026-03-09T00:00:00Z",
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: [],
+      totalCompletions: 0,
+      completionsInWindow: 0,
+      consistency: 0,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("new-habit-message")).toBeTruthy();
+    expect(screen.getByText(/Just getting started/)).toBeTruthy();
+  });
+
+  // --- Regression: weekly frequency insights use expected-frequency math ---
+
+  it("weekly habit month comparison uses rate, not raw count", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "weekly",
+    });
+    const weeklyDates = [
+      "2026-02-03", "2026-02-10", "2026-02-17", "2026-02-24",
+      "2026-03-03", "2026-03-07", "2026-03-10",
+      "2026-01-06", "2026-01-13", "2026-01-20", "2026-01-27",
+    ];
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: weeklyDates.sort(),
+      totalCompletions: 11,
+      completionsInWindow: 11,
+      consistency: 80,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("insights-list")).toBeTruthy();
+    expect(screen.getByTestId("insight-month-comparison")).toBeTruthy();
+    const allText = JSON.stringify(screen.toJSON());
+    expect(allText).not.toMatch(/worse/i);
+    expect(allText).not.toMatch(/behind/i);
+    expect(allText).not.toMatch(/failed/i);
+  });
+
+  it("weekly habit with 4/4 weeks completed shows matching pace", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "weekly",
+    });
+    const dates = [
+      "2026-03-03", "2026-03-07", "2026-03-10", "2026-03-12",
+      "2026-02-03", "2026-02-10", "2026-02-17", "2026-02-24",
+      "2026-01-06", "2026-01-13",
+    ];
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: dates.sort(),
+      totalCompletions: 10,
+      completionsInWindow: 10,
+      consistency: 90,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("insight-month-comparison")).toBeTruthy();
+    expect(screen.getByText(/matching last month/)).toBeTruthy();
+  });
+
+  it("weekly habit doing worse this month shows encouraging message, not 'doing better'", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "weekly",
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    // 3 completions this month (March), 4 last month (Feb) — rate dropped
+    const dates = [
+      "2026-03-03",
+      "2026-03-10",
+      "2026-03-17",
+      "2026-02-03",
+      "2026-02-10",
+      "2026-02-17",
+      "2026-02-24",
+      "2026-01-06",
+      "2026-01-13",
+    ];
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: dates.sort(),
+      totalCompletions: 9,
+      completionsInWindow: 9,
+      consistency: 75,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    const allText = JSON.stringify(screen.toJSON());
+    // Must NOT say "doing better" (that would be wrong — rate dropped)
+    expect(allText).not.toMatch(/doing better/i);
+    // Should show encouraging message
+    expect(allText).toMatch(/Keep it up/i);
+  });
+
+  // --- Regression: custom-frequency insights ---
+
+  it("custom-frequency habit (Mon/Wed/Fri) uses correct expected count", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "custom",
+      customDays: [1, 3, 5],
+    });
+    const customDates = [
+      "2026-03-03", "2026-03-05", "2026-03-07", "2026-03-10", "2026-03-12",
+      "2026-02-03", "2026-02-05", "2026-02-07", "2026-02-10",
+      "2026-02-12", "2026-02-14", "2026-02-17", "2026-02-19",
+      "2026-01-06", "2026-01-08", "2026-01-10",
+    ];
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: customDates.sort(),
+      totalCompletions: 16,
+      completionsInWindow: 16,
+      consistency: 70,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("insights-list")).toBeTruthy();
+    expect(screen.getByText("Custom")).toBeTruthy();
+  });
+
+  // --- Regression: sparse habit gets encouraging message ---
+
+  it("sparse habit (old but few completions) shows encouraging sparse message", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      createdAt: "2026-01-11T00:00:00Z",
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: ["2026-02-15", "2026-03-01"],
+      totalCompletions: 2,
+      completionsInWindow: 2,
+      consistency: 3,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("new-habit-message")).toBeNull();
+    expect(screen.getByTestId("sparse-habit-message")).toBeTruthy();
+    expect(screen.getByText(/Building up data/)).toBeTruthy();
+    expect(screen.queryByTestId("insight-month-comparison")).toBeNull();
+  });
+
+  it("sparse habit message is encouraging, never punitive", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: ["2026-03-12"],
+      totalCompletions: 1,
+      completionsInWindow: 1,
+      consistency: 2,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("sparse-habit-message")).toBeTruthy();
+    });
+
+    const allText = JSON.stringify(screen.toJSON());
+    expect(allText).not.toMatch(/failed/i);
+    expect(allText).not.toMatch(/you haven't/i);
+    expect(allText).not.toMatch(/missed/i);
+    expect(allText).not.toMatch(/behind/i);
+    expect(allText).not.toMatch(/needs improvement/i);
+  });
+
+  // --- Regression: weekly habit with 2 completions in 2 weeks is NOT sparse ---
+
+  it("weekly habit with 2 completions over 2 weeks is not sparse (100% rate)", async () => {
+    // Weekly expects 1/week. 2 completions in 14 days = meeting expectations.
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "weekly",
+      createdAt: "2026-02-26T00:00:00Z",
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: ["2026-03-03", "2026-03-10"],
+      totalCompletions: 2,
+      completionsInWindow: 2,
+      consistency: 100,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("insights-card")).toBeTruthy();
+    });
+
+    // Should show full insights, NOT sparse message
+    expect(screen.queryByTestId("sparse-habit-message")).toBeNull();
+    expect(screen.getByTestId("insights-list")).toBeTruthy();
+  });
+
+  // --- Regression: custom habit with empty customDays doesn't crash ---
+
+  it("custom habit with null customDays gracefully shows insights", async () => {
+    mockFetchHabit.mockResolvedValue({
+      ...mockHabit,
+      frequency: "custom",
+      customDays: null,
+    });
+    mockFetchHabitStats.mockResolvedValue({
+      ...mockStats,
+      completedDates: completedDates30,
+      totalCompletions: 30,
+      completionsInWindow: 30,
+      consistency: 50,
+    });
+    renderStats();
+    await waitFor(() => {
+      expect(screen.getByTestId("stats-screen")).toBeTruthy();
+    });
+
+    // Should render without crashing — no month comparison (expected=0 → null)
+    expect(screen.getByTestId("insights-card")).toBeTruthy();
+    expect(screen.queryByTestId("insight-month-comparison")).toBeNull();
   });
 });
