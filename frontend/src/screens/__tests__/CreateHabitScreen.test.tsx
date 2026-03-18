@@ -297,8 +297,10 @@ describe("CreateHabitScreen", () => {
       ).toBeTruthy();
     });
 
-    // onSaved is NOT called — modal stays open so user can see the error
+    // onSaved is NOT called yet — it would close the modal via the parent.
+    // It will be called when the user closes the modal (retry or dismiss).
     expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("shows visibility change failed error on PUT 404", async () => {
@@ -334,8 +336,9 @@ describe("CreateHabitScreen", () => {
       ).toBeTruthy();
     });
 
-    // onSaved is NOT called — user needs to retry or close manually
+    // onSaved is NOT called yet — it would close the modal via the parent
     expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("habit with no visibility row defaults to private correctly", () => {
@@ -707,5 +710,244 @@ describe("CreateHabitScreen", () => {
 
     // Template picker should be back
     expect(screen.getByTestId("template-picker")).toBeTruthy();
+  });
+
+  // --- Visibility race condition ---
+
+  it("preserves form state when default visibility loads late", async () => {
+    // Simulate slow default visibility fetch
+    let resolvePrefs!: (v: { defaultHabitVisibility: string }) => void;
+    fetchPreferences.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrefs = resolve;
+      }),
+    );
+
+    renderCreateForm();
+
+    // User types a habit name while default visibility is still loading
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "My custom habit");
+
+    // Now the default visibility resolves as "friends"
+    await act(async () => {
+      resolvePrefs({ defaultHabitVisibility: "friends" });
+    });
+
+    // User's name input should be preserved — NOT wiped by the late default
+    expect(screen.getByTestId("habit-name-input").props.value).toBe("My custom habit");
+    // And the default visibility should be applied since user didn't touch the picker
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-friends").props.accessibilityState.selected).toBe(true);
+    });
+  });
+
+  it("preserves user visibility choice when default loads late", async () => {
+    // Default loads as "friends" first
+    fetchPreferences.mockResolvedValue({ defaultHabitVisibility: "friends" });
+
+    renderCreateForm();
+
+    // Wait for default to load
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-friends").props.accessibilityState.selected).toBe(true);
+    });
+
+    // User manually picks "public"
+    fireEvent.press(screen.getByTestId("visibility-public"));
+    expect(screen.getByTestId("visibility-public").props.accessibilityState.selected).toBe(true);
+
+    // Simulate a rerender that could trigger effects — user's choice must persist
+    expect(screen.getByTestId("visibility-public").props.accessibilityState.selected).toBe(true);
+    expect(screen.getByTestId("visibility-friends").props.accessibilityState.selected).toBe(false);
+  });
+
+  it("applies default visibility when user has not interacted", async () => {
+    let resolvePrefs!: (v: { defaultHabitVisibility: string }) => void;
+    fetchPreferences.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrefs = resolve;
+      }),
+    );
+
+    renderCreateForm();
+
+    // Initially private (before default loads)
+    expect(screen.getByTestId("visibility-private").props.accessibilityState.selected).toBe(true);
+
+    // Default loads as "friends" — user hasn't touched the picker
+    await act(async () => {
+      resolvePrefs({ defaultHabitVisibility: "friends" });
+    });
+
+    // Should apply the default since user hasn't interacted
+    await waitFor(() => {
+      expect(screen.getByTestId("visibility-friends").props.accessibilityState.selected).toBe(true);
+    });
+  });
+
+  // --- Partial-success recovery ---
+
+  it("shows retry button after habit create succeeds but visibility fails", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Test",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+    updateVisibility.mockRejectedValue({
+      status: 0,
+      code: "network",
+      message: "Network error",
+    });
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    // After visibility failure, button should say "Retry visibility"
+    await waitFor(() => {
+      expect(screen.getByText("Retry visibility")).toBeTruthy();
+    });
+  });
+
+  it("retries only visibility POST on partial-success retry (no duplicate habit)", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Test",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+    updateVisibility
+      .mockRejectedValueOnce({ status: 0, code: "network", message: "Network error" })
+      .mockResolvedValueOnce({ habitId: "h1", visibility: "private" });
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
+
+    // First submit — habit created, visibility fails
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Retry visibility")).toBeTruthy();
+    });
+
+    // Retry — should NOT call createHabit again
+    createHabit.mockClear();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Retry visibility"));
+    });
+
+    // createHabit should NOT have been called again
+    expect(createHabit).not.toHaveBeenCalled();
+    // updateVisibility should have been retried
+    expect(updateVisibility).toHaveBeenCalledTimes(2);
+    // Modal should close on success
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it("closing modal after partial failure flushes onSaved for the created habit", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Test",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+    updateVisibility.mockRejectedValue({
+      status: 0,
+      code: "network",
+      message: "Network error",
+    });
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Test");
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Retry visibility")).toBeTruthy();
+    });
+
+    // onSaved not called yet
+    expect(onSaved).not.toHaveBeenCalled();
+
+    // User dismisses the modal via the close button
+    fireEvent.press(screen.getByLabelText("Close"));
+
+    // onSaved should now be called with the saved habit so it appears in the list
+    expect(onSaved).toHaveBeenCalledWith(newHabit);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("handles partial success on edit: habit saved, visibility retry works", async () => {
+    const existingHabit = {
+      id: "h1",
+      name: "Morning run",
+      icon: "\uD83C\uDFC3",
+      color: "#F97316",
+      frequency: "daily" as const,
+      customDays: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    updateHabit.mockResolvedValue(existingHabit);
+    updateVisibility
+      .mockRejectedValueOnce({ status: 500, code: "server_error", message: "Error" })
+      .mockResolvedValueOnce({ habitId: "h1", visibility: "public" });
+
+    renderCreate({ editHabit: existingHabit, editVisibility: "private" });
+    fireEvent.press(screen.getByTestId("visibility-public"));
+
+    // First submit — habit saved, visibility fails
+    await act(async () => {
+      fireEvent.press(screen.getByText("Save changes"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Retry visibility")).toBeTruthy();
+      expect(screen.getByText("Habit saved, but visibility could not be updated. Please try again.")).toBeTruthy();
+    });
+
+    // onSaved NOT called yet — deferred until modal closes
+    expect(onSaved).not.toHaveBeenCalled();
+
+    // Retry
+    updateHabit.mockClear();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Retry visibility"));
+    });
+
+    // updateHabit should NOT be called again
+    expect(updateHabit).not.toHaveBeenCalled();
+    // Success — handleSaved calls onSaved + onClose
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(existingHabit);
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 });
