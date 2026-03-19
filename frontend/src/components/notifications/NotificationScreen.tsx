@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useRef } from "react";
 import { FlatList, View, StyleSheet, Pressable, Text } from "react-native";
 import { spacing } from "../../design-system/tokens/spacing";
 import { lightTheme } from "../../design-system/tokens/colors";
@@ -50,19 +50,26 @@ export function NotificationScreen({
 
   const colors = lightTheme;
   const hasUnread = items.some((item) => item.readAt === null);
+  const pressInFlightRef = useRef<string | null>(null);
 
   const handlePress = useCallback(
     async (notification: NotificationItem) => {
-      if (notification.readAt === null) {
-        onUnreadCountChange?.(-1);
-        const ok = await markRead(notification.id);
-        if (!ok) {
-          onUnreadCountChange?.(1);
+      if (pressInFlightRef.current === notification.id) return;
+      pressInFlightRef.current = notification.id;
+      try {
+        if (notification.readAt === null) {
+          onUnreadCountChange?.(-1);
+          const ok = await markRead(notification.id);
+          if (!ok) {
+            onUnreadCountChange?.(1);
+          }
         }
-      }
 
-      if (onNotificationPress && DEEP_LINK_TYPES.has(notification.type)) {
-        onNotificationPress(notification);
+        if (onNotificationPress && DEEP_LINK_TYPES.has(notification.type)) {
+          onNotificationPress(notification);
+        }
+      } finally {
+        pressInFlightRef.current = null;
       }
     },
     [markRead, onNotificationPress, onUnreadCountChange],
