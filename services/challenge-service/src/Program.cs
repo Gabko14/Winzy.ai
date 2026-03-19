@@ -70,7 +70,7 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
     {
         request = await ctx.Request.ReadFromJsonAsync<CreateChallengeRequest>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }

@@ -65,7 +65,7 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     {
         request = await ctx.Request.ReadFromJsonAsync<CreateHabitRequest>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
@@ -142,7 +142,7 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     {
         request = await ctx.Request.ReadFromJsonAsync<UpdateHabitRequest>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
@@ -220,7 +220,7 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
     {
         request = await ctx.Request.ReadFromJsonAsync<CompleteHabitRequest>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
@@ -285,8 +285,10 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
 
     try
     {
+        // DisplayName omitted: habit-service doesn't have the user's display name without an
+        // extra auth-service call. The notification subscriber falls back to "A friend" when null.
         await nats.PublishAsync(Subjects.HabitCompleted,
-            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone));
+            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone, HabitName: habit.Name));
     }
     catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {

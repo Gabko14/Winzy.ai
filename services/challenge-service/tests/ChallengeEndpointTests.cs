@@ -1797,6 +1797,20 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
 
+    [Fact]
+    public async Task CreateChallenge_EmptyBody_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var content = new StringContent("", System.Text.Encoding.UTF8);
+        content.Headers.ContentType = null;
+        var response = await client.PostAsync("/challenges", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
     // --- GET /health ---
 
     [Fact]
