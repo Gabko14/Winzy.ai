@@ -1171,7 +1171,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -1188,7 +1188,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -1205,7 +1205,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
 
     // --- GET /health ---

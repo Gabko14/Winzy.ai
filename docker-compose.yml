@@ -291,11 +291,14 @@ services:
       Nats__Url: nats://nats:4222
       Seq__Url: http://seq:5341
       ASPNETCORE_URLS: http://+:5005
+      Services__SocialServiceUrl: http://social-service:5003
     depends_on:
       notification-db:
         condition: service_healthy
       nats:
         condition: service_healthy
+      social-service:
+        condition: service_started
     networks:
       - winzy-network
 

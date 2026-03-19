@@ -67,7 +67,7 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     }
     catch (JsonException)
     {
-        return Results.BadRequest(new { error = "Invalid request body" });
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null || string.IsNullOrWhiteSpace(request.Name))
         return Results.BadRequest(new { error = "Name is required" });
@@ -144,7 +144,7 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     }
     catch (JsonException)
     {
-        return Results.BadRequest(new { error = "Invalid request body" });
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
@@ -222,7 +222,7 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
     }
     catch (JsonException)
     {
-        return Results.BadRequest(new { error = "Invalid request body" });
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null || string.IsNullOrWhiteSpace(request.Timezone))
         return Results.BadRequest(new { error = "Timezone is required" });
