@@ -14,4 +14,10 @@ public sealed class Notification : BaseEntity
     /// Format: "{type}:{userId}:{event-specific-key}"
     /// </summary>
     public string? IdempotencyKey { get; set; }
+
+    /// <summary>
+    /// Tracks whether push notification was successfully delivered. Prevents duplicate pushes
+    /// when NATS redelivers a message after a successful push+ack was lost.
+    /// </summary>
+    public bool PushDelivered { get; set; }
 }

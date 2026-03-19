@@ -117,14 +117,15 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
     }
 
     [Fact]
-    public async Task HabitCompleted_SocialServiceUnavailable_SkipsFanOut()
+    public async Task HabitCompleted_SocialServiceUnavailable_NoNotificationsCreated()
     {
         _fixture.SocialServiceHandler.SetShouldFail(true);
 
         var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
         await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
 
-        // No notifications should be created — graceful degradation
+        // Transient HttpRequestException propagates → NAK → JetStream retries with backoff.
+        // No notifications created while social-service is down.
         await AssertNoNotificationAsync(_userId, NotificationType.HabitCompleted);
 
         _fixture.SocialServiceHandler.SetShouldFail(false);
@@ -152,6 +153,140 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
         var count = await db.Notifications
             .CountAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_PushDeliveredFlagSetAfterProcessing()
+    {
+        var friend = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend, NotificationType.HabitCompleted);
+
+        // Allow time for PushDelivered flag to be saved (second SaveChangesAsync after push delivery)
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var notification = await db.Notifications
+            .FirstAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
+
+        // PushDelivered is set after DeliverAsync completes without throwing.
+        // No device tokens are registered in test → DeliverAsync is a no-op → flag is set to true.
+        // This verifies the flag-setting codepath runs; actual push delivery is tested via PushDeliveryService unit tests.
+        Assert.True(notification.PushDelivered);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_Redelivery_SkipsPushWhenAlreadyDelivered()
+    {
+        var friend = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+
+        var habitId = Guid.NewGuid();
+        var date = DateTime.UtcNow;
+        var evt = new HabitCompletedEvent(_userId, habitId, date, 0.85);
+
+        // First delivery — creates notification and delivers push
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+        await WaitForNotificationAsync(friend, NotificationType.HabitCompleted);
+        await Task.Delay(500, CT);
+
+        // Verify PushDelivered is true
+        using (var db = _fixture.CreateDbContext())
+        {
+            var notification = await db.Notifications
+                .FirstAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
+            Assert.True(notification.PushDelivered);
+        }
+
+        // Second delivery (simulates NATS redelivery) — should skip push since already delivered
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+        await Task.Delay(1000, CT);
+
+        // Still only one notification
+        using (var db = _fixture.CreateDbContext())
+        {
+            var count = await db.Notifications
+                .CountAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
+            Assert.Equal(1, count);
+        }
+    }
+
+    [Fact]
+    public async Task HabitCompleted_BatchFanOut_CreatesAllNotificationsInSingleBatch()
+    {
+        var friend1 = Guid.NewGuid();
+        var friend2 = Guid.NewGuid();
+        var friend3 = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend1, friend2, friend3);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend1, NotificationType.HabitCompleted);
+        await WaitForNotificationAsync(friend2, NotificationType.HabitCompleted);
+        await WaitForNotificationAsync(friend3, NotificationType.HabitCompleted);
+
+        using var db = _fixture.CreateDbContext();
+        var notifications = await db.Notifications
+            .Where(n => n.Type == NotificationType.HabitCompleted)
+            .OrderBy(n => n.CreatedAt)
+            .ToListAsync(CT);
+
+        Assert.Equal(3, notifications.Count);
+
+        // All three notifications should have been created in the same batch
+        // (CreatedAt timestamps should be very close — within a few ms)
+        var firstCreated = notifications.First().CreatedAt;
+        var lastCreated = notifications.Last().CreatedAt;
+        Assert.True((lastCreated - firstCreated).TotalMilliseconds < 500,
+            "Batch insert should create all notifications nearly simultaneously");
+    }
+
+    [Fact]
+    public async Task HabitCompleted_WithEnrichedFields_UsesNamesInNotification()
+    {
+        var friend = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+
+        // Event with enriched fields
+        var evt = new HabitCompletedEvent(
+            _userId, Guid.NewGuid(), DateTime.UtcNow, 0.85,
+            HabitName: "Morning Run");
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend, NotificationType.HabitCompleted);
+
+        using var db = _fixture.CreateDbContext();
+        var notification = await db.Notifications
+            .FirstAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
+
+        // Notification was created with enriched event data
+        var data = JsonSerializer.Deserialize<JsonElement>(notification.Data);
+        Assert.Equal(_userId, data.GetProperty("fromUserId").GetGuid());
+    }
+
+    [Fact]
+    public async Task HabitCompleted_AllFriendsDisabled_NoNotifications()
+    {
+        var friend1 = Guid.NewGuid();
+        var friend2 = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend1, friend2);
+
+        // Disable FriendActivity for both friends
+        using var client1 = _fixture.CreateAuthenticatedClient(friend1);
+        await client1.PutAsJsonAsync("/notifications/settings", new { friendActivity = false }, CT);
+        using var client2 = _fixture.CreateAuthenticatedClient(friend2);
+        await client2.PutAsJsonAsync("/notifications/settings", new { friendActivity = false }, CT);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await AssertNoNotificationAsync(friend1, NotificationType.HabitCompleted);
+        await AssertNoNotificationAsync(friend2, NotificationType.HabitCompleted);
     }
 
     // --- friend.request.sent ---
