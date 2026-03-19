@@ -135,7 +135,7 @@ export function RootNavigator() {
         challengeCompletion.triggerCheck();
         break;
     }
-  }, [challengeCompletion, overlay]);
+  }, [challengeCompletion.triggerCheck, overlay]);
   const handleProfileCompletion = useCallback(() => {
     setProfileCompleted(true);
   }, []);
