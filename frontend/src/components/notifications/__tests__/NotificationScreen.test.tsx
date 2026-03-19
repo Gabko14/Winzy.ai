@@ -254,6 +254,23 @@ describe("NotificationScreen", () => {
     });
   });
 
+  it("calls onNotificationPress for habitcompleted notifications (deep-linkable)", async () => {
+    const onNotificationPress = jest.fn();
+    const notification = makeNotification({ id: "n1", type: "habitcompleted", readAt: null, data: { fromUserId: "friend-abc" } });
+    mockUseNotifications.items = [notification];
+    mockUseNotifications.total = 1;
+
+    const { getByTestId } = render(
+      <NotificationScreen onNotificationPress={onNotificationPress} />,
+    );
+
+    fireEvent.press(getByTestId("notification-row-n1"));
+
+    await waitFor(() => {
+      expect(onNotificationPress).toHaveBeenCalledWith(notification);
+    });
+  });
+
   it("does not call markRead for already-read notifications", () => {
     const notification = makeNotification({ id: "n1", readAt: "2026-01-01T00:00:00Z" });
     mockUseNotifications.items = [notification];

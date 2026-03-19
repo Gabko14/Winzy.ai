@@ -123,6 +123,11 @@ export function RootNavigator() {
           overlay.push("friendProfile", { friendId: targetUserId });
         }
         break;
+      case "habitcompleted":
+        if (data.fromUserId) {
+          overlay.push("friendProfile", { friendId: data.fromUserId as string });
+        }
+        break;
       case "challengecreated":
         overlay.push("challenges");
         break;
