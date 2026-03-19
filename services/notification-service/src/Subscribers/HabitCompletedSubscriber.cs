@@ -51,6 +51,7 @@ public sealed class HabitCompletedSubscriber(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
+            ct.ThrowIfCancellationRequested(); // shutdown cancellation must propagate → NAK, not ack
             logger.LogWarning(ex,
                 "Failed to fetch friends from social service for UserId={UserId} — skipping fan-out",
                 data.UserId);
