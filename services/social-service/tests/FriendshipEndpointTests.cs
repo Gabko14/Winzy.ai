@@ -739,6 +739,20 @@ public class FriendshipEndpointTests : IAsyncLifetime
         Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
 
+    [Fact]
+    public async Task SendFriendRequest_EmptyBody_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("", System.Text.Encoding.UTF8);
+        content.Headers.ContentType = null;
+        var response = await client.PostAsync("/social/friends/request", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
     // --- Helper ---
 
     private async Task CreateFriendship()

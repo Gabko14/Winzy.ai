@@ -729,4 +729,32 @@ public class VisibilityEndpointTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
     }
+
+    [Fact]
+    public async Task SetVisibility_EmptyBody_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("", System.Text.Encoding.UTF8);
+        content.Headers.ContentType = null;
+        var response = await client.PutAsync($"/social/visibility/{_habitId1}", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task SetPreferences_EmptyBody_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("", System.Text.Encoding.UTF8);
+        content.Headers.ContentType = null;
+        var response = await client.PutAsync("/social/preferences", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
 }

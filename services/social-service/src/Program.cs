@@ -63,7 +63,7 @@ app.MapPost("/social/friends/request", async (HttpContext ctx, SocialDbContext d
     {
         request = await ctx.Request.ReadFromJsonAsync<FriendRequestDto>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
@@ -458,7 +458,7 @@ app.MapPut("/social/visibility/{habitId:guid}", async (Guid habitId, HttpContext
     {
         request = await ctx.Request.ReadFromJsonAsync<VisibilityUpdateDto>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
@@ -581,7 +581,7 @@ app.MapPut("/social/preferences", async (HttpContext ctx, SocialDbContext db, IL
     {
         request = await ctx.Request.ReadFromJsonAsync<PreferencesUpdateDto>(jsonOptions);
     }
-    catch (JsonException)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
         return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
