@@ -2,6 +2,7 @@ using System.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using NATS.Client.Core;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
 using Winzy.Common.Observability;
@@ -59,7 +60,15 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var request = await ctx.Request.ReadFromJsonAsync<CreateHabitRequest>(jsonOptions);
+    CreateHabitRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<CreateHabitRequest>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid request body" });
+    }
     if (request is null || string.IsNullOrWhiteSpace(request.Name))
         return Results.BadRequest(new { error = "Name is required" });
     if (request.Name.Trim().Length > 256)
@@ -86,7 +95,7 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
     {
         await nats.PublishAsync(Subjects.HabitCreated, new HabitCreatedEvent(userId, habit.Id, habit.Name));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish habit.created event for habit {HabitId}", habit.Id);
     }
@@ -128,7 +137,15 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
     if (habit is null)
         return Results.NotFound();
 
-    var request = await ctx.Request.ReadFromJsonAsync<UpdateHabitRequest>(jsonOptions);
+    UpdateHabitRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<UpdateHabitRequest>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid request body" });
+    }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
 
@@ -181,7 +198,7 @@ app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbConte
     {
         await nats.PublishAsync(Subjects.HabitArchived, new HabitArchivedEvent(userId, id));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish habit.archived event for habit {HabitId}", id);
     }
@@ -198,7 +215,15 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
     if (habit is null)
         return Results.NotFound();
 
-    var request = await ctx.Request.ReadFromJsonAsync<CompleteHabitRequest>(jsonOptions);
+    CompleteHabitRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<CompleteHabitRequest>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid request body" });
+    }
     if (request is null || string.IsNullOrWhiteSpace(request.Timezone))
         return Results.BadRequest(new { error = "Timezone is required" });
 
@@ -263,7 +288,7 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
         await nats.PublishAsync(Subjects.HabitCompleted,
             new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish habit.completed event for habit {HabitId}", id);
     }
@@ -547,7 +572,7 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
 
         resolvedUserId = resolved.UserId;
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to resolve username {Username} via auth service", username);
         return Results.StatusCode(503);
@@ -579,7 +604,7 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
             defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to check visibility via social service for user {UserId}, failing safe", resolvedUserId);
         visibleHabitIds = [];
@@ -646,7 +671,7 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
 
         resolvedUserId = resolved.UserId;
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to resolve username {Username} for flame badge", username);
         return Results.StatusCode(503);
@@ -676,7 +701,7 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
             defaultIsPublic = string.Equals(visData?.DefaultVisibility, "public", StringComparison.OrdinalIgnoreCase);
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to check badge visibility via social service for user {UserId}, failing safe", resolvedUserId);
         visibleHabitIds = [];

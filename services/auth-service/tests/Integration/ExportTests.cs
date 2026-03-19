@@ -226,6 +226,40 @@ public class ExportTests(AuthServiceFixture fixture) : IClassFixture<AuthService
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Export_Orchestrator_MalformedJsonResponse_ReturnsWarning()
+    {
+        MockDownstreamHandler.Reset();
+
+        // HabitService returns malformed JSON — should be caught by JsonException filter
+        MockDownstreamHandler.SetMalformedJson("HabitService");
+        MockDownstreamHandler.SetResponse("SocialService", HttpStatusCode.OK,
+            new { service = "social", data = new { friends = Array.Empty<object>() } });
+        MockDownstreamHandler.SetResponse("ChallengeService", HttpStatusCode.OK,
+            new { service = "challenge", data = new { challenges = Array.Empty<object>() } });
+        MockDownstreamHandler.SetResponse("NotificationService", HttpStatusCode.OK,
+            new { service = "notification", data = new { settings = new { }, notifications = Array.Empty<object>() } });
+        MockDownstreamHandler.SetResponse("ActivityService", HttpStatusCode.OK,
+            new { service = "activity", data = new { feedEntries = Array.Empty<object>() } });
+
+        await using var factory = CreateFactoryWithMocks();
+        var (userId, client) = await RegisterAndGetClient(factory);
+
+        var response = await client.GetAsync("/auth/export", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+
+        // auth + 4 successful downstream = 5 (HabitService failed due to malformed JSON)
+        var services = body.GetProperty("services");
+        Assert.Equal(5, services.GetArrayLength());
+
+        var warnings = body.GetProperty("warnings");
+        Assert.Equal(1, warnings.GetArrayLength());
+        Assert.Contains("HabitService", warnings[0].GetString());
+    }
 }
 
 internal class MockDownstreamHandler : HttpMessageHandler
@@ -240,6 +274,11 @@ internal class MockDownstreamHandler : HttpMessageHandler
     {
         var json = body is not null ? JsonSerializer.Serialize(body) : null;
         _responses[serviceName] = (status, json);
+    }
+
+    public static void SetMalformedJson(string serviceName)
+    {
+        _responses[serviceName] = (HttpStatusCode.OK, "{not valid json!!!");
     }
 
     public static void SetTimeout(string serviceName)

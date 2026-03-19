@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NATS.Client.Core;
 using Winzy.AuthService.Data;
 using Winzy.AuthService.Entities;
 using Winzy.AuthService.Models;
@@ -82,7 +83,7 @@ public static class AuthEndpoints
             await nats.PublishAsync(Subjects.UserRegistered,
                 new UserRegisteredEvent(user.Id, user.Username), ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is NatsException or OperationCanceledException)
         {
             logger.LogWarning(ex, "Failed to publish user.registered event for user {UserId}", user.Id);
         }
@@ -416,7 +417,7 @@ public static class AuthEndpoints
 
                 return (svc.Name, Data: null, Failed: false);
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 logger.LogWarning(ex, "Failed to fetch export from {Service} for UserId={UserId}", svc.Name, userId);
                 return (svc.Name, Data: null, Failed: true);

@@ -1159,6 +1159,55 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         Assert.Equal(0, body.GetProperty("consistency").GetDouble());
     }
 
+    // --- Malformed JSON request body ---
+
+    [Fact]
+    public async Task CreateHabit_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("{invalid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/habits", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateHabit_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Test", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var content = new StringContent("{invalid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PutAsync($"/habits/{habitId}", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CompleteHabit_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Test", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var content = new StringContent("{invalid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PostAsync($"/habits/{habitId}/complete", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid request body", body.GetProperty("error").GetString());
+    }
+
     // --- GET /health ---
 
     [Fact]
