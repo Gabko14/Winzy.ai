@@ -25,7 +25,6 @@ import { CreateHabitScreen } from "../screens/CreateHabitScreen";
 import { MyChallengesScreen } from "../screens/MyChallengesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { fetchHabit, archiveHabit } from "../api/habits";
-import type { Habit } from "../api/habits";
 import { useVisibility } from "../hooks/useVisibility";
 import { useUnreadCount } from "../hooks/useUnreadCount";
 import { usePendingFriendCount } from "../hooks/usePendingFriendCount";
@@ -35,9 +34,7 @@ import { FlameIntroModal } from "../screens/FlameIntroModal";
 import { TabBar, type TabId } from "./TabBar";
 import { useChallengeCompletion } from "../hooks/useChallengeCompletion";
 import { ChallengeCompletionOverlay } from "../components/ChallengeCompletionOverlay";
-
-/** Screens that overlay on top of a tab's content */
-type OverlayScreen = "editProfile" | "habitDetail" | "editHabit" | "notifications" | "habits" | "addFriend" | "friendProfile" | "createChallenge" | "challenges" | "settings" | "stats";
+import { useOverlayRouter } from "./useOverlayRouter";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -68,13 +65,9 @@ export function RootNavigator() {
   const auth = useAuth();
   const colors = lightTheme;
   const [activeTab, setActiveTab] = useState<TabId>("today");
-  const [overlay, setOverlay] = useState<OverlayScreen | null>(null);
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
-  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
-  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
-  const [selectedFriendName, setSelectedFriendName] = useState<string | null>(null);
-  const [editHabitData, setEditHabitData] = useState<Habit | null>(null);
+  const overlay = useOverlayRouter();
 
   const isAuthenticated = auth.status === "authenticated";
   const unreadCount = useUnreadCount(isAuthenticated);
@@ -84,47 +77,39 @@ export function RootNavigator() {
   const challengeCompletion = useChallengeCompletion(isAuthenticated);
   const [showFlameIntro, setShowFlameIntro] = useState(false);
 
-  const goToEditProfile = useCallback(() => setOverlay("editProfile"), []);
-  const goToNotifications = useCallback(() => setOverlay("notifications"), []);
-  const goToHabits = useCallback(() => setOverlay("habits"), []);
-  const goToAddFriend = useCallback(() => setOverlay("addFriend"), []);
-  const goToSettings = useCallback(() => setOverlay("settings"), []);
+  const goToEditProfile = useCallback(() => overlay.push("editProfile"), [overlay]);
+  const goToNotifications = useCallback(() => overlay.push("notifications"), [overlay]);
+  const goToHabits = useCallback(() => overlay.push("habits"), [overlay]);
+  const goToAddFriend = useCallback(() => overlay.push("addFriend"), [overlay]);
+  const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
   const handleEditHabit = useCallback(async (habitId: string) => {
     try {
       const habit = await fetchHabit(habitId);
-      setEditHabitData(habit);
-      setOverlay("editHabit");
+      overlay.push("editHabit", { editHabitData: habit });
     } catch {
       // Fetch failed — stay on detail screen, user can retry
     }
-  }, []);
+  }, [overlay]);
   const handleSetChallenge = useCallback((fId: string, fName: string) => {
-    setSelectedFriendId(fId);
-    setSelectedFriendName(fName);
-    setOverlay("createChallenge");
-  }, []);
-  const dismissOverlay = useCallback(() => setOverlay(null), []);
+    overlay.push("createChallenge", { friendId: fId, friendName: fName });
+  }, [overlay]);
 
   const handleTabPress = useCallback((tabId: TabId) => {
-    setOverlay(null);
+    overlay.closeAll();
     setActiveTab(tabId);
-  }, []);
+  }, [overlay]);
 
   const handleHabitPress = useCallback((habitId: string) => {
-    setSelectedHabitId(habitId);
-    setOverlay("habitDetail");
-  }, []);
+    overlay.push("habitDetail", { habitId });
+  }, [overlay]);
 
   const handleViewStats = useCallback((habitId: string) => {
-    setSelectedHabitId(habitId);
-    setOverlay("stats");
-  }, []);
+    overlay.push("stats", { habitId });
+  }, [overlay]);
 
   const handleFriendPress = useCallback((friendId: string) => {
-    setSelectedFriendId(friendId);
-    setOverlay("friendProfile");
-  }, []);
-
+    overlay.push("friendProfile", { friendId });
+  }, [overlay]);
 
   const handleNotificationPress = useCallback((notification: NotificationItem) => {
     const { type, data } = notification;
@@ -135,18 +120,17 @@ export function RootNavigator() {
       case "friendrequestsent":
       case "friendrequestaccepted":
         if (targetUserId) {
-          setSelectedFriendId(targetUserId);
-          setOverlay("friendProfile");
+          overlay.push("friendProfile", { friendId: targetUserId });
         }
         break;
       case "challengecreated":
-        setOverlay("challenges");
+        overlay.push("challenges");
         break;
       case "challengecompleted":
         challengeCompletion.triggerCheck();
         break;
     }
-  }, [challengeCompletion]);
+  }, [challengeCompletion, overlay]);
   const handleProfileCompletion = useCallback(() => {
     setProfileCompleted(true);
   }, []);
@@ -222,29 +206,29 @@ export function RootNavigator() {
 
   // --- Overlay screens (render on top of tabs, no tab bar) ---
 
-  if (overlay === "editProfile") {
+  if (overlay.current === "editProfile") {
     return (
       <>
         <OfflineIndicator />
-        <EditProfileScreen onBack={() => { setOverlay(null); setActiveTab("profile"); }} />
+        <EditProfileScreen onBack={() => { overlay.closeAll(); setActiveTab("profile"); }} />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  if (overlay === "habitDetail" && selectedHabitId) {
+  if (overlay.current === "habitDetail" && overlay.params.habitId) {
     return (
       <>
         <OfflineIndicator />
         <HabitDetailScreen
-          habitId={selectedHabitId}
-          onBack={dismissOverlay}
+          habitId={overlay.params.habitId}
+          onBack={overlay.closeAll}
           onViewStats={handleViewStats}
           onEdit={handleEditHabit}
           onArchive={async (habitId: string) => {
             try {
               await archiveHabit(habitId);
-              dismissOverlay();
+              overlay.closeAll();
             } catch {
               // Archive failed — stay on detail screen so user can retry
             }
@@ -255,19 +239,18 @@ export function RootNavigator() {
     );
   }
 
-  if (overlay === "editHabit" && editHabitData) {
+  if (overlay.current === "editHabit" && overlay.params.editHabitData) {
+    const editHabitData = overlay.params.editHabitData;
     return (
       <>
         <OfflineIndicator />
         <CreateHabitScreen
           visible
           onClose={() => {
-            setEditHabitData(null);
-            setOverlay("habitDetail");
+            overlay.pop();
           }}
           onSaved={() => {
-            setEditHabitData(null);
-            setOverlay("habitDetail");
+            overlay.pop();
           }}
           editHabit={editHabitData}
           editVisibility={visibility.getVisibility(editHabitData.id)}
@@ -277,7 +260,7 @@ export function RootNavigator() {
     );
   }
 
-  if (overlay === "notifications") {
+  if (overlay.current === "notifications") {
     return (
       <>
         <OfflineIndicator />
@@ -286,23 +269,23 @@ export function RootNavigator() {
           onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
           onMarkAllRead={() => unreadCount.resetToZero()}
           onMarkAllReadFailed={() => unreadCount.refresh()}
-          onBack={dismissOverlay}
+          onBack={overlay.closeAll}
         />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  if (overlay === "habits") {
+  if (overlay.current === "habits") {
     return (
       <>
         <OfflineIndicator />
         <HabitListScreen
-          onBack={dismissOverlay}
+          onBack={overlay.closeAll}
           onHabitCreated={() => {
             if (!onboarding.hasSeenFlameIntro) {
               // First habit: return to daily loop and show flame intro
-              setOverlay(null);
+              overlay.closeAll();
               setActiveTab("today");
               setShowFlameIntro(true);
             }
@@ -314,28 +297,28 @@ export function RootNavigator() {
     );
   }
 
-  if (overlay === "addFriend") {
+  if (overlay.current === "addFriend") {
     return (
       <>
         <OfflineIndicator />
         <AddFriendScreen
           currentUserId={auth.user.id}
-          onBack={() => { setOverlay(null); setActiveTab("friends"); }}
+          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
         />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  if (overlay === "friendProfile" && selectedFriendId) {
+  if (overlay.current === "friendProfile" && overlay.params.friendId) {
     // displayName/username/since not passed — onFriendPress only receives friendId.
     // Brief placeholder flash until API responds. Acceptable; enrichment is a separate concern.
     return (
       <>
         <OfflineIndicator />
         <FriendProfileScreen
-          friendId={selectedFriendId}
-          onBack={() => { setOverlay(null); setActiveTab("friends"); }}
+          friendId={overlay.params.friendId}
+          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
           onSetChallenge={handleSetChallenge}
         />
         <StatusBar style="auto" />
@@ -343,37 +326,37 @@ export function RootNavigator() {
     );
   }
 
-  if (overlay === "createChallenge" && selectedFriendId) {
+  if (overlay.current === "createChallenge" && overlay.params.friendId) {
     return (
       <>
         <OfflineIndicator />
         <CreateChallengeScreen
-          friendId={selectedFriendId}
-          friendName={selectedFriendName ?? undefined}
-          onBack={() => { setOverlay("friendProfile"); }}
-          onComplete={() => { setOverlay(null); setActiveTab("friends"); }}
+          friendId={overlay.params.friendId}
+          friendName={overlay.params.friendName ?? undefined}
+          onBack={() => { overlay.pop(); }}
+          onComplete={() => { overlay.closeAll(); setActiveTab("friends"); }}
         />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  if (overlay === "challenges") {
+  if (overlay.current === "challenges") {
     return (
       <>
         <OfflineIndicator />
-        <MyChallengesScreen onBack={dismissOverlay} />
+        <MyChallengesScreen onBack={overlay.closeAll} />
         <StatusBar style="auto" />
       </>
     );
   }
 
-  if (overlay === "settings") {
+  if (overlay.current === "settings") {
     return (
       <>
         <OfflineIndicator />
         <SettingsScreen
-          onBack={() => { setOverlay(null); setActiveTab("profile"); }}
+          onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
           onEditProfile={goToEditProfile}
         />
         <StatusBar style="auto" />
@@ -381,12 +364,11 @@ export function RootNavigator() {
     );
   }
 
-
-  if (overlay === "stats" && selectedHabitId) {
+  if (overlay.current === "stats" && overlay.params.habitId) {
     return (
       <>
         <OfflineIndicator />
-        <StatsScreen habitId={selectedHabitId} onBack={() => { setSelectedHabitId(selectedHabitId); setOverlay("habitDetail"); }} />
+        <StatsScreen habitId={overlay.params.habitId} onBack={() => { overlay.pop(); }} />
         <StatusBar style="auto" />
       </>
     );
@@ -417,14 +399,14 @@ export function RootNavigator() {
         <FeedScreen
           onAvatarPress={handleFriendPress}
           onChallengePress={() => {
-            setOverlay("challenges");
+            overlay.push("challenges");
           }}
         />
       );
       break;
     case "profile":
       tabContent = (
-        <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => setOverlay("challenges")} />
+        <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => overlay.push("challenges")} />
       );
       break;
     case "today":
