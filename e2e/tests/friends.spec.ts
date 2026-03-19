@@ -197,26 +197,22 @@ test.describe("Friends management", () => {
   });
 
   test.describe("Full friend lifecycle", () => {
-    test.describe.configure({ mode: "serial" });
+    // TODO(winzy.ai-3gh7): Skipped — accept works locally but CI has a timing issue
+    // where the friendship isn't created before API verification. The welcome screen
+    // dismissal on React Native Web (Pressable renders as div, not button) adds
+    // complexity. Needs investigation with CI trace artifacts.
+    test.skip("user B sees incoming request and accepts it", async ({ unauthenticatedPage: page, request }) => {
+      const ts = Date.now();
+      const usernameA = `e2e_flifecA_${ts}`;
+      const usernameB = `e2e_flifecB_${ts + 1}`;
+      const userBEmail = `${usernameB}@winzy.test`;
+      let userAToken: string;
+      let userAId: string;
+      let userBToken: string;
+      let userBId: string;
 
-    let userAToken: string;
-    let userAId: string;
-    let userBToken: string;
-    let userBId: string;
-    let userBUsername: string;
-    let userBEmail: string;
-    let requestId: string;
-
-    test("setup: register two users and send friend request", async ({ request }) => {
-      const tsA = Date.now();
-      const tsB = tsA + 1;
-      const usernameA = `e2e_flifecA_${tsA}`;
-      const usernameB = `e2e_flifecB_${tsB}`;
-      userBUsername = usernameB;
-      userBEmail = `${usernameB}@winzy.test`;
-
-      await test.step("register user A", async () => {
-        const res = await request.post(`${API_BASE}/auth/register`, {
+      await test.step("setup: register two users and send friend request", async () => {
+        const resA = await request.post(`${API_BASE}/auth/register`, {
           data: {
             email: `${usernameA}@winzy.test`,
             username: usernameA,
@@ -224,14 +220,12 @@ test.describe("Friends management", () => {
             displayName: "Lifecycle A",
           },
         });
-        expect(res.status()).toBe(201);
-        const body = await res.json();
-        userAToken = body.accessToken;
-        userAId = body.user.id;
-      });
+        expect(resA.status()).toBe(201);
+        const bodyA = await resA.json();
+        userAToken = bodyA.accessToken;
+        userAId = bodyA.user.id;
 
-      await test.step("register user B", async () => {
-        const res = await request.post(`${API_BASE}/auth/register`, {
+        const resB = await request.post(`${API_BASE}/auth/register`, {
           data: {
             email: userBEmail,
             username: usernameB,
@@ -239,32 +233,18 @@ test.describe("Friends management", () => {
             displayName: "Lifecycle B",
           },
         });
-        expect(res.status()).toBe(201);
-        const body = await res.json();
-        userBToken = body.accessToken;
-        userBId = body.user.id;
-      });
+        expect(resB.status()).toBe(201);
+        const bodyB = await resB.json();
+        userBToken = bodyB.accessToken;
+        userBId = bodyB.user.id;
 
-      await test.step("user A sends friend request to user B", async () => {
-        const res = await request.post(`${API_BASE}/social/friends/request`, {
+        const reqRes = await request.post(`${API_BASE}/social/friends/request`, {
           headers: { Authorization: `Bearer ${userAToken}` },
           data: { friendId: userBId },
         });
-        expect(res.status()).toBe(201);
-        const body = await res.json();
-        requestId = body.id;
-        test.info().annotations.push({
-          type: "step",
-          description: `Friend request ${requestId} sent from ${usernameA} to ${usernameB}`,
-        });
+        expect(reqRes.status()).toBe(201);
       });
-    });
 
-    // TODO(winzy.ai-3gh7): Skipped — accept works locally but CI has a timing issue
-    // where the friendship isn't created before API verification. The welcome screen
-    // dismissal on React Native Web (Pressable renders as div, not button) adds
-    // complexity. Needs investigation with CI trace artifacts.
-    test.skip("user B sees incoming request and accepts it", async ({ unauthenticatedPage: page }) => {
       await test.step("sign in as user B", async () => {
         await gotoLoginScreen(page);
 
@@ -274,7 +254,6 @@ test.describe("Friends management", () => {
       });
 
       await test.step("dismiss welcome and complete profile if prompted", async () => {
-        // API-registered users may see profile completion or welcome screen
         const result = await Promise.race([
           page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile"),
           page.getByText("Welcome to Winzy").waitFor({ timeout: 5_000 }).then(() => "welcome"),
@@ -318,10 +297,8 @@ test.describe("Friends management", () => {
       });
 
       await test.step("verify friendship was created", async () => {
-        // After accepting, the pending section should disappear.
         await expect(page.getByTestId("pending-requests-section")).not.toBeVisible({ timeout: 10_000 });
 
-        // Verify via API that the friendship now exists (instant, no UI timing issues)
         const res = await page.request.get(`${API_BASE}/social/friends`, {
           headers: { Authorization: `Bearer ${userBToken}` },
         });
@@ -336,8 +313,57 @@ test.describe("Friends management", () => {
       });
     });
 
-    // Depends on "user B accepts" which is skipped (winzy.ai-3gh7)
-    test.skip("user B can remove a friend", async ({ unauthenticatedPage: page }) => {
+    // TODO(winzy.ai-3gh7): Depends on accept flow fix above
+    test.skip("user B can remove a friend", async ({ unauthenticatedPage: page, request }) => {
+      const ts = Date.now();
+      const usernameA = `e2e_fremovA_${ts}`;
+      const usernameB = `e2e_fremovB_${ts + 1}`;
+      const userBEmail = `${usernameB}@winzy.test`;
+      let userAToken: string;
+      let userBToken: string;
+      let userBId: string;
+
+      await test.step("setup: register two users and make them friends", async () => {
+        const resA = await request.post(`${API_BASE}/auth/register`, {
+          data: {
+            email: `${usernameA}@winzy.test`,
+            username: usernameA,
+            password: TEST_USER.password,
+            displayName: "Lifecycle A",
+          },
+        });
+        expect(resA.status()).toBe(201);
+        const bodyA = await resA.json();
+        userAToken = bodyA.accessToken;
+
+        const resB = await request.post(`${API_BASE}/auth/register`, {
+          data: {
+            email: userBEmail,
+            username: usernameB,
+            password: TEST_USER.password,
+            displayName: "Lifecycle B",
+          },
+        });
+        expect(resB.status()).toBe(201);
+        const bodyB = await resB.json();
+        userBToken = bodyB.accessToken;
+        userBId = bodyB.user.id;
+
+        // A sends request, B accepts
+        const reqRes = await request.post(`${API_BASE}/social/friends/request`, {
+          headers: { Authorization: `Bearer ${userAToken}` },
+          data: { friendId: userBId },
+        });
+        expect(reqRes.status()).toBe(201);
+        const reqBody = await reqRes.json();
+
+        const acceptRes = await request.put(
+          `${API_BASE}/social/friends/request/${reqBody.id}/accept`,
+          { headers: { Authorization: `Bearer ${userBToken}` } },
+        );
+        expect(acceptRes.status()).toBe(200);
+      });
+
       await test.step("sign in as user B", async () => {
         await gotoLoginScreen(page);
 
@@ -380,11 +406,8 @@ test.describe("Friends management", () => {
       });
 
       await test.step("long press friend to trigger remove", async () => {
-        // Register dialog handler BEFORE the action — Alert.alert becomes window.confirm on web
         page.once("dialog", (dialog) => dialog.accept());
 
-        // Simulate long press: click({ delay: 1000 }) holds mousedown for 1s before mouseup.
-        // The FriendRow has accessibilityLabel="Friend <name>" set by the component.
         const friendRow = page.getByRole("button", { name: /Friend Lifecycle A/i });
         await friendRow.click({ delay: 1000 });
         test.info().annotations.push({
@@ -394,7 +417,6 @@ test.describe("Friends management", () => {
       });
 
       await test.step("verify friend is removed", async () => {
-        // After removal, the friend list should be empty or the friend gone
         await expect(page.getByText("Lifecycle A")).not.toBeVisible({ timeout: 10_000 });
         test.info().annotations.push({
           type: "step",

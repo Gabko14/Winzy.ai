@@ -1,4 +1,5 @@
 import { test, expect, TEST_USER, dismissWelcomeIfPresent } from "../fixtures/base";
+import type { APIRequestContext } from "@playwright/test";
 
 const API_BASE = "http://localhost:5050";
 
@@ -9,7 +10,72 @@ const API_BASE = "http://localhost:5050";
  * notifications screen, seeing notifications, marking as read, and
  * verifying badge state. Uses the social-service friend-request flow
  * to generate real notifications via NATS.
+ *
+ * Each test is fully independent — creates its own users and data via API.
  */
+
+interface NotifPair {
+  userBEmail: string;
+}
+
+/** Register two users, send a friend request from A to B, and wait for the notification to appear. */
+async function setupNotifPair(request: APIRequestContext, label: string): Promise<NotifPair> {
+  const ts = Date.now();
+  const usernameA = `e2e_${label}A_${ts}`;
+  const usernameB = `e2e_${label}B_${ts + 1}`;
+
+  // Register user A
+  const resA = await request.post(`${API_BASE}/auth/register`, {
+    data: {
+      email: `${usernameA}@winzy.test`,
+      username: usernameA,
+      password: TEST_USER.password,
+      displayName: "User A",
+    },
+  });
+  expect(resA.status()).toBe(201);
+  const bodyA = await resA.json();
+
+  // Register user B
+  const resB = await request.post(`${API_BASE}/auth/register`, {
+    data: {
+      email: `${usernameB}@winzy.test`,
+      username: usernameB,
+      password: TEST_USER.password,
+      displayName: "User B",
+    },
+  });
+  expect(resB.status()).toBe(201);
+  const bodyB = await resB.json();
+
+  // A sends friend request to B (triggers notification via NATS)
+  const reqRes = await request.post(`${API_BASE}/social/friends/request`, {
+    headers: { Authorization: `Bearer ${bodyA.accessToken}` },
+    data: { friendId: bodyB.user.id },
+  });
+  expect(reqRes.status()).toBe(201);
+
+  // Poll until notification appears (max 10s)
+  let found = false;
+  for (let i = 0; i < 20; i++) {
+    const res = await request.get(`${API_BASE}/notifications/unread-count`, {
+      headers: { Authorization: `Bearer ${bodyB.accessToken}` },
+    });
+    if (res.ok()) {
+      const body = await res.json();
+      if (body.unreadCount > 0) {
+        found = true;
+        break;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  expect(found, "Notification should appear for user B within 10 seconds").toBeTruthy();
+
+  return {
+    userBEmail: `${usernameB}@winzy.test`,
+  };
+}
 
 test.describe("Notifications", () => {
   test.describe("Empty state", () => {
@@ -46,7 +112,6 @@ test.describe("Notifications", () => {
       });
 
       await test.step("bell has no unread badge", async () => {
-        // New user should have zero unread — no badge rendered
         await expect(page.getByTestId("unread-badge")).not.toBeVisible();
         test.info().annotations.push({
           type: "step",
@@ -76,98 +141,19 @@ test.describe("Notifications", () => {
   });
 
   test.describe("Notification flow with friend request", () => {
-    test.describe.configure({ mode: "serial" });
+    test("user B sees unread badge and can open notifications", async ({ unauthenticatedPage: page, request }) => {
+      const pair = await setupNotifPair(request, "notifBadge");
 
-    let userAToken: string;
-    let userAId: string;
-    let userBToken: string;
-    let userBId: string;
-    let userBUsername: string;
-    let userBEmail: string;
-
-    test("setup: register two users and trigger a notification", async ({ request }) => {
-      const tsA = Date.now();
-      const tsB = tsA + 1;
-      const usernameA = `e2e_notifA_${tsA}`;
-      const usernameB = `e2e_notifB_${tsB}`;
-      userBUsername = usernameB;
-      userBEmail = `${usernameB}@winzy.test`;
-
-      await test.step("register user A", async () => {
-        const res = await request.post(`${API_BASE}/auth/register`, {
-          data: {
-            email: `${usernameA}@winzy.test`,
-            username: usernameA,
-            password: TEST_USER.password,
-            displayName: "User A",
-          },
-        });
-        expect(res.status()).toBe(201);
-        const body = await res.json();
-        userAToken = body.accessToken;
-        userAId = body.user.id;
-      });
-
-      await test.step("register user B", async () => {
-        const res = await request.post(`${API_BASE}/auth/register`, {
-          data: {
-            email: userBEmail,
-            username: usernameB,
-            password: TEST_USER.password,
-            displayName: "User B",
-          },
-        });
-        expect(res.status()).toBe(201);
-        const body = await res.json();
-        userBToken = body.accessToken;
-        userBId = body.user.id;
-      });
-
-      await test.step("user A sends friend request to user B", async () => {
-        const res = await request.post(`${API_BASE}/social/friends/request`, {
-          headers: { Authorization: `Bearer ${userAToken}` },
-          data: { friendId: userBId },
-        });
-        expect(res.status()).toBe(201);
-        test.info().annotations.push({
-          type: "step",
-          description: `Friend request sent from ${usernameA} to ${usernameB}`,
-        });
-      });
-
-      // Wait for NATS event to propagate and notification-service to create the record
-      await test.step("wait for notification to be created", async () => {
-        // Poll the notifications API for user B until a notification appears (max 10s)
-        let found = false;
-        for (let i = 0; i < 20; i++) {
-          const res = await request.get(`${API_BASE}/notifications/unread-count`, {
-            headers: { Authorization: `Bearer ${userBToken}` },
-          });
-          if (res.ok()) {
-            const body = await res.json();
-            if (body.unreadCount > 0) {
-              found = true;
-              break;
-            }
-          }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-        expect(found, "Notification should appear for user B within 10 seconds").toBeTruthy();
-      });
-    });
-
-    test("user B sees unread badge and can open notifications", async ({ unauthenticatedPage: page }) => {
       await test.step("sign in as user B", async () => {
         await page.goto("/");
         await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
 
-        await page.getByLabel("Email or username").fill(userBEmail);
+        await page.getByLabel("Email or username").fill(pair.userBEmail);
         await page.getByLabel("Password").fill(TEST_USER.password);
         await page.getByRole("button", { name: "Sign in" }).click();
       });
 
       await test.step("complete profile if prompted", async () => {
-        // User B was registered with displayName, but check just in case
         const result = await Promise.race([
           page.getByText("What should we call you?").waitFor({ timeout: 5_000 }).then(() => "profile-completion"),
           page.getByText("Welcome to Winzy").waitFor({ timeout: 5_000 }).then(() => "welcome"),
@@ -191,8 +177,7 @@ test.describe("Notifications", () => {
 
       await test.step("verify bell icon has unread badge", async () => {
         await expect(page.getByTestId("notifications-bell")).toBeVisible();
-        // Instead of waiting up to 45s for the next 30s poll cycle, trigger
-        // a page reload which re-mounts hooks and fires the initial poll immediately.
+        // Reload to re-mount hooks and fire the initial poll immediately
         await page.reload();
         await expect(
           page.getByTestId("today-empty").or(page.getByTestId("today-screen")),
@@ -217,7 +202,6 @@ test.describe("Notifications", () => {
         await expect(page.getByTestId("notification-screen")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId("notifications-list")).toBeVisible();
 
-        // Should see "New friend request" notification
         await expect(page.getByText("New friend request")).toBeVisible();
         test.info().annotations.push({
           type: "step",
@@ -234,12 +218,14 @@ test.describe("Notifications", () => {
       });
     });
 
-    test("user B can mark all notifications as read", async ({ unauthenticatedPage: page }) => {
+    test("user B can mark all notifications as read", async ({ unauthenticatedPage: page, request }) => {
+      const pair = await setupNotifPair(request, "notifRead");
+
       await test.step("sign in as user B", async () => {
         await page.goto("/");
         await expect(page.getByText("Welcome back")).toBeVisible({ timeout: 15_000 });
 
-        await page.getByLabel("Email or username").fill(userBEmail);
+        await page.getByLabel("Email or username").fill(pair.userBEmail);
         await page.getByLabel("Password").fill(TEST_USER.password);
         await page.getByRole("button", { name: "Sign in" }).click();
       });
@@ -279,7 +265,6 @@ test.describe("Notifications", () => {
       });
 
       await test.step("verify unread dots are gone", async () => {
-        // After marking all read, unread dots should disappear
         await expect(page.getByTestId("unread-dot")).not.toBeVisible({ timeout: 5_000 });
         test.info().annotations.push({
           type: "step",
@@ -288,7 +273,6 @@ test.describe("Notifications", () => {
       });
 
       await test.step("verify mark-all-read button is gone", async () => {
-        // With no unread notifications, the "Mark all as read" button should be hidden
         await expect(page.getByRole("button", { name: "Mark all notifications as read" })).not.toBeVisible();
         test.info().annotations.push({
           type: "step",
@@ -377,7 +361,6 @@ test.describe("Notifications", () => {
       });
 
       await test.step("verify recovery — error state gone, empty state shown", async () => {
-        // After retry with real API, new user has no notifications → empty state
         await expect(page.getByText("Something went wrong", { exact: true })).not.toBeVisible({ timeout: 10_000 });
         await expect(page.getByText("All caught up")).toBeVisible({ timeout: 10_000 });
         test.info().annotations.push({
