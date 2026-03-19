@@ -134,10 +134,14 @@ public sealed class PushDeliveryService(
                 (int)ex.StatusCode, token.Id, ex.Message);
             return true; // Keep token for transient errors
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Catch-all is intentional: SendNotificationAsync can throw HttpRequestException
+            // (network failures), InvalidOperationException (malformed URIs), or
+            // CryptographicException (key issues). Push delivery is best-effort — log and
+            // keep the token so retries can succeed once the transient issue resolves.
             logger.LogError(ex, "Web push delivery error for TokenId={TokenId}", token.Id);
-            return true; // Keep token on transient errors
+            return true;
         }
     }
 

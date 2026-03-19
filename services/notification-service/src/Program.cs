@@ -15,6 +15,12 @@ builder.AddObservability("notification-service");
 builder.Services.AddServiceDatabase<NotificationDbContext>(builder.Configuration);
 builder.Services.AddNatsMessaging(builder.Configuration);
 builder.Services.AddSingleton<PushDeliveryService>();
+builder.Services.AddHttpClient("SocialService", client =>
+{
+    var socialUrl = builder.Configuration["Services:SocialServiceUrl"] ?? "http://social-service:5003";
+    client.BaseAddress = new Uri(socialUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
 builder.Services.AddHostedService<HabitCompletedSubscriber>();
 builder.Services.AddHostedService<FriendRequestSentSubscriber>();
 builder.Services.AddHostedService<FriendRequestAcceptedSubscriber>();
@@ -119,9 +125,9 @@ app.MapPut("/notifications/settings", async (HttpContext ctx, NotificationDbCont
     {
         request = await ctx.Request.ReadFromJsonAsync<UpdateSettingsRequest>();
     }
-    catch (Exception)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
-        request = null;
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
@@ -164,9 +170,9 @@ app.MapPost("/notifications/devices", async (HttpContext ctx, NotificationDbCont
     {
         request = await ctx.Request.ReadFromJsonAsync<RegisterDeviceRequest>();
     }
-    catch (Exception)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
-        request = null;
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
@@ -217,9 +223,9 @@ app.MapDelete("/notifications/devices", async (HttpContext ctx, NotificationDbCo
     {
         request = await ctx.Request.ReadFromJsonAsync<UnregisterDeviceRequest>();
     }
-    catch (Exception)
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
     {
-        request = null;
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
     }
     if (request is null || string.IsNullOrWhiteSpace(request.DeviceId))
         return Results.BadRequest(new { error = "DeviceId is required" });
@@ -298,7 +304,7 @@ static JsonElement TryParseJson(string json)
 {
     try
     { return JsonSerializer.Deserialize<JsonElement>(json); }
-    catch { return JsonSerializer.Deserialize<JsonElement>("{}"); }
+    catch (JsonException) { return JsonSerializer.Deserialize<JsonElement>("{}"); }
 }
 
 // --- Request DTOs ---
