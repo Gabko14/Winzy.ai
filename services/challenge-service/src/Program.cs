@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NATS.Client.Core;
 using Winzy.ChallengeService.Data;
 using Winzy.ChallengeService.Entities;
 using Winzy.ChallengeService.Services;
@@ -64,7 +65,15 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var request = await ctx.Request.ReadFromJsonAsync<CreateChallengeRequest>(jsonOptions);
+    CreateChallengeRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<CreateChallengeRequest>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
 
@@ -177,7 +186,7 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
         await nats.PublishAsync(Subjects.ChallengeCreated,
             new ChallengeCreatedEvent(challenge.Id, userId, request.RecipientId, request.HabitId));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish challenge.created event for ChallengeId={ChallengeId}",
             challenge.Id);

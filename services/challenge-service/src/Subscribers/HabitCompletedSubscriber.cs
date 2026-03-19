@@ -227,7 +227,7 @@ public sealed class HabitCompletedSubscriber(
                 "Habit service returned {StatusCode} for range consistency on HabitId={HabitId}",
                 (int)response.StatusCode, habitId);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             logger.LogWarning(ex,
                 "Failed to fetch range consistency from habit service for HabitId={HabitId}",

@@ -724,6 +724,21 @@ public class FriendshipEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    // --- Malformed JSON ---
+
+    [Fact]
+    public async Task SendFriendRequest_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("not valid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/social/friends/request", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
     // --- Helper ---
 
     private async Task CreateFriendship()
