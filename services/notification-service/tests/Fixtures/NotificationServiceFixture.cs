@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,12 @@ public sealed class NotificationServiceFixture : IAsyncLifetime
 
     public string PostgresConnectionString => _postgres.GetConnectionString();
     public string NatsUrl => _nats.GetConnectionString();
+
+    /// <summary>
+    /// Mock handler for the SocialService HttpClient. Tests can set this to control
+    /// what GET /social/internal/friends/{userId} returns.
+    /// </summary>
+    public MockSocialServiceHandler SocialServiceHandler { get; } = new();
 
     public async ValueTask InitializeAsync()
     {
@@ -68,6 +75,10 @@ public sealed class NotificationServiceFixture : IAsyncLifetime
                         services.Remove(descriptor);
 
                     services.AddNats(configureOpts: opts => opts with { Url = NatsUrl });
+
+                    // Replace SocialService HttpClient with mock handler
+                    services.AddHttpClient("SocialService")
+                        .ConfigurePrimaryHttpMessageHandler(() => SocialServiceHandler);
                 });
             });
 
@@ -102,6 +113,7 @@ public sealed class NotificationServiceFixture : IAsyncLifetime
         await db.Notifications.ExecuteDeleteAsync();
         await db.NotificationSettings.ExecuteDeleteAsync();
         await db.DeviceTokens.ExecuteDeleteAsync();
+        SocialServiceHandler.Reset();
     }
 
     public async Task PublishNatsEventAsync<T>(string subject, T data)
@@ -110,5 +122,58 @@ public sealed class NotificationServiceFixture : IAsyncLifetime
         var js = new NatsJSContext(connection);
         var ack = await js.PublishAsync(subject, data, serializer: NatsJsonSerializer<T>.Default);
         ack.EnsureSuccess();
+    }
+}
+
+/// <summary>
+/// A controllable HTTP handler that simulates social-service responses.
+/// Tests configure per-user friend lists; unconfigured users return an empty list.
+/// </summary>
+public sealed class MockSocialServiceHandler : HttpMessageHandler
+{
+    private readonly Dictionary<Guid, List<Guid>> _friendsMap = [];
+    private bool _shouldFail;
+
+    public void SetFriends(Guid userId, params Guid[] friendIds) =>
+        _friendsMap[userId] = [.. friendIds];
+
+    public void SetShouldFail(bool fail) => _shouldFail = fail;
+
+    public void Reset()
+    {
+        _friendsMap.Clear();
+        _shouldFail = false;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (_shouldFail)
+            throw new HttpRequestException("Simulated social-service failure");
+
+        var path = request.RequestUri?.AbsolutePath ?? "";
+
+        // Match GET /social/internal/friends/{userId}
+        if (path.StartsWith("/social/internal/friends/") && request.Method == HttpMethod.Get)
+        {
+            var segment = path.Split('/').Last();
+            if (Guid.TryParse(segment, out var userId) && _friendsMap.TryGetValue(userId, out var friends))
+            {
+                var json = JsonSerializer.Serialize(new { friendIds = friends });
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+                });
+            }
+
+            // User not configured — return empty friends list
+            var emptyJson = JsonSerializer.Serialize(new { friendIds = Array.Empty<Guid>() });
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(emptyJson, System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
     }
 }

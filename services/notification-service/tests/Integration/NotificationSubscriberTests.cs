@@ -42,17 +42,116 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
         Assert.False(exists, $"Expected no {type} notification for user {userId}, but one was found");
     }
 
-    // --- habit.completed ---
+    // --- habit.completed fan-out ---
 
     [Fact]
-    public async Task HabitCompleted_DeferredUntilFriendLookup_NoNotification()
+    public async Task HabitCompleted_FansOutToFriends()
     {
-        // HabitCompleted subscriber defers notification creation until friend fan-out is available.
-        // It should NOT create self-notifications.
+        var friend1 = Guid.NewGuid();
+        var friend2 = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend1, friend2);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend1, NotificationType.HabitCompleted);
+        await WaitForNotificationAsync(friend2, NotificationType.HabitCompleted);
+
+        using var db = _fixture.CreateDbContext();
+        var notifications = await db.Notifications
+            .Where(n => n.Type == NotificationType.HabitCompleted)
+            .ToListAsync(CT);
+
+        Assert.Equal(2, notifications.Count);
+
+        // Verify notification data contains correct fromUserId
+        foreach (var n in notifications)
+        {
+            var data = JsonSerializer.Deserialize<JsonElement>(n.Data);
+            Assert.Equal(_userId, data.GetProperty("fromUserId").GetGuid());
+            Assert.Equal(evt.HabitId, data.GetProperty("habitId").GetGuid());
+        }
+    }
+
+    [Fact]
+    public async Task HabitCompleted_NoFriends_NoNotifications()
+    {
+        // User has no friends — social-service returns empty list (default mock behavior)
         var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
         await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
 
         await AssertNoNotificationAsync(_userId, NotificationType.HabitCompleted);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_DoesNotNotifySelf()
+    {
+        // Even if the user somehow appears in their own friend list, no self-notification
+        // (social-service wouldn't return this, but verify the subscriber doesn't create self-notifications)
+        var friend = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend, NotificationType.HabitCompleted);
+        await AssertNoNotificationAsync(_userId, NotificationType.HabitCompleted);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_FriendActivityDisabled_SkipsThatFriend()
+    {
+        var friend1 = Guid.NewGuid();
+        var friend2 = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend1, friend2);
+
+        // Disable FriendActivity for friend1
+        using var client = _fixture.CreateAuthenticatedClient(friend1);
+        await client.PutAsJsonAsync("/notifications/settings", new { friendActivity = false }, CT);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        await WaitForNotificationAsync(friend2, NotificationType.HabitCompleted);
+        await AssertNoNotificationAsync(friend1, NotificationType.HabitCompleted);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_SocialServiceUnavailable_SkipsFanOut()
+    {
+        _fixture.SocialServiceHandler.SetShouldFail(true);
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        // No notifications should be created — graceful degradation
+        await AssertNoNotificationAsync(_userId, NotificationType.HabitCompleted);
+
+        _fixture.SocialServiceHandler.SetShouldFail(false);
+    }
+
+    [Fact]
+    public async Task HabitCompleted_Idempotent_NoDuplicates()
+    {
+        var friend = Guid.NewGuid();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+
+        var habitId = Guid.NewGuid();
+        var date = DateTime.UtcNow;
+        var evt = new HabitCompletedEvent(_userId, habitId, date, 0.85);
+
+        // Publish the same event twice (simulates NATS redelivery)
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+        await WaitForNotificationAsync(friend, NotificationType.HabitCompleted);
+
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+        // Wait a bit for the second event to be processed
+        await Task.Delay(1000, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var count = await db.Notifications
+            .CountAsync(n => n.UserId == friend && n.Type == NotificationType.HabitCompleted, CT);
+        Assert.Equal(1, count);
     }
 
     // --- friend.request.sent ---
