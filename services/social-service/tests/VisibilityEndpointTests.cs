@@ -701,4 +701,32 @@ public class VisibilityEndpointTests : IAsyncLifetime
         Assert.False(habit1Exists);
         Assert.True(habit2Exists);
     }
+
+    // --- Malformed JSON ---
+
+    [Fact]
+    public async Task SetVisibility_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("not valid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PutAsync($"/social/visibility/{_habitId1}", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task SetPreferences_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var content = new StringContent("not valid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PutAsync("/social/preferences", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
 }

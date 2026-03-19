@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using NATS.Client.Core;
 using Winzy.Common.Health;
 using Winzy.Common.Messaging;
 using Winzy.Common.Observability;
@@ -57,7 +58,15 @@ app.MapPost("/social/friends/request", async (HttpContext ctx, SocialDbContext d
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var request = await ctx.Request.ReadFromJsonAsync<FriendRequestDto>(jsonOptions);
+    FriendRequestDto? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<FriendRequestDto>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
     if (request is null || request.FriendId == Guid.Empty)
         return Results.BadRequest(new { error = "FriendId is required" });
 
@@ -92,7 +101,7 @@ app.MapPost("/social/friends/request", async (HttpContext ctx, SocialDbContext d
         await nats.PublishAsync(Subjects.FriendRequestSent,
             new FriendRequestSentEvent(userId, request.FriendId));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish friend.request.sent event from {UserId} to {FriendId}",
             userId, request.FriendId);
@@ -142,7 +151,7 @@ app.MapPut("/social/friends/request/{id:guid}/accept", async (Guid id, HttpConte
         await nats.PublishAsync(Subjects.FriendRequestAccepted,
             new FriendRequestAcceptedEvent(friendship.UserId, userId));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish friend.request.accepted event for {UserId1} and {UserId2}",
             friendship.UserId, userId);
@@ -207,7 +216,7 @@ app.MapDelete("/social/friends/{friendId:guid}", async (Guid friendId, HttpConte
         await nats.PublishAsync(Subjects.FriendRemoved,
             new FriendRemovedEvent(userId, friendId));
     }
-    catch (Exception ex)
+    catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
         logger.LogWarning(ex, "Failed to publish friend.removed event for {UserId1} and {UserId2}",
             userId, friendId);
@@ -444,7 +453,15 @@ app.MapPut("/social/visibility/{habitId:guid}", async (Guid habitId, HttpContext
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var request = await ctx.Request.ReadFromJsonAsync<VisibilityUpdateDto>(jsonOptions);
+    VisibilityUpdateDto? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<VisibilityUpdateDto>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
 
@@ -518,7 +535,7 @@ app.MapPut("/social/visibility/{habitId:guid}", async (Guid habitId, HttpContext
                     oldVisibility.ToString().ToLowerInvariant(),
                     request.Visibility.ToString().ToLowerInvariant()));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is NatsException or OperationCanceledException)
         {
             logger.LogWarning(ex, "Failed to publish visibility.changed event for UserId={UserId}, HabitId={HabitId}",
                 userId, habitId);
@@ -559,7 +576,15 @@ app.MapPut("/social/preferences", async (HttpContext ctx, SocialDbContext db, IL
     if (!TryGetUserId(ctx, out var userId))
         return Results.BadRequest(new { error = "Missing X-User-Id header" });
 
-    var request = await ctx.Request.ReadFromJsonAsync<PreferencesUpdateDto>(jsonOptions);
+    PreferencesUpdateDto? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<PreferencesUpdateDto>(jsonOptions);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
     if (request is null)
         return Results.BadRequest(new { error = "Request body is required" });
 

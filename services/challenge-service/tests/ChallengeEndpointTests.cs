@@ -1782,6 +1782,21 @@ public class ChallengeEndpointTests : IClassFixture<ChallengeServiceFixture>, IA
         Assert.Equal(JsonValueKind.Null, items[0].GetProperty("creatorDisplayName").ValueKind);
     }
 
+    // --- Malformed JSON ---
+
+    [Fact]
+    public async Task CreateChallenge_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_creatorId);
+
+        var content = new StringContent("not valid json", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/challenges", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("Invalid JSON in request body", body.GetProperty("error").GetString());
+    }
+
     // --- GET /health ---
 
     [Fact]
