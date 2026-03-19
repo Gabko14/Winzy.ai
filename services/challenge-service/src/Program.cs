@@ -132,7 +132,7 @@ app.MapPost("/challenges", async (HttpContext ctx, ChallengeDbContext db, NatsEv
             return Results.StatusCode(503);
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
     {
         logger.LogWarning(ex, "Failed to validate friendship between {CreatorId} and {RecipientId}",
             userId, request.RecipientId);

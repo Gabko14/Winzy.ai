@@ -68,13 +68,16 @@ public sealed class HabitCompletedSubscriber(
             "Fan-out habit.completed for UserId={UserId} to {FriendCount} friends",
             data.UserId, friendIds.Count);
 
-        using var scope = serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
-
         foreach (var friendId in friendIds)
         {
+            if (friendId == data.UserId)
+                continue;
+
             try
             {
+                using var scope = serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+
                 var settings = await db.NotificationSettings
                     .FirstOrDefaultAsync(s => s.UserId == friendId, ct);
 

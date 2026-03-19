@@ -86,10 +86,10 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
     [Fact]
     public async Task HabitCompleted_DoesNotNotifySelf()
     {
-        // Even if the user somehow appears in their own friend list, no self-notification
-        // (social-service wouldn't return this, but verify the subscriber doesn't create self-notifications)
+        // Even if social-service returns the user in their own friend list,
+        // the subscriber must skip self-notification via the guard check
         var friend = Guid.NewGuid();
-        _fixture.SocialServiceHandler.SetFriends(_userId, friend);
+        _fixture.SocialServiceHandler.SetFriends(_userId, friend, _userId);
 
         var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
         await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
