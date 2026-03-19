@@ -24,6 +24,7 @@ export type NotificationScreenProps = {
 const DEEP_LINK_TYPES = new Set<NotificationType>([
   "friendrequestsent",
   "friendrequestaccepted",
+  "habitcompleted",
   "challengecreated",
   "challengecompleted",
 ]);

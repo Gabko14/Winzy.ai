@@ -119,6 +119,12 @@ jest.mock("../../components/notifications", () => ({
             <RN.Pressable testID="notif-press-accepted" onPress={() => onNotifPress({ id: "n4", type: "friendrequestaccepted", data: { otherUserId: "friend-789" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
               <RN.Text>Accepted</RN.Text>
             </RN.Pressable>
+            <RN.Pressable testID="notif-press-habit-completed" onPress={() => onNotifPress({ id: "n5", type: "habitcompleted", data: { fromUserId: "friend-abc" }, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>HabitCompleted</RN.Text>
+            </RN.Pressable>
+            <RN.Pressable testID="notif-press-habit-completed-no-data" onPress={() => onNotifPress({ id: "n6", type: "habitcompleted", data: {}, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
+              <RN.Text>HabitCompletedNoData</RN.Text>
+            </RN.Pressable>
             <RN.Pressable testID="notif-press-no-data" onPress={() => onNotifPress({ id: "n3", type: "friendrequestsent", data: {}, readAt: null, createdAt: "2026-01-01T00:00:00Z" })}>
               <RN.Text>NoData</RN.Text>
             </RN.Pressable>
@@ -804,5 +810,27 @@ describe("RootNavigator", () => {
     expect(mockUsePendingFriendCount).toHaveBeenCalledWith(false);
     expect(mockUseVisibility).toHaveBeenCalledWith(false);
     expect(mockUseChallengeCompletion).toHaveBeenCalledWith(false);
+  });
+
+  // --- habitcompleted notification deep-linking (winzy.ai-bhfw) ---
+
+  it("navigates to friend profile when habitcompleted notification is tapped", () => {
+    const { getByTestId, getByText } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-habit-completed"));
+    expect(getByTestId("friend-profile-screen")).toBeTruthy();
+    // Verify the correct friendId was passed (mock renders friendId in text)
+    expect(getByText("FriendProfileScreen friend-abc")).toBeTruthy();
+  });
+
+  it("stays on notifications when habitcompleted notification has no fromUserId", () => {
+    const { getByTestId } = render(<RootNavigator />);
+    fireEvent.press(getByTestId("notif-press"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
+
+    fireEvent.press(getByTestId("notif-press-habit-completed-no-data"));
+    expect(getByTestId("notification-screen")).toBeTruthy();
   });
 });
