@@ -35,8 +35,12 @@ public sealed class UserDeletedSubscriber(
             .Where(s => s.UserId == data.UserId)
             .ExecuteDeleteAsync(ct);
 
+        var deviceTokensDeleted = await db.DeviceTokens
+            .Where(t => t.UserId == data.UserId)
+            .ExecuteDeleteAsync(ct);
+
         logger.LogInformation(
-            "Deleted {Notifications} notifications and {Settings} settings rows for UserId={UserId}",
-            notificationsDeleted, settingsDeleted, data.UserId);
+            "Deleted {Notifications} notifications, {Settings} settings, and {DeviceTokens} device tokens for UserId={UserId}",
+            notificationsDeleted, settingsDeleted, deviceTokensDeleted, data.UserId);
     }
 }

@@ -354,6 +354,60 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
         await AssertNoNotificationAsync(_userId, NotificationType.FriendRequestAccepted);
     }
 
+    [Fact]
+    public async Task FriendRequestAccepted_PushDeliveredFlagSetForBothUsers()
+    {
+        var otherUser = Guid.NewGuid();
+        var evt = new FriendRequestAcceptedEvent(_userId, otherUser);
+        await _fixture.PublishNatsEventAsync(Subjects.FriendRequestAccepted, evt);
+
+        await WaitForNotificationAsync(_userId, NotificationType.FriendRequestAccepted);
+        await WaitForNotificationAsync(otherUser, NotificationType.FriendRequestAccepted);
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var notifications = await db.Notifications
+            .Where(n => n.Type == NotificationType.FriendRequestAccepted)
+            .ToListAsync(CT);
+
+        Assert.Equal(2, notifications.Count);
+        Assert.All(notifications, n => Assert.True(n.PushDelivered));
+    }
+
+    [Fact]
+    public async Task FriendRequestAccepted_Redelivery_SkipsPushWhenAlreadyDelivered()
+    {
+        var otherUser = Guid.NewGuid();
+        var evt = new FriendRequestAcceptedEvent(_userId, otherUser);
+
+        // First delivery
+        await _fixture.PublishNatsEventAsync(Subjects.FriendRequestAccepted, evt);
+        await WaitForNotificationAsync(_userId, NotificationType.FriendRequestAccepted);
+        await WaitForNotificationAsync(otherUser, NotificationType.FriendRequestAccepted);
+        await Task.Delay(500, CT);
+
+        // Verify PushDelivered is true for both
+        using (var db = _fixture.CreateDbContext())
+        {
+            var notifications = await db.Notifications
+                .Where(n => n.Type == NotificationType.FriendRequestAccepted)
+                .ToListAsync(CT);
+            Assert.All(notifications, n => Assert.True(n.PushDelivered));
+        }
+
+        // Second delivery (simulates NATS redelivery) — should skip push
+        await _fixture.PublishNatsEventAsync(Subjects.FriendRequestAccepted, evt);
+        await Task.Delay(1000, CT);
+
+        // Still only two notifications
+        using (var db = _fixture.CreateDbContext())
+        {
+            var count = await db.Notifications
+                .CountAsync(n => n.Type == NotificationType.FriendRequestAccepted, CT);
+            Assert.Equal(2, count);
+        }
+    }
+
     // --- challenge.created ---
 
     [Fact]
@@ -389,6 +443,51 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
         await AssertNoNotificationAsync(_userId, NotificationType.ChallengeCreated);
     }
 
+    [Fact]
+    public async Task ChallengeCreated_PushDeliveredFlagSet()
+    {
+        var evt = new ChallengeCreatedEvent(Guid.NewGuid(), Guid.NewGuid(), _userId, Guid.NewGuid());
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCreated, evt);
+
+        await WaitForNotificationAsync(_userId, NotificationType.ChallengeCreated);
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var notification = await db.Notifications
+            .FirstAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCreated, CT);
+        Assert.True(notification.PushDelivered);
+    }
+
+    [Fact]
+    public async Task ChallengeCreated_Redelivery_SkipsPushWhenAlreadyDelivered()
+    {
+        var challengeId = Guid.NewGuid();
+        var evt = new ChallengeCreatedEvent(challengeId, Guid.NewGuid(), _userId, Guid.NewGuid());
+
+        // First delivery
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCreated, evt);
+        await WaitForNotificationAsync(_userId, NotificationType.ChallengeCreated);
+        await Task.Delay(500, CT);
+
+        using (var db = _fixture.CreateDbContext())
+        {
+            var notification = await db.Notifications
+                .FirstAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCreated, CT);
+            Assert.True(notification.PushDelivered);
+        }
+
+        // Second delivery (simulates NATS redelivery) — should skip push
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCreated, evt);
+        await Task.Delay(1000, CT);
+
+        using (var db = _fixture.CreateDbContext())
+        {
+            var count = await db.Notifications
+                .CountAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCreated, CT);
+            Assert.Equal(1, count);
+        }
+    }
+
     // --- challenge.completed ---
 
     [Fact]
@@ -421,10 +520,55 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
         await AssertNoNotificationAsync(_userId, NotificationType.ChallengeCompleted);
     }
 
+    [Fact]
+    public async Task ChallengeCompleted_PushDeliveredFlagSet()
+    {
+        var evt = new ChallengeCompletedEvent(Guid.NewGuid(), _userId, "Coffee together");
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCompleted, evt);
+
+        await WaitForNotificationAsync(_userId, NotificationType.ChallengeCompleted);
+        await Task.Delay(500, CT);
+
+        using var db = _fixture.CreateDbContext();
+        var notification = await db.Notifications
+            .FirstAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCompleted, CT);
+        Assert.True(notification.PushDelivered);
+    }
+
+    [Fact]
+    public async Task ChallengeCompleted_Redelivery_SkipsPushWhenAlreadyDelivered()
+    {
+        var challengeId = Guid.NewGuid();
+        var evt = new ChallengeCompletedEvent(challengeId, _userId, "Tennis");
+
+        // First delivery
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCompleted, evt);
+        await WaitForNotificationAsync(_userId, NotificationType.ChallengeCompleted);
+        await Task.Delay(500, CT);
+
+        using (var db = _fixture.CreateDbContext())
+        {
+            var notification = await db.Notifications
+                .FirstAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCompleted, CT);
+            Assert.True(notification.PushDelivered);
+        }
+
+        // Second delivery (simulates NATS redelivery) — should skip push
+        await _fixture.PublishNatsEventAsync(Subjects.ChallengeCompleted, evt);
+        await Task.Delay(1000, CT);
+
+        using (var db = _fixture.CreateDbContext())
+        {
+            var count = await db.Notifications
+                .CountAsync(n => n.UserId == _userId && n.Type == NotificationType.ChallengeCompleted, CT);
+            Assert.Equal(1, count);
+        }
+    }
+
     // --- user.deleted ---
 
     [Fact]
-    public async Task UserDeleted_CleansUpNotificationsAndSettings()
+    public async Task UserDeleted_CleansUpNotificationsSettingsAndDeviceTokens()
     {
         // Seed data for the user
         using (var db = _fixture.CreateDbContext())
@@ -445,6 +589,13 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
             {
                 UserId = _userId
             });
+            db.DeviceTokens.Add(new DeviceToken
+            {
+                UserId = _userId,
+                Platform = "web_push",
+                Token = "{\"endpoint\":\"https://example.com\"}",
+                DeviceId = "test-device-1"
+            });
             await db.SaveChangesAsync(CT);
         }
 
@@ -458,7 +609,8 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
             using var db = _fixture.CreateDbContext();
             var hasNotifications = await db.Notifications.AnyAsync(n => n.UserId == _userId, CT);
             var hasSettings = await db.NotificationSettings.AnyAsync(s => s.UserId == _userId, CT);
-            if (!hasNotifications && !hasSettings)
+            var hasDeviceTokens = await db.DeviceTokens.AnyAsync(t => t.UserId == _userId, CT);
+            if (!hasNotifications && !hasSettings && !hasDeviceTokens)
                 return;
             await Task.Delay(100, CT);
         }
@@ -507,5 +659,36 @@ public class NotificationSubscriberTests : IClassFixture<NotificationServiceFixt
                 .CountAsync(n => n.UserId == otherUser, CT);
             Assert.Equal(1, otherNotifications);
         }
+    }
+
+    // --- parallel push delivery (W2: winzy.ai-rxby) ---
+
+    [Fact]
+    public async Task HabitCompleted_ParallelFanOut_DeliversToManyFriends()
+    {
+        // 20 friends — enough to exercise the SemaphoreSlim(10) concurrency limit
+        var friends = Enumerable.Range(0, 20).Select(_ => Guid.NewGuid()).ToList();
+        _fixture.SocialServiceHandler.SetFriends(_userId, friends.ToArray());
+
+        var evt = new HabitCompletedEvent(_userId, Guid.NewGuid(), DateTime.UtcNow, 0.85);
+        await _fixture.PublishNatsEventAsync(Subjects.HabitCompleted, evt);
+
+        // Wait for all notifications
+        foreach (var friend in friends)
+            await WaitForNotificationAsync(friend, NotificationType.HabitCompleted, timeoutMs: 10000);
+
+        using var db = _fixture.CreateDbContext();
+        var notifications = await db.Notifications
+            .Where(n => n.Type == NotificationType.HabitCompleted)
+            .ToListAsync(CT);
+
+        Assert.Equal(20, notifications.Count);
+
+        // All should have PushDelivered set (no device tokens in test → DeliverAsync is a no-op → flag set)
+        await Task.Delay(500, CT);
+        using var db2 = _fixture.CreateDbContext();
+        var deliveredCount = await db2.Notifications
+            .CountAsync(n => n.Type == NotificationType.HabitCompleted && n.PushDelivered, CT);
+        Assert.Equal(20, deliveredCount);
     }
 }
