@@ -18,6 +18,7 @@ import { spacing, radii, typography, lightTheme, shadows } from "../design-syste
 import { useFeed } from "../hooks/useFeed";
 import { useFriends } from "../hooks/useFriends";
 import type { FeedEntry, FeedEventType } from "../api/feed";
+import { getInitials } from "../utils/getInitials";
 
 // --- Event type display config ---
 
@@ -110,20 +111,6 @@ function actorDisplayName(entry: FeedEntry): string {
   if (entry.actorDisplayName) return entry.actorDisplayName;
   if (entry.actorUsername) return entry.actorUsername;
   return entry.actorId.slice(0, 8);
-}
-
-function actorInitials(entry: FeedEntry): string {
-  if (entry.actorDisplayName) {
-    const parts = entry.actorDisplayName.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return entry.actorDisplayName.slice(0, 2).toUpperCase();
-  }
-  if (entry.actorUsername) {
-    return entry.actorUsername.slice(0, 2).toUpperCase();
-  }
-  return entry.actorId.slice(0, 2).toUpperCase();
 }
 
 // --- Props ---
@@ -256,7 +243,7 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
   const colors = lightTheme;
   const icon = getEventIcon(entry.eventType);
   const label = getEventLabel(entry.eventType, entry.data);
-  const initials = actorInitials(entry);
+  const initials = getInitials(entry.actorDisplayName, entry.actorUsername, entry.actorId);
   const name = actorDisplayName(entry);
   const timestamp = formatRelativeTime(entry.createdAt);
 

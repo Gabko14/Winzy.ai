@@ -3,21 +3,12 @@ import { View, Text, StyleSheet } from "react-native";
 import { Card, Badge, Button } from "../../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../../design-system";
 import type { OutgoingRequest } from "../../api/social";
+import { getInitials } from "../../utils/getInitials";
 
 function outgoingDisplayName(request: OutgoingRequest): string {
   if (request.toDisplayName) return request.toDisplayName;
   if (request.toUsername) return `@${request.toUsername}`;
   return `User ${request.toUserId.slice(0, 8)}`;
-}
-
-function outgoingInitials(request: OutgoingRequest): string {
-  if (request.toDisplayName) {
-    const parts = request.toDisplayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (request.toUsername) return request.toUsername.slice(0, 2).toUpperCase();
-  return request.toUserId.slice(0, 2).toUpperCase();
 }
 
 type OutgoingRequestsProps = {
@@ -38,7 +29,7 @@ export function OutgoingRequestsList({
           <View style={styles.requestRow}>
             <View style={styles.requestAvatar}>
               <Text style={styles.requestAvatarText}>
-                {outgoingInitials(request)}
+                {getInitials(request.toDisplayName, request.toUsername, request.toUserId)}
               </Text>
             </View>
             <View style={styles.requestInfo}>

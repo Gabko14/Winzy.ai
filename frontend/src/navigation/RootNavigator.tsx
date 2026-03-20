@@ -35,6 +35,7 @@ import { TabBar, type TabId } from "./TabBar";
 import { useChallengeCompletion } from "../hooks/useChallengeCompletion";
 import { ChallengeCompletionOverlay } from "../components/ChallengeCompletionOverlay";
 import { useOverlayRouter } from "./useOverlayRouter";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -215,7 +216,9 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <EditProfileScreen onBack={() => { overlay.closeAll(); setActiveTab("profile"); }} />
+        <ErrorBoundary>
+          <EditProfileScreen onBack={() => { overlay.closeAll(); setActiveTab("profile"); }} />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -225,20 +228,22 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <HabitDetailScreen
-          habitId={overlay.params.habitId}
-          onBack={overlay.closeAll}
-          onViewStats={handleViewStats}
-          onEdit={handleEditHabit}
-          onArchive={async (habitId: string) => {
-            try {
-              await archiveHabit(habitId);
-              overlay.closeAll();
-            } catch {
-              // Archive failed — stay on detail screen so user can retry
-            }
-          }}
-        />
+        <ErrorBoundary>
+          <HabitDetailScreen
+            habitId={overlay.params.habitId}
+            onBack={overlay.closeAll}
+            onViewStats={handleViewStats}
+            onEdit={handleEditHabit}
+            onArchive={async (habitId: string) => {
+              try {
+                await archiveHabit(habitId);
+                overlay.closeAll();
+              } catch {
+                // Archive failed — stay on detail screen so user can retry
+              }
+            }}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -249,17 +254,19 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <CreateHabitScreen
-          visible
-          onClose={() => {
-            overlay.pop();
-          }}
-          onSaved={() => {
-            overlay.pop();
-          }}
-          editHabit={editHabitData}
-          editVisibility={visibility.getVisibility(editHabitData.id)}
-        />
+        <ErrorBoundary>
+          <CreateHabitScreen
+            visible
+            onClose={() => {
+              overlay.pop();
+            }}
+            onSaved={() => {
+              overlay.pop();
+            }}
+            editHabit={editHabitData}
+            editVisibility={visibility.getVisibility(editHabitData.id)}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -269,13 +276,15 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <NotificationScreen
-          onNotificationPress={handleNotificationPress}
-          onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
-          onMarkAllRead={() => unreadCount.resetToZero()}
-          onMarkAllReadFailed={() => unreadCount.refresh()}
-          onBack={overlay.closeAll}
-        />
+        <ErrorBoundary>
+          <NotificationScreen
+            onNotificationPress={handleNotificationPress}
+            onUnreadCountChange={(delta) => unreadCount.decrementBy(-delta)}
+            onMarkAllRead={() => unreadCount.resetToZero()}
+            onMarkAllReadFailed={() => unreadCount.refresh()}
+            onBack={overlay.closeAll}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -285,18 +294,20 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <HabitListScreen
-          onBack={overlay.closeAll}
-          onHabitCreated={() => {
-            if (!onboarding.hasSeenFlameIntro) {
-              // First habit: return to daily loop and show flame intro
-              overlay.closeAll();
-              setActiveTab("today");
-              setShowFlameIntro(true);
-            }
-            // Returning users stay on HabitListScreen
-          }}
-        />
+        <ErrorBoundary>
+          <HabitListScreen
+            onBack={overlay.closeAll}
+            onHabitCreated={() => {
+              if (!onboarding.hasSeenFlameIntro) {
+                // First habit: return to daily loop and show flame intro
+                overlay.closeAll();
+                setActiveTab("today");
+                setShowFlameIntro(true);
+              }
+              // Returning users stay on HabitListScreen
+            }}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -306,10 +317,12 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <AddFriendScreen
-          currentUserId={auth.user.id}
-          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
-        />
+        <ErrorBoundary>
+          <AddFriendScreen
+            currentUserId={auth.user.id}
+            onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -321,11 +334,13 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <FriendProfileScreen
-          friendId={overlay.params.friendId}
-          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
-          onSetChallenge={handleSetChallenge}
-        />
+        <ErrorBoundary>
+          <FriendProfileScreen
+            friendId={overlay.params.friendId}
+            onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
+            onSetChallenge={handleSetChallenge}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -335,12 +350,14 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <CreateChallengeScreen
-          friendId={overlay.params.friendId}
-          friendName={overlay.params.friendName ?? undefined}
-          onBack={() => { overlay.pop(); }}
-          onComplete={() => { overlay.closeAll(); setActiveTab("friends"); }}
-        />
+        <ErrorBoundary>
+          <CreateChallengeScreen
+            friendId={overlay.params.friendId}
+            friendName={overlay.params.friendName ?? undefined}
+            onBack={() => { overlay.pop(); }}
+            onComplete={() => { overlay.closeAll(); setActiveTab("friends"); }}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -350,7 +367,9 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <MyChallengesScreen onBack={overlay.closeAll} />
+        <ErrorBoundary>
+          <MyChallengesScreen onBack={overlay.closeAll} />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -360,10 +379,12 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <SettingsScreen
-          onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
-          onEditProfile={goToEditProfile}
-        />
+        <ErrorBoundary>
+          <SettingsScreen
+            onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
+            onEditProfile={goToEditProfile}
+          />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -373,7 +394,9 @@ export function RootNavigator() {
     return (
       <>
         <OfflineIndicator />
-        <StatsScreen habitId={overlay.params.habitId} onBack={() => { overlay.pop(); }} />
+        <ErrorBoundary>
+          <StatsScreen habitId={overlay.params.habitId} onBack={() => { overlay.pop(); }} />
+        </ErrorBoundary>
         <StatusBar style="auto" />
       </>
     );
@@ -393,36 +416,44 @@ export function RootNavigator() {
   switch (activeTab) {
     case "friends":
       tabContent = (
-        <FriendsScreen
-          onAddFriend={goToAddFriend}
-          onFriendPress={handleFriendPress}
-        />
+        <ErrorBoundary>
+          <FriendsScreen
+            onAddFriend={goToAddFriend}
+            onFriendPress={handleFriendPress}
+          />
+        </ErrorBoundary>
       );
       break;
     case "feed":
       tabContent = (
-        <FeedScreen
-          onAvatarPress={handleFriendPress}
-          onChallengePress={() => {
-            overlay.push("challenges");
-          }}
-        />
+        <ErrorBoundary>
+          <FeedScreen
+            onAvatarPress={handleFriendPress}
+            onChallengePress={() => {
+              overlay.push("challenges");
+            }}
+          />
+        </ErrorBoundary>
       );
       break;
     case "profile":
       tabContent = (
-        <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => overlay.push("challenges")} />
+        <ErrorBoundary>
+          <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => overlay.push("challenges")} />
+        </ErrorBoundary>
       );
       break;
     case "today":
     default:
       tabContent = (
-        <TodayScreen
-          onCreateHabit={goToHabits}
-          onHabitPress={handleHabitPress}
-          onNotifications={goToNotifications}
-          unreadNotificationCount={unreadCount.count}
-        />
+        <ErrorBoundary>
+          <TodayScreen
+            onCreateHabit={goToHabits}
+            onHabitPress={handleHabitPress}
+            onNotifications={goToNotifications}
+            unreadNotificationCount={unreadCount.count}
+          />
+        </ErrorBoundary>
       );
       break;
   }
@@ -469,9 +500,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
-  },
-  placeholder: {
     flex: 1,
   },
 });
