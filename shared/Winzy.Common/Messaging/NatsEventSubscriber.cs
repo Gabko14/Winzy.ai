@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NATS.Client.Core;
@@ -8,6 +9,17 @@ using NATS.Client.Serializers.Json;
 using Winzy.Common.Observability;
 
 namespace Winzy.Common.Messaging;
+
+internal static class MessagingMetrics
+{
+    internal static readonly Meter Meter = new("Winzy.Messaging");
+    internal static readonly Counter<long> ProcessedCounter =
+        Meter.CreateCounter<long>("messaging.messages.processed", description: "Messages processed successfully");
+    internal static readonly Counter<long> FailedCounter =
+        Meter.CreateCounter<long>("messaging.messages.failed", description: "Messages that failed processing");
+    internal static readonly Counter<long> ExhaustedCounter =
+        Meter.CreateCounter<long>("messaging.messages.exhausted", description: "Messages that exhausted all delivery attempts");
+}
 
 public abstract class NatsEventSubscriber<T>(
     INatsConnection connection,
@@ -36,6 +48,8 @@ public abstract class NatsEventSubscriber<T>(
 
         logger.LogInformation("NATS subscriber started: {Stream}/{Consumer} filtering {Subject}",
             stream, consumer, filterSubject);
+
+        var tags = new TagList { { "consumer", consumer }, { "stream", stream } };
 
         await foreach (var msg in consumerObj.ConsumeAsync<T>(
             serializer: NatsJsonSerializer<T>.Default,
@@ -72,6 +86,8 @@ public abstract class NatsEventSubscriber<T>(
                 await msg.AckAsync(cancellationToken: stoppingToken);
                 stopwatch.Stop();
 
+                MessagingMetrics.ProcessedCounter.Add(1, tags);
+
                 logger.LogInformation(
                     "NATS {Subject} processed OK by {Consumer} in {ElapsedMs}ms (attempt {Attempt}/{Max})",
                     filterSubject, consumer, stopwatch.ElapsedMilliseconds,
@@ -81,12 +97,33 @@ public abstract class NatsEventSubscriber<T>(
             {
                 stopwatch.Stop();
 
-                logger.LogError(ex,
-                    "NATS {Subject} FAILED in {Consumer} after {ElapsedMs}ms (attempt {Attempt}/{Max}): {Reason}",
-                    filterSubject, consumer, stopwatch.ElapsedMilliseconds,
-                    msg.Metadata?.NumDelivered ?? 0, MaxDeliveryAttempts, ex.Message);
+                MessagingMetrics.FailedCounter.Add(1, tags);
 
-                await msg.NakAsync(delay: TimeSpan.FromSeconds(5), cancellationToken: stoppingToken);
+                var attempt = msg.Metadata?.NumDelivered ?? 0;
+                var isExhausted = attempt >= MaxDeliveryAttempts;
+
+                if (isExhausted)
+                {
+                    MessagingMetrics.ExhaustedCounter.Add(1, tags);
+
+                    logger.LogError(ex,
+                        "NATS {Subject} EXHAUSTED in {Consumer} after {ElapsedMs}ms — all {Max} delivery attempts failed, message will be dropped: {Reason}",
+                        filterSubject, consumer, stopwatch.ElapsedMilliseconds,
+                        MaxDeliveryAttempts, ex.Message);
+
+                    // ACK on final attempt — JetStream won't redeliver past MaxDeliver anyway,
+                    // and NAK would just add unnecessary server-side work
+                    await msg.AckAsync(cancellationToken: stoppingToken);
+                }
+                else
+                {
+                    logger.LogError(ex,
+                        "NATS {Subject} FAILED in {Consumer} after {ElapsedMs}ms (attempt {Attempt}/{Max}): {Reason}",
+                        filterSubject, consumer, stopwatch.ElapsedMilliseconds,
+                        attempt, MaxDeliveryAttempts, ex.Message);
+
+                    await msg.NakAsync(delay: TimeSpan.FromSeconds(5), cancellationToken: stoppingToken);
+                }
             }
             finally
             {
