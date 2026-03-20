@@ -45,15 +45,34 @@ public sealed class ChallengeCompletedSubscriber(
         }
 
         var idempotencyKey = $"challenge_completed:{data.UserId}:{data.ChallengeId}";
-        if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == idempotencyKey, ct))
+        var existing = await db.Notifications
+            .FirstOrDefaultAsync(n => n.IdempotencyKey == idempotencyKey, ct);
+
+        if (existing is not null)
         {
-            logger.LogInformation("Duplicate notification detected (key={Key}), retrying push delivery", idempotencyKey);
-            await pushDelivery.DeliverAsync(
-                db, data.UserId,
-                "Challenge completed!",
-                $"You completed a challenge — time for: {data.Reward}",
-                "/challenges",
-                ct);
+            if (!existing.PushDelivered)
+            {
+                logger.LogInformation("Duplicate notification detected (key={Key}), retrying push delivery", idempotencyKey);
+                try
+                {
+                    await pushDelivery.DeliverAsync(
+                        db, data.UserId,
+                        "Challenge completed!",
+                        $"You completed a challenge — time for: {data.Reward}",
+                        "/challenges",
+                        ct);
+                    existing.PushDelivered = true;
+                    await db.SaveChangesAsync(ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Failed to deliver push retry for UserId={UserId} — continuing", data.UserId);
+                }
+            }
+            else
+            {
+                logger.LogInformation("Duplicate notification detected (key={Key}), push already delivered — skipping", idempotencyKey);
+            }
             return;
         }
 
@@ -76,11 +95,20 @@ public sealed class ChallengeCompletedSubscriber(
             "Created ChallengeCompleted notification {NotificationId} for UserId={UserId}",
             notification.Id, data.UserId);
 
-        await pushDelivery.DeliverAsync(
-            db, data.UserId,
-            "Challenge completed!",
-            $"You completed a challenge — time for: {data.Reward}",
-            "/challenges",
-            ct);
+        try
+        {
+            await pushDelivery.DeliverAsync(
+                db, data.UserId,
+                "Challenge completed!",
+                $"You completed a challenge — time for: {data.Reward}",
+                "/challenges",
+                ct);
+            notification.PushDelivered = true;
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Failed to deliver push for UserId={UserId} — PushDelivered remains false", data.UserId);
+        }
     }
 }

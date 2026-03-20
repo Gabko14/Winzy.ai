@@ -45,42 +45,89 @@ public sealed class FriendRequestAcceptedSubscriber(
         var settings2 = await db.NotificationSettings
             .FirstOrDefaultAsync(s => s.UserId == userId2, ct);
 
-        // Check idempotency — skip if already processed
+        // Check idempotency — load existing notifications (need PushDelivered flag)
         var key1 = $"friend_request_accepted:{userId1}:{userId2}";
         var key2 = $"friend_request_accepted:{userId2}:{userId1}";
-        var existingKeys = await db.Notifications
+        var existingNotifications = await db.Notifications
             .Where(n => n.IdempotencyKey == key1 || n.IdempotencyKey == key2)
-            .Select(n => n.IdempotencyKey)
-            .ToListAsync(ct);
+            .ToDictionaryAsync(n => n.IdempotencyKey!, ct);
 
-        // If both keys already exist, this is a redelivery — still attempt push (may have crashed after DB save)
-        if (existingKeys.Contains(key1) && existingKeys.Contains(key2))
+        // If both keys already exist, this is a redelivery — only retry push if not already delivered
+        if (existingNotifications.ContainsKey(key1) && existingNotifications.ContainsKey(key2))
         {
-            logger.LogInformation("Duplicate notification detected (both keys exist), retrying push delivery for UserId1={UserId1} and UserId2={UserId2}", userId1, userId2);
+            logger.LogInformation("Duplicate notification detected (both keys exist) for UserId1={UserId1} and UserId2={UserId2}", userId1, userId2);
+
             if (settings1 is null || settings1.FriendActivity)
             {
-                await pushDelivery.DeliverAsync(
-                    db, userId1,
-                    "Friend request accepted",
-                    "Your friend request was accepted!",
-                    "/friends",
-                    ct);
+                var existing1 = existingNotifications[key1];
+                if (!existing1.PushDelivered)
+                {
+                    try
+                    {
+                        await pushDelivery.DeliverAsync(
+                            db, userId1,
+                            "Friend request accepted",
+                            "Your friend request was accepted!",
+                            "/friends",
+                            ct);
+                        existing1.PushDelivered = true;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogWarning(ex, "Failed to deliver push retry for UserId={UserId} — continuing", userId1);
+                    }
+                }
+                else
+                {
+                    logger.LogInformation("Push already delivered for UserId={UserId} — skipping", userId1);
+                }
             }
+
             if (settings2 is null || settings2.FriendActivity)
             {
-                await pushDelivery.DeliverAsync(
-                    db, userId2,
-                    "Friend request accepted",
-                    "Your friend request was accepted!",
-                    "/friends",
-                    ct);
+                var existing2 = existingNotifications[key2];
+                if (!existing2.PushDelivered)
+                {
+                    try
+                    {
+                        await pushDelivery.DeliverAsync(
+                            db, userId2,
+                            "Friend request accepted",
+                            "Your friend request was accepted!",
+                            "/friends",
+                            ct);
+                        existing2.PushDelivered = true;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogWarning(ex, "Failed to deliver push retry for UserId={UserId} — continuing", userId2);
+                    }
+                }
+                else
+                {
+                    logger.LogInformation("Push already delivered for UserId={UserId} — skipping", userId2);
+                }
             }
+
+            // Best-effort save of PushDelivered flags
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to save PushDelivered flag updates — push may be retried on redelivery");
+            }
+
             return;
         }
 
+        // Partial delivery: one key may exist (from a previous crash) while the other doesn't.
+        // We need to create missing notifications AND retry push for existing ones with PushDelivered=false.
         var created = new List<Notification>();
+        var pushRetryExisting = new List<Notification>();
 
-        if (!existingKeys.Contains(key1) && (settings1 is null || settings1.FriendActivity))
+        if (!existingNotifications.ContainsKey(key1) && (settings1 is null || settings1.FriendActivity))
         {
             var n = new Notification
             {
@@ -92,9 +139,12 @@ public sealed class FriendRequestAcceptedSubscriber(
             db.Notifications.Add(n);
             created.Add(n);
         }
-        else if (existingKeys.Contains(key1))
+        else if (existingNotifications.TryGetValue(key1, out var existing1))
         {
-            logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId1);
+            if (!existing1.PushDelivered && (settings1 is null || settings1.FriendActivity))
+                pushRetryExisting.Add(existing1);
+            else
+                logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId1);
         }
         else
         {
@@ -103,7 +153,7 @@ public sealed class FriendRequestAcceptedSubscriber(
                 userId1);
         }
 
-        if (!existingKeys.Contains(key2) && (settings2 is null || settings2.FriendActivity))
+        if (!existingNotifications.ContainsKey(key2) && (settings2 is null || settings2.FriendActivity))
         {
             var n = new Notification
             {
@@ -115,9 +165,12 @@ public sealed class FriendRequestAcceptedSubscriber(
             db.Notifications.Add(n);
             created.Add(n);
         }
-        else if (existingKeys.Contains(key2))
+        else if (existingNotifications.TryGetValue(key2, out var existing2))
         {
-            logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId2);
+            if (!existing2.PushDelivered && (settings2 is null || settings2.FriendActivity))
+                pushRetryExisting.Add(existing2);
+            else
+                logger.LogInformation("Duplicate friend.request.accepted notification skipped for UserId={UserId}", userId2);
         }
         else
         {
@@ -135,12 +188,55 @@ public sealed class FriendRequestAcceptedSubscriber(
                     "Created FriendRequestAccepted notification {NotificationId} for UserId={UserId}",
                     n.Id, n.UserId);
 
+                try
+                {
+                    await pushDelivery.DeliverAsync(
+                        db, n.UserId,
+                        "Friend request accepted",
+                        "Your friend request was accepted!",
+                        "/friends",
+                        ct);
+                    n.PushDelivered = true;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex,
+                        "Failed to deliver push for UserId={UserId} — continuing",
+                        n.UserId);
+                }
+            }
+        }
+
+        // Retry push for existing notifications that weren't delivered (partial delivery scenario)
+        foreach (var existing in pushRetryExisting)
+        {
+            logger.LogInformation("Retrying push for existing notification UserId={UserId}", existing.UserId);
+            try
+            {
                 await pushDelivery.DeliverAsync(
-                    db, n.UserId,
+                    db, existing.UserId,
                     "Friend request accepted",
                     "Your friend request was accepted!",
                     "/friends",
                     ct);
+                existing.PushDelivered = true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to deliver push retry for UserId={UserId} — continuing", existing.UserId);
+            }
+        }
+
+        // Best-effort save of PushDelivered flags
+        if (created.Count > 0 || pushRetryExisting.Count > 0)
+        {
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to save PushDelivered flag updates — push may be retried on redelivery");
             }
         }
     }
