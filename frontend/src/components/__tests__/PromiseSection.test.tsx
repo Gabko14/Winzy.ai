@@ -164,7 +164,7 @@ describe("PromiseSection", () => {
       targetConsistency: 70,
       endDate: "2026-04-30",
       privateNote: undefined,
-    });
+    }, "UTC");
   });
 
   // --- Happy path: cancel promise ---

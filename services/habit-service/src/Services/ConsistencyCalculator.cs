@@ -292,6 +292,7 @@ public static class ConsistencyCalculator
     /// <summary>
     /// Calculates consistency within an arbitrary date range using timezone-aware date handling.
     /// Converts the habit's creation timestamp to the user's local timezone before clamping.
+    /// Treats all completions as full (backwards-compatible).
     /// </summary>
     public static double CalculateForDateRange(
         Habit habit,
@@ -300,15 +301,17 @@ public static class ConsistencyCalculator
         DateOnly rangeEnd,
         TimeZoneInfo userTimeZone)
     {
-        var habitCreatedLocal = TimeZoneInfo.ConvertTimeFromUtc(habit.CreatedAt.UtcDateTime, userTimeZone);
-        var habitCreatedDate = DateOnly.FromDateTime(habitCreatedLocal);
+        var weighted = new Dictionary<DateOnly, CompletionKind>(completedLocalDates.Count);
+        foreach (var date in completedLocalDates)
+            weighted[date] = CompletionKind.Full;
 
-        return CalculateForDateRange(habit, completedLocalDates, rangeStart, rangeEnd, habitCreatedDate);
+        return CalculateForDateRange(habit, weighted, rangeStart, rangeEnd, userTimeZone);
     }
 
     /// <summary>
     /// Calculates consistency within an arbitrary date range (not locked to the 60-day rolling window).
     /// Used by the challenge service for CustomDateRange milestones.
+    /// Treats all completions as full (backwards-compatible).
     /// Uses explicit habitCreatedLocalDate for testability; falls back to UTC if not provided.
     /// </summary>
     public static double CalculateForDateRange(
@@ -318,11 +321,46 @@ public static class ConsistencyCalculator
         DateOnly rangeEnd,
         DateOnly? habitCreatedLocalDate = null)
     {
+        var weighted = new Dictionary<DateOnly, CompletionKind>(completedLocalDates.Count);
+        foreach (var date in completedLocalDates)
+            weighted[date] = CompletionKind.Full;
+
+        return CalculateForDateRange(habit, weighted, rangeStart, rangeEnd, habitCreatedLocalDate);
+    }
+
+    /// <summary>
+    /// Calculates weighted consistency within an arbitrary date range using timezone-aware date handling.
+    /// Full = 1.0 weight, Minimum = 0.5 weight.
+    /// </summary>
+    public static double CalculateForDateRange(
+        Habit habit,
+        Dictionary<DateOnly, CompletionKind> completions,
+        DateOnly rangeStart,
+        DateOnly rangeEnd,
+        TimeZoneInfo userTimeZone)
+    {
+        var habitCreatedLocal = TimeZoneInfo.ConvertTimeFromUtc(habit.CreatedAt.UtcDateTime, userTimeZone);
+        var habitCreatedDate = DateOnly.FromDateTime(habitCreatedLocal);
+
+        return CalculateForDateRange(habit, completions, rangeStart, rangeEnd, habitCreatedDate);
+    }
+
+    /// <summary>
+    /// Calculates weighted consistency within an arbitrary date range (not locked to the 60-day rolling window).
+    /// Used by the challenge service for CustomDateRange milestones.
+    /// Full = 1.0 weight, Minimum = 0.5 weight.
+    /// Uses explicit habitCreatedLocalDate for testability; falls back to UTC if not provided.
+    /// </summary>
+    public static double CalculateForDateRange(
+        Habit habit,
+        Dictionary<DateOnly, CompletionKind> completions,
+        DateOnly rangeStart,
+        DateOnly rangeEnd,
+        DateOnly? habitCreatedLocalDate = null)
+    {
         if (rangeStart > rangeEnd)
             return 0;
 
-        // Clamp range start to the habit's creation date — days before the habit
-        // existed are not applicable and would artificially lower consistency.
         var habitCreatedDate = habitCreatedLocalDate ?? DateOnly.FromDateTime(habit.CreatedAt.UtcDateTime);
         var effectiveStart = rangeStart < habitCreatedDate ? habitCreatedDate : rangeStart;
 
@@ -330,10 +368,10 @@ public static class ConsistencyCalculator
             return 0;
 
         if (habit.Frequency == FrequencyType.Weekly)
-            return CalculateWeekly(effectiveStart, rangeEnd, completedLocalDates);
+            return CalculateWeeklyWeighted(effectiveStart, rangeEnd, completions);
 
         var applicableDays = 0;
-        var completedDays = 0;
+        var weightedSum = 0.0;
 
         for (var date = effectiveStart; date <= rangeEnd; date = date.AddDays(1))
         {
@@ -341,14 +379,14 @@ public static class ConsistencyCalculator
                 continue;
 
             applicableDays++;
-            if (completedLocalDates.Contains(date))
-                completedDays++;
+            if (completions.TryGetValue(date, out var kind))
+                weightedSum += GetWeight(kind);
         }
 
         if (applicableDays == 0)
             return 0;
 
-        return Math.Round((double)completedDays / applicableDays * 100, 1);
+        return Math.Round(weightedSum / applicableDays * 100, 1);
     }
 
     /// <summary>

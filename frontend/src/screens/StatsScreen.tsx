@@ -91,9 +91,10 @@ function getMonthlyCompletion(
   let current = 0;
   let previous = 0;
   for (const entry of completedDates) {
+    const weight = entry.completionKind === "minimum" ? 0.5 : 1;
     const date = new Date(entry.date + "T12:00:00");
-    if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) current++;
-    if (date.getMonth() === prevMonth && date.getFullYear() === prevYear) previous++;
+    if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) current += weight;
+    if (date.getMonth() === prevMonth && date.getFullYear() === prevYear) previous += weight;
   }
   const expected = getExpectedPerMonth(frequency, customDays);
   if (expected === 0) return null;
@@ -110,9 +111,10 @@ function getBestMonth(
   if (completedDates.length === 0) return null;
   const counts: Record<string, number> = {};
   for (const entry of completedDates) {
+    const weight = entry.completionKind === "minimum" ? 0.5 : 1;
     const date = new Date(entry.date + "T12:00:00");
     const key = `${date.getFullYear()}-${date.getMonth()}`;
-    counts[key] = (counts[key] || 0) + 1;
+    counts[key] = (counts[key] || 0) + weight;
   }
   const expected = getExpectedPerMonth(frequency, customDays);
   if (expected === 0) return null;

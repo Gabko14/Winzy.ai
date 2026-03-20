@@ -301,7 +301,7 @@ function PromiseHistory({ promises }: HistoryProps) {
 
 export function PromiseSection({ habitId, timezone }: Props) {
   const colors = lightTheme;
-  const { data, loading, error, create, cancel } = usePromises(habitId, timezone);
+  const { data, loading, error, refresh, create, cancel } = usePromises(habitId, timezone);
   const [showForm, setShowForm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -315,14 +315,20 @@ export function PromiseSection({ habitId, timezone }: Props) {
     try {
       await cancel();
     } catch {
-      // Error handling is in the hook
+      Alert.alert("Could not cancel", "Please try again.");
     } finally {
       setCancelling(false);
     }
   };
 
   if (loading && !data) return null; // Don't show skeleton for promises section
-  if (error && !data) return null; // Fail silently — promises are an enhancement
+  if (error && !data) return (
+    <View style={styles.card}>
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Flame Promise</Text>
+      <Text style={[styles.emptyText, { color: colors.error }]}>Could not load promises</Text>
+      <Button title="Retry" onPress={refresh} variant="ghost" size="sm" />
+    </View>
+  );
 
   const activePromise = data?.active ?? null;
   const history = data?.history ?? [];

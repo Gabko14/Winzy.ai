@@ -46,10 +46,13 @@ export function fetchPromise(
 export function createPromise(
   habitId: string,
   request: CreatePromiseRequest,
+  timezone: string,
 ): Promise<FlamePromise> {
   // The create endpoint returns the promise directly (not wrapped in active/history)
   // but the response shape matches FlamePromise
-  return api.post<FlamePromise>(`/habits/${habitId}/promise`, request);
+  return api.post<FlamePromise>(`/habits/${habitId}/promise`, request, {
+    headers: { "X-Timezone": timezone },
+  });
 }
 
 export function cancelPromise(habitId: string): Promise<void> {

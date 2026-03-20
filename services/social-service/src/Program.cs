@@ -880,6 +880,8 @@ app.MapGet("/social/witness/{token}", async (string token, HttpContext ctx, Soci
 {
     // Prevent search engine indexing of witness links (spec: "must not be indexable or searchable")
     ctx.Response.Headers["X-Robots-Tag"] = "noindex";
+    ctx.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    ctx.Response.Headers["Pragma"] = "no-cache";
 
     // Reject obviously invalid tokens early (valid tokens are 43 chars base64url for 32 bytes)
     if (string.IsNullOrEmpty(token) || token.Length < 20 || token.Length > 64)

@@ -621,8 +621,10 @@ app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, H
 
     var completionData = await db.Completions
         .Where(c => c.HabitId == habitId && c.LocalDate >= from && c.LocalDate <= to)
-        .Select(c => c.LocalDate)
+        .Select(c => new { c.LocalDate, c.CompletionKind })
         .ToListAsync();
+
+    var completionMap = completionData.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
 
     // Use timezone-aware creation date clamping when timezone is provided
     var tzParam = ctx.Request.Query["tz"].FirstOrDefault();
@@ -640,8 +642,8 @@ app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, H
     }
 
     var consistency = tz is not null
-        ? ConsistencyCalculator.CalculateForDateRange(habit, [.. completionData], from, to, tz)
-        : ConsistencyCalculator.CalculateForDateRange(habit, [.. completionData], from, to);
+        ? ConsistencyCalculator.CalculateForDateRange(habit, completionMap, from, to, tz)
+        : ConsistencyCalculator.CalculateForDateRange(habit, completionMap, from, to);
 
     return Results.Ok(new
     {
@@ -913,7 +915,19 @@ app.MapPost("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext c
     if (!DateOnly.TryParse(request.EndDate, out var endDate))
         return Results.BadRequest(new { error = $"Invalid end date format: {request.EndDate}" });
 
-    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
+    TimeZoneInfo promiseTz = TimeZoneInfo.Utc;
+    if (!string.IsNullOrWhiteSpace(timezoneHeader))
+    {
+        try
+        {
+            promiseTz = TimeZoneInfo.FindSystemTimeZoneById(timezoneHeader);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+        }
+    }
+    var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, promiseTz));
     if (endDate <= today)
         return Results.BadRequest(new { error = "End date must be in the future" });
 
@@ -938,8 +952,15 @@ app.MapPost("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext c
         Status = PromiseStatus.Active
     };
 
-    db.Promises.Add(promise);
-    await db.SaveChangesAsync();
+    try
+    {
+        db.Promises.Add(promise);
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException)
+    {
+        return Results.Conflict(new { error = "An active promise already exists for this habit" });
+    }
 
     return Results.Created($"/habits/{habitId}/promise", MapPromiseToResponse(promise, null));
 });

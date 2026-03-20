@@ -37,10 +37,10 @@ export function usePromises(habitId: string, timezone: string) {
 
   const create = useCallback(
     async (request: CreatePromiseRequest) => {
-      await apiCreatePromise(habitId, request);
+      await apiCreatePromise(habitId, request, timezone);
       await load();
     },
-    [habitId, load],
+    [habitId, timezone, load],
   );
 
   const cancel = useCallback(async () => {
