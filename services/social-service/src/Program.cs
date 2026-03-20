@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -647,6 +648,351 @@ app.MapGet("/social/visibility", async (HttpContext ctx, SocialDbContext db) =>
     });
 });
 
+// --- POST /social/witness-links ---
+
+app.MapPost("/social/witness-links", async (HttpContext ctx, SocialDbContext db, ILogger<Program> logger) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    WitnessLinkCreateDto? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<WitnessLinkCreateDto>(jsonOptions);
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
+
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    if (request.Label is { Length: > 100 })
+        return Results.BadRequest(new { error = "Label must be 100 characters or fewer" });
+
+    var token = GenerateWitnessToken();
+
+    var link = new WitnessLink
+    {
+        Id = Guid.NewGuid(),
+        OwnerId = userId,
+        Token = token,
+        Label = request.Label?.Trim()
+    };
+
+    db.WitnessLinks.Add(link);
+
+    if (request.HabitIds is { Count: > 0 })
+    {
+        var uniqueIds = request.HabitIds.Distinct().ToList();
+        foreach (var habitId in uniqueIds)
+        {
+            db.WitnessLinkHabits.Add(new WitnessLinkHabit
+            {
+                WitnessLinkId = link.Id,
+                HabitId = habitId
+            });
+        }
+    }
+
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("Witness link created: LinkId={LinkId}, OwnerId={OwnerId}",
+        link.Id, userId);
+
+    var habitIds = await db.WitnessLinkHabits
+        .Where(wh => wh.WitnessLinkId == link.Id)
+        .Select(wh => wh.HabitId)
+        .ToListAsync();
+
+    return Results.Created($"/social/witness-links/{link.Id}", new
+    {
+        id = link.Id,
+        token = link.Token,
+        label = link.Label,
+        habitIds,
+        createdAt = link.CreatedAt
+    });
+});
+
+// --- GET /social/witness-links ---
+
+app.MapGet("/social/witness-links", async (HttpContext ctx, SocialDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var links = await db.WitnessLinks
+        .Where(w => w.OwnerId == userId && w.RevokedAt == null)
+        .OrderByDescending(w => w.CreatedAt)
+        .ToListAsync();
+
+    var linkIds = links.Select(l => l.Id).ToList();
+    var habitMap = await db.WitnessLinkHabits
+        .Where(wh => linkIds.Contains(wh.WitnessLinkId))
+        .GroupBy(wh => wh.WitnessLinkId)
+        .ToDictionaryAsync(g => g.Key, g => g.Select(wh => wh.HabitId).ToList());
+
+    return Results.Ok(new
+    {
+        items = links.Select(l => new
+        {
+            id = l.Id,
+            token = l.Token,
+            label = l.Label,
+            habitIds = habitMap.TryGetValue(l.Id, out var ids) ? ids : new List<Guid>(),
+            createdAt = l.CreatedAt
+        })
+    });
+});
+
+// --- PUT /social/witness-links/{id} ---
+
+app.MapPut("/social/witness-links/{id:guid}", async (Guid id, HttpContext ctx, SocialDbContext db, ILogger<Program> logger) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    WitnessLinkUpdateDto? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<WitnessLinkUpdateDto>(jsonOptions);
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
+
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    if (request.Label is { Length: > 100 })
+        return Results.BadRequest(new { error = "Label must be 100 characters or fewer" });
+
+    var link = await db.WitnessLinks
+        .FirstOrDefaultAsync(w => w.Id == id && w.OwnerId == userId && w.RevokedAt == null);
+
+    if (link is null)
+        return Results.NotFound();
+
+    if (request.Label is not null)
+        link.Label = request.Label.Trim();
+
+    if (request.HabitIds is not null)
+    {
+        // Replace the entire habit allowlist
+        var existing = await db.WitnessLinkHabits
+            .Where(wh => wh.WitnessLinkId == id)
+            .ToListAsync();
+        db.WitnessLinkHabits.RemoveRange(existing);
+
+        foreach (var habitId in request.HabitIds.Distinct())
+        {
+            db.WitnessLinkHabits.Add(new WitnessLinkHabit
+            {
+                WitnessLinkId = id,
+                HabitId = habitId
+            });
+        }
+    }
+
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("Witness link updated: LinkId={LinkId}, OwnerId={OwnerId}",
+        id, userId);
+
+    var habitIds = await db.WitnessLinkHabits
+        .Where(wh => wh.WitnessLinkId == id)
+        .Select(wh => wh.HabitId)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        id = link.Id,
+        token = link.Token,
+        label = link.Label,
+        habitIds,
+        createdAt = link.CreatedAt
+    });
+});
+
+// --- DELETE /social/witness-links/{id} (revoke — soft delete) ---
+
+app.MapDelete("/social/witness-links/{id:guid}", async (Guid id, HttpContext ctx, SocialDbContext db, ILogger<Program> logger) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var link = await db.WitnessLinks
+        .FirstOrDefaultAsync(w => w.Id == id && w.OwnerId == userId && w.RevokedAt == null);
+
+    if (link is null)
+        return Results.NotFound();
+
+    link.RevokedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("Witness link revoked: LinkId={LinkId}, OwnerId={OwnerId}",
+        id, userId);
+
+    return Results.NoContent();
+});
+
+// --- POST /social/witness-links/{id}/rotate ---
+
+app.MapPost("/social/witness-links/{id:guid}/rotate", async (Guid id, HttpContext ctx, SocialDbContext db, ILogger<Program> logger) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var link = await db.WitnessLinks
+        .FirstOrDefaultAsync(w => w.Id == id && w.OwnerId == userId && w.RevokedAt == null);
+
+    if (link is null)
+        return Results.NotFound();
+
+    link.Token = GenerateWitnessToken();
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("Witness link token rotated: LinkId={LinkId}, OwnerId={OwnerId}",
+        id, userId);
+
+    var habitIds = await db.WitnessLinkHabits
+        .Where(wh => wh.WitnessLinkId == id)
+        .Select(wh => wh.HabitId)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        id = link.Id,
+        token = link.Token,
+        label = link.Label,
+        habitIds,
+        createdAt = link.CreatedAt
+    });
+});
+
+// --- GET /social/witness/{token} (anonymous viewer — NO auth required) ---
+
+app.MapGet("/social/witness/{token}", async (string token, HttpContext ctx, SocialDbContext db,
+    IHttpClientFactory httpClientFactory, ILogger<Program> logger) =>
+{
+    // Prevent search engine indexing of witness links (spec: "must not be indexable or searchable")
+    ctx.Response.Headers["X-Robots-Tag"] = "noindex";
+
+    // Reject obviously invalid tokens early (valid tokens are 43 chars base64url for 32 bytes)
+    if (string.IsNullOrEmpty(token) || token.Length < 20 || token.Length > 64)
+        return Results.NotFound(new { error = "This witness link is not available" });
+
+    // Query WITHOUT RevokedAt filter — ensures identical DB index lookup for both
+    // revoked and unknown tokens, eliminating timing oracle on revocation state
+    var link = await db.WitnessLinks
+        .FirstOrDefaultAsync(w => w.Token == token);
+
+    // Same 404 response for unknown, revoked, or malformed token — no info leakage
+    if (link is null || link.RevokedAt is not null)
+        return Results.NotFound(new { error = "This witness link is not available" });
+
+    // Get allowed habit IDs for this link
+    var allowedHabitIds = await db.WitnessLinkHabits
+        .Where(wh => wh.WitnessLinkId == link.Id)
+        .Select(wh => wh.HabitId)
+        .ToListAsync();
+
+    // Fetch habits from habit-service
+    List<JsonElement> habits;
+    bool habitsUnavailable;
+    try
+    {
+        var habitClient = httpClientFactory.CreateClient("HabitService");
+        using var response = await habitClient.GetAsync($"/habits/user/{link.OwnerId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Habit Service returned {StatusCode} for witness link: LinkId={LinkId}",
+                response.StatusCode, link.Id);
+            habits = [];
+            habitsUnavailable = true;
+        }
+        else
+        {
+            var habitsArray = await response.Content.ReadFromJsonAsync<List<JsonElement>>(jsonOptions);
+            habits = habitsArray ?? [];
+            habitsUnavailable = false;
+        }
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+    {
+        logger.LogWarning(ex, "Failed to fetch habits from Habit Service for witness link: LinkId={LinkId}", link.Id);
+        habits = [];
+        habitsUnavailable = true;
+    }
+
+    // Filter to only allowed habits (by the per-link allowlist)
+    var filteredHabits = allowedHabitIds.Count > 0
+        ? habits.Where(h =>
+            h.TryGetProperty("id", out var idProp) &&
+            Guid.TryParse(idProp.GetString(), out var habitId) &&
+            allowedHabitIds.Contains(habitId))
+          .ToList()
+        : []; // No habits selected = empty witness page
+
+    // Build witness-safe habit response (only what the anonymous viewer needs)
+    var witnessHabits = filteredHabits.Select(h =>
+    {
+        var id = h.GetProperty("id").GetString()!;
+        var name = h.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+        var icon = h.TryGetProperty("icon", out var ic) && ic.ValueKind != JsonValueKind.Null ? ic.GetString() : null;
+        var color = h.TryGetProperty("color", out var co) && co.ValueKind != JsonValueKind.Null ? co.GetString() : null;
+        var consistency = h.TryGetProperty("consistency", out var cons) ? cons.GetDouble() : 0.0;
+        var flameLevel = h.TryGetProperty("flameLevel", out var fl) ? fl.GetString() ?? "none" : "none";
+
+        return new
+        {
+            id,
+            name,
+            icon,
+            color,
+            consistency,
+            flameLevel
+        };
+    }).ToList();
+
+    // Fetch owner profile for display
+    string? ownerUsername = null;
+    string? ownerDisplayName = null;
+    try
+    {
+        var authClient = httpClientFactory.CreateClient("AuthService");
+        using var profileResponse = await authClient.PostAsJsonAsync("/auth/internal/profiles",
+            new { userIds = new[] { link.OwnerId } });
+        if (profileResponse.IsSuccessStatusCode)
+        {
+            var profiles = await profileResponse.Content.ReadFromJsonAsync<List<ProfileInfo>>(
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            var profile = profiles?.FirstOrDefault();
+            ownerUsername = profile?.Username;
+            ownerDisplayName = profile?.DisplayName;
+        }
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+    {
+        logger.LogWarning(ex, "Failed to fetch owner profile for witness link: LinkId={LinkId}", link.Id);
+    }
+
+    // Log access without the token value (privacy)
+    logger.LogInformation("Witness link accessed: LinkId={LinkId}, OwnerId={OwnerId}, HabitsShown={Count}",
+        link.Id, link.OwnerId, witnessHabits.Count);
+
+    return Results.Ok(new
+    {
+        ownerUsername,
+        ownerDisplayName,
+        habits = witnessHabits,
+        habitsUnavailable
+    });
+});
+
 // --- Internal export endpoint (service-to-service, per export-contracts.md) ---
 
 app.MapGet("/social/internal/export/{userId:guid}", async (Guid userId, SocialDbContext db) =>
@@ -964,6 +1310,17 @@ static async Task<Dictionary<Guid, FlameInfo>> FetchFlameMap(
     return result;
 }
 
+// --- Helper: Generate cryptographically random witness token ---
+
+static string GenerateWitnessToken()
+{
+    var bytes = RandomNumberGenerator.GetBytes(32);
+    return Convert.ToBase64String(bytes)
+        .Replace('+', '-')
+        .Replace('/', '_')
+        .TrimEnd('=');
+}
+
 // --- Request/Response DTOs ---
 
 internal record FriendRequestDto(Guid FriendId);
@@ -971,6 +1328,8 @@ internal record VisibilityUpdateDto(HabitVisibility Visibility);
 internal record PreferencesUpdateDto(HabitVisibility DefaultHabitVisibility);
 internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
 internal record FlameInfo(string FlameLevel, double Consistency, bool HabitsUnavailable);
+internal record WitnessLinkCreateDto(string? Label, List<Guid>? HabitIds);
+internal record WitnessLinkUpdateDto(string? Label, List<Guid>? HabitIds);
 
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

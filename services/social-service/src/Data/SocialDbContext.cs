@@ -9,6 +9,8 @@ public sealed class SocialDbContext(DbContextOptions<SocialDbContext> options) :
     public DbSet<Friendship> Friendships => Set<Friendship>();
     public DbSet<VisibilitySetting> VisibilitySettings => Set<VisibilitySetting>();
     public DbSet<SocialPreference> SocialPreferences => Set<SocialPreference>();
+    public DbSet<WitnessLink> WitnessLinks => Set<WitnessLink>();
+    public DbSet<WitnessLinkHabit> WitnessLinkHabits => Set<WitnessLinkHabit>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -40,6 +42,26 @@ public sealed class SocialDbContext(DbContextOptions<SocialDbContext> options) :
             b.Property(p => p.DefaultHabitVisibility)
                 .HasConversion<string>()
                 .HasMaxLength(16);
+        });
+
+        modelBuilder.Entity<WitnessLink>(b =>
+        {
+            b.HasIndex(w => w.Token).IsUnique();
+            b.HasIndex(w => w.OwnerId);
+
+            b.Property(w => w.Token).HasMaxLength(64);
+            b.Property(w => w.Label).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<WitnessLinkHabit>(b =>
+        {
+            b.HasKey(wh => new { wh.WitnessLinkId, wh.HabitId });
+            b.HasIndex(wh => wh.WitnessLinkId);
+
+            b.HasOne<WitnessLink>()
+                .WithMany()
+                .HasForeignKey(wh => wh.WitnessLinkId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
