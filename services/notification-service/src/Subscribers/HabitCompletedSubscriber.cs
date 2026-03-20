@@ -25,6 +25,8 @@ public sealed class HabitCompletedSubscriber(
         filterSubject: Subjects.HabitCompleted,
         logger)
 {
+    private const int MaxConcurrentPushDeliveries = 10;
+
     protected override async Task HandleAsync(HabitCompletedEvent data, CancellationToken ct)
     {
         logger.LogInformation(
@@ -176,48 +178,41 @@ public sealed class HabitCompletedSubscriber(
                 newNotifications.Count, data.UserId);
         }
 
-        // Push delivery — per-friend (external calls can't batch)
+        // Push delivery — parallel with bounded concurrency
+        // Each Web Push call takes ~100ms; sequential delivery exceeds NATS AckWait with 100+ friends.
+        // Collect successfully delivered friend IDs in a thread-safe bag, then set PushDelivered
+        // on the main thread — EF Core's change tracker is not thread-safe for concurrent property mutations.
+        var deliveredFriendIds = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        using var semaphore = new SemaphoreSlim(MaxConcurrentPushDeliveries);
+
+        var pushTasks = new List<Task>();
+
         foreach (var friendId in pushNewFriendIds)
         {
-            try
-            {
-                await pushDelivery.DeliverAsync(db, friendId, pushTitle, pushBody, "/friends", ct);
-
-                // Mark push as delivered
-                var key = idempotencyKeys[friendId];
-                var notification = newNotifications.First(n => n.IdempotencyKey == key);
-                notification.PushDelivered = true;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex,
-                    "Failed to deliver push for new notification to FriendId={FriendId} — continuing",
-                    friendId);
-            }
+            pushTasks.Add(DeliverPushWithSemaphoreAsync(
+                semaphore, friendId, pushTitle, pushBody, ct, deliveredFriendIds, isRetry: false));
         }
 
-        // Retry push for duplicates that weren't delivered
         foreach (var friendId in pushRetryFriendIds)
         {
-            try
-            {
-                await pushDelivery.DeliverAsync(db, friendId, pushTitle, pushBody, "/friends", ct);
+            pushTasks.Add(DeliverPushWithSemaphoreAsync(
+                semaphore, friendId, pushTitle, pushBody, ct, deliveredFriendIds, isRetry: true));
+        }
 
-                // Mark push as delivered on the existing notification
-                var key = idempotencyKeys[friendId];
-                var existing = existingNotifications[key];
-                existing.PushDelivered = true;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex,
-                    "Failed to deliver push retry for FriendId={FriendId} — continuing",
-                    friendId);
-            }
+        await Task.WhenAll(pushTasks);
+
+        // Mark PushDelivered on the main thread (single-threaded access to change tracker)
+        foreach (var friendId in deliveredFriendIds)
+        {
+            var key = idempotencyKeys[friendId];
+            var notification = newNotifications.FirstOrDefault(n => n.IdempotencyKey == key)
+                ?? (existingNotifications.TryGetValue(key, out var existing) ? existing : null);
+            if (notification is not null)
+                notification.PushDelivered = true;
         }
 
         // Save PushDelivered flag updates
-        if (pushNewFriendIds.Count > 0 || pushRetryFriendIds.Count > 0)
+        if (deliveredFriendIds.Count > 0)
         {
             try
             {
@@ -228,6 +223,40 @@ public sealed class HabitCompletedSubscriber(
                 // PushDelivered flag is best-effort — a missed update means an extra push on redelivery
                 logger.LogWarning(ex, "Failed to save PushDelivered flag updates — push may be retried on redelivery");
             }
+        }
+    }
+
+    private async Task DeliverPushWithSemaphoreAsync(
+        SemaphoreSlim semaphore,
+        Guid friendId,
+        string pushTitle,
+        string pushBody,
+        CancellationToken ct,
+        System.Collections.Concurrent.ConcurrentBag<Guid> deliveredFriendIds,
+        bool isRetry)
+    {
+        // WaitAsync can throw OperationCanceledException if ct fires — must not Release without acquiring.
+        await semaphore.WaitAsync(ct);
+        try
+        {
+            // Each parallel push needs its own DbContext — EF Core DbContext is not thread-safe.
+            // PushDeliveryService.DeliverAsync queries DeviceTokens and may delete expired tokens.
+            using var pushScope = serviceProvider.CreateScope();
+            var pushDb = pushScope.ServiceProvider.GetRequiredService<NotificationDbContext>();
+
+            await pushDelivery.DeliverAsync(pushDb, friendId, pushTitle, pushBody, "/friends", ct);
+            deliveredFriendIds.Add(friendId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var label = isRetry ? "retry" : "new notification";
+            logger.LogWarning(ex,
+                "Failed to deliver push for {Label} to FriendId={FriendId} — continuing",
+                label, friendId);
+        }
+        finally
+        {
+            semaphore.Release();
         }
     }
 
