@@ -8,6 +8,7 @@ public sealed class HabitDbContext(DbContextOptions<HabitDbContext> options) : B
 {
     public DbSet<Habit> Habits => Set<Habit>();
     public DbSet<Completion> Completions => Set<Completion>();
+    public DbSet<Promise> Promises => Set<Promise>();
 
     protected override void ConfigureModel(ModelBuilder modelBuilder)
     {
@@ -47,6 +48,33 @@ public sealed class HabitDbContext(DbContextOptions<HabitDbContext> options) : B
             b.HasOne(c => c.Habit)
                 .WithMany(h => h.Completions)
                 .HasForeignKey(c => c.HabitId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Promise>(b =>
+        {
+            // IMPORTANT: The filter value 'Active' must match the string stored by EF Core's
+            // HasConversion<string>() on PromiseStatus. If the conversion changes (e.g., to lowercase),
+            // this filter must be updated to match.
+            b.HasIndex(p => new { p.UserId, p.HabitId })
+                .HasFilter("status = 'Active'")
+                .IsUnique();
+
+            b.HasIndex(p => p.UserId);
+
+            b.Property(p => p.TargetConsistency);
+            b.Property(p => p.EndDate).HasColumnType("date");
+            b.Property(p => p.PrivateNote).HasMaxLength(512);
+
+            b.Property(p => p.Status)
+                .HasConversion<string>()
+                .HasMaxLength(16);
+
+            b.Property(p => p.ResolvedAt).HasColumnType("timestamptz");
+
+            b.HasOne(p => p.Habit)
+                .WithMany()
+                .HasForeignKey(p => p.HabitId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
