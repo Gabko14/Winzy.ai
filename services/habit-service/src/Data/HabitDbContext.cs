@@ -18,6 +18,7 @@ public sealed class HabitDbContext(DbContextOptions<HabitDbContext> options) : B
             b.Property(h => h.Name).HasMaxLength(256);
             b.Property(h => h.Icon).HasMaxLength(64);
             b.Property(h => h.Color).HasMaxLength(32);
+            b.Property(h => h.MinimumDescription).HasMaxLength(512);
 
             b.Property(h => h.Frequency)
                 .HasConversion<string>()
@@ -37,6 +38,11 @@ public sealed class HabitDbContext(DbContextOptions<HabitDbContext> options) : B
             b.Property(c => c.CompletedAt).HasColumnType("timestamptz");
             b.Property(c => c.LocalDate).HasColumnType("date");
             b.Property(c => c.Note).HasMaxLength(512);
+
+            b.Property(c => c.CompletionKind)
+                .HasConversion<string>()
+                .HasMaxLength(16)
+                .HasDefaultValue(Contracts.CompletionKind.Full);
 
             b.HasOne(c => c.Habit)
                 .WithMany(h => h.Completions)

@@ -1271,4 +1271,479 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
         var body = await response.Content.ReadAsStringAsync(CT);
         Assert.Contains("Healthy", body);
     }
+
+    // --- Honest Minimums: Create/Edit with MinimumDescription ---
+
+    [Fact]
+    public async Task CreateHabit_WithMinimumDescription_Returns201()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("10-minute walk", body.GetProperty("minimumDescription").GetString());
+    }
+
+    [Fact]
+    public async Task CreateHabit_WithoutMinimumDescription_ReturnsNullMinimum()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Read",
+            frequency = 0
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("minimumDescription").ValueKind);
+    }
+
+    [Fact]
+    public async Task CreateHabit_MinimumDescriptionTooLong_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var response = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Test",
+            frequency = 0,
+            minimumDescription = new string('a', 513)
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateHabit_AddMinimumDescription_Returns200()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new { name = "Meditate", frequency = 0 }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var updateResponse = await client.PutAsJsonAsync($"/habits/{habitId}", new
+        {
+            minimumDescription = "2 minutes of breathing"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var body = await updateResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("2 minutes of breathing", body.GetProperty("minimumDescription").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateHabit_ClearMinimumDescription_ReturnsNull()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Meditate",
+            frequency = 0,
+            minimumDescription = "2 minutes"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var updateResponse = await client.PutAsJsonAsync($"/habits/{habitId}", new
+        {
+            clearMinimumDescription = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var body = await updateResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("minimumDescription").ValueKind);
+    }
+
+    // --- Honest Minimums: Logging completions ---
+
+    [Fact]
+    public async Task CompleteHabit_FullCompletion_ReturnsFullKind()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 1 // Full
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("full", body.GetProperty("completionKind").GetString());
+    }
+
+    [Fact]
+    public async Task CompleteHabit_MinimumCompletion_ReturnsMinimumKind()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 2 // Minimum
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("minimum", body.GetProperty("completionKind").GetString());
+    }
+
+    [Fact]
+    public async Task CompleteHabit_DefaultsToFull_WhenKindOmitted()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC"
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("full", body.GetProperty("completionKind").GetString());
+    }
+
+    [Fact]
+    public async Task CompleteHabit_MinimumWithoutConfig_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Create habit WITHOUT minimumDescription
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Read",
+            frequency = 0
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 2 // Minimum
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Contains("minimum description", body.GetProperty("error").GetString()!);
+    }
+
+    [Fact]
+    public async Task CompleteHabit_InvalidCompletionKind_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Test",
+            frequency = 0
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 0 // None — invalid for logging
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // --- Honest Minimums: Date correction (PUT) ---
+
+    [Fact]
+    public async Task UpdateCompletion_MinimumToFull_Returns200()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Log minimum
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "UTC",
+            completionKind = 2
+        }, CT);
+
+        // Upgrade to full
+        var response = await client.PutAsJsonAsync($"/habits/{habitId}/completions/{_today}", new
+        {
+            completionKind = 1 // Full
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("full", body.GetProperty("completionKind").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateCompletion_FullToMinimum_Returns200()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Log full
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "UTC",
+            completionKind = 1
+        }, CT);
+
+        // Downgrade to minimum
+        var response = await client.PutAsJsonAsync($"/habits/{habitId}/completions/{_today}", new
+        {
+            completionKind = 2 // Minimum
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.Equal("minimum", body.GetProperty("completionKind").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateCompletion_ToMinimumWithoutConfig_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        // Create habit WITHOUT minimumDescription
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Read",
+            frequency = 0
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        // Log full
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "UTC"
+        }, CT);
+
+        // Try to change to minimum — should fail
+        var response = await client.PutAsJsonAsync($"/habits/{habitId}/completions/{_today}", new
+        {
+            completionKind = 2
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateCompletion_NonExistent_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Test",
+            frequency = 0
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        var response = await client.PutAsJsonAsync($"/habits/{habitId}/completions/{_today}", new
+        {
+            completionKind = 1
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateCompletion_InvalidKind_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Test",
+            frequency = 0
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "UTC"
+        }, CT);
+
+        var response = await client.PutAsJsonAsync($"/habits/{habitId}/completions/{_today}", new
+        {
+            completionKind = 0 // None — invalid
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // --- Honest Minimums: Stats/completions responses ---
+
+    [Fact]
+    public async Task GetCompletions_ReturnsCompletionKind()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            date = _today,
+            timezone = "UTC",
+            completionKind = 2 // Minimum
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits").EnumerateArray().ToList();
+        Assert.Single(habits);
+        Assert.Equal("minimum", habits[0].GetProperty("completionKind").GetString());
+        Assert.True(habits[0].GetProperty("completed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetCompletions_ReturnsMinimumDescription()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+
+        await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/completions?date={_today}", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits").EnumerateArray().ToList();
+        Assert.Single(habits);
+        Assert.Equal("10-minute walk", habits[0].GetProperty("minimumDescription").GetString());
+    }
+
+    [Fact]
+    public async Task GetStats_ReturnsCompletedTodayKind()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        client.DefaultRequestHeaders.Add("X-Timezone", "UTC");
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "10-minute walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 2 // Minimum
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/{habitId}/stats", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.GetProperty("completedToday").GetBoolean());
+        Assert.Equal("minimum", body.GetProperty("completedTodayKind").GetString());
+    }
+
+    [Fact]
+    public async Task GetStats_CompletedDates_IncludesCompletionKind()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        client.DefaultRequestHeaders.Add("X-Timezone", "UTC");
+
+        var createResponse = await client.PostAsJsonAsync("/habits", new
+        {
+            name = "Workout",
+            frequency = 0,
+            minimumDescription = "Walk"
+        }, CT);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habitId = created.GetProperty("id").GetGuid();
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/complete", new
+        {
+            timezone = "UTC",
+            completionKind = 2
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/{habitId}/stats", CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var dates = body.GetProperty("completedDates").EnumerateArray().ToList();
+        Assert.Single(dates);
+        Assert.Equal("minimum", dates[0].GetProperty("completionKind").GetString());
+    }
 }

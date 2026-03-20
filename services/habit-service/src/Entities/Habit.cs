@@ -10,6 +10,7 @@ public sealed class Habit : BaseEntity
     public string? Color { get; set; }
     public FrequencyType Frequency { get; set; } = FrequencyType.Daily;
     public List<DayOfWeek>? CustomDays { get; set; }
+    public string? MinimumDescription { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
 
     public ICollection<Completion> Completions { get; set; } = [];

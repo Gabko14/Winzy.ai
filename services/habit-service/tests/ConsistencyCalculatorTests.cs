@@ -1,3 +1,4 @@
+using Winzy.Contracts;
 using Winzy.HabitService.Entities;
 using Winzy.HabitService.Services;
 
@@ -45,7 +46,7 @@ public class ConsistencyCalculatorTests
         var today = new DateOnly(2025, 3, 1);
         var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
 
-        var result = ConsistencyCalculator.Calculate(habit, [], today);
+        var result = ConsistencyCalculator.Calculate(habit, new HashSet<DateOnly>(), today);
 
         Assert.Equal(0, result);
     }
@@ -107,7 +108,7 @@ public class ConsistencyCalculatorTests
         var today = new DateOnly(2025, 3, 1);
         var habit = MakeHabit(createdDate: today);
 
-        var result = ConsistencyCalculator.Calculate(habit, [], today);
+        var result = ConsistencyCalculator.Calculate(habit, new HashSet<DateOnly>(), today);
 
         Assert.Equal(0, result);
     }
@@ -208,7 +209,7 @@ public class ConsistencyCalculatorTests
         var today = new DateOnly(2025, 3, 10);
         var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: new DateOnly(2024, 12, 1));
 
-        var result = ConsistencyCalculator.Calculate(habit, [], today);
+        var result = ConsistencyCalculator.Calculate(habit, new HashSet<DateOnly>(), today);
 
         Assert.Equal(0, result);
     }
@@ -349,7 +350,7 @@ public class ConsistencyCalculatorTests
         var today = new DateOnly(2025, 3, 1);
         var habit = MakeHabit(createdDate: today.AddDays(5)); // Created in the future
 
-        var result = ConsistencyCalculator.Calculate(habit, [], today);
+        var result = ConsistencyCalculator.Calculate(habit, new HashSet<DateOnly>(), today);
 
         Assert.Equal(0, result);
     }
@@ -410,7 +411,7 @@ public class ConsistencyCalculatorTests
         var habit = MakeHabit(createdDate: new DateOnly(2025, 1, 1));
         var tz = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
 
-        var result = ConsistencyCalculator.Calculate(habit, [], tz);
+        var result = ConsistencyCalculator.Calculate(habit, new HashSet<DateOnly>(), tz);
 
         Assert.InRange(result, 0, 100);
     }
@@ -1307,5 +1308,331 @@ public class ShareSurfaceTimezoneParityTests
         // Document the actual values for clarity
         Assert.True(consistency < 30, $"Expected < 30 for boundary test, got {consistency}");
         Assert.Equal(FlameLevel.Ember, flame);
+    }
+}
+
+/// <summary>
+/// Tests for Honest Minimums weighted consistency calculation.
+/// Full = 1.0 weight, Minimum = 0.5 weight.
+/// </summary>
+public class WeightedConsistencyTests
+{
+    private static Habit MakeHabit(
+        FrequencyType frequency = FrequencyType.Daily,
+        List<DayOfWeek>? customDays = null,
+        DateOnly? createdDate = null)
+    {
+        var created = createdDate ?? new DateOnly(2025, 1, 1);
+        return new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "Test Habit",
+            MinimumDescription = "Do a little",
+            Frequency = frequency,
+            CustomDays = customDays,
+            CreatedAt = new DateTimeOffset(created.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+        };
+    }
+
+    // --- Happy path ---
+
+    [Fact]
+    public void AllFull_Returns100()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var d = today.AddDays(-59); d <= today; d = d.AddDays(1))
+            completions[d] = CompletionKind.Full;
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void AllMinimum_Returns50()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var d = today.AddDays(-59); d <= today; d = d.AddDays(1))
+            completions[d] = CompletionKind.Minimum;
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void MixedFullAndMinimum_ProducesWeightedResult()
+    {
+        // Created 5 days ago: applicable window = [today-4 .. today] = 5 days
+        // (effectiveStart = createdDate = today-4, since createdDate > windowStart)
+        // Days: -4=Full, -3=Minimum, -2=Full, -1=Minimum, 0(today)=miss
+        // Weight: 1.0 + 0.5 + 1.0 + 0.5 + 0 = 3.0 / 5 = 60%
+        var today = new DateOnly(2025, 3, 5);
+        var createdDate = today.AddDays(-4);
+        var habit = MakeHabit(createdDate: createdDate);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>
+        {
+            [today.AddDays(-4)] = CompletionKind.Full,
+            [today.AddDays(-3)] = CompletionKind.Minimum,
+            [today.AddDays(-2)] = CompletionKind.Full,
+            [today.AddDays(-1)] = CompletionKind.Minimum,
+        };
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(60, result);
+    }
+
+    [Fact]
+    public void ChangeFromMinimumToFull_IncreasesConsistency()
+    {
+        // Created 3 days ago: applicable window = [today-2, today-1, today] = 3 days
+        var today = new DateOnly(2025, 3, 5);
+        var createdDate = today.AddDays(-2);
+        var habit = MakeHabit(createdDate: createdDate);
+
+        // All 3 days minimum: (0.5 + 0.5 + 0.5) / 3 = 50%
+        var completionsMin = new Dictionary<DateOnly, CompletionKind>
+        {
+            [today.AddDays(-2)] = CompletionKind.Minimum,
+            [today.AddDays(-1)] = CompletionKind.Minimum,
+            [today] = CompletionKind.Minimum,
+        };
+        var resultMin = ConsistencyCalculator.Calculate(habit, completionsMin, today);
+
+        // Change first day to full: (1.0 + 0.5 + 0.5) / 3 = 66.7%
+        var completionsMixed = new Dictionary<DateOnly, CompletionKind>
+        {
+            [today.AddDays(-2)] = CompletionKind.Full,
+            [today.AddDays(-1)] = CompletionKind.Minimum,
+            [today] = CompletionKind.Minimum,
+        };
+        var resultMixed = ConsistencyCalculator.Calculate(habit, completionsMixed, today);
+
+        Assert.True(resultMixed > resultMin, $"Expected full upgrade to increase consistency: {resultMixed} > {resultMin}");
+        Assert.Equal(50, resultMin);
+        Assert.Equal(66.7, resultMixed);
+    }
+
+    [Fact]
+    public void RemoveMinimumCompletion_ReturnsToNone()
+    {
+        // Created 3 days ago: applicable window = [today-2, today-1, today] = 3 days
+        var today = new DateOnly(2025, 3, 5);
+        var createdDate = today.AddDays(-2);
+        var habit = MakeHabit(createdDate: createdDate);
+
+        // One day with minimum, two days with nothing: 0.5 / 3 = 16.7%
+        var completionsWithMin = new Dictionary<DateOnly, CompletionKind>
+        {
+            [today.AddDays(-1)] = CompletionKind.Minimum,
+        };
+        var resultWithMin = ConsistencyCalculator.Calculate(habit, completionsWithMin, today);
+
+        // Remove the minimum: 0 / 3 = 0%
+        var completionsEmpty = new Dictionary<DateOnly, CompletionKind>();
+        var resultEmpty = ConsistencyCalculator.Calculate(habit, completionsEmpty, today);
+
+        Assert.Equal(16.7, resultWithMin);
+        Assert.Equal(0, resultEmpty);
+    }
+
+    [Fact]
+    public void MixedHistory_FullMinimumMiss_ProducesCorrectAggregate()
+    {
+        // 60-day window, old habit
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59);
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+
+        // First 20 days: full (weight 20.0)
+        // Next 20 days: minimum (weight 10.0)
+        // Last 20 days: miss (weight 0)
+        // Total: 30.0 / 60 = 50%
+        var dayCount = 0;
+        for (var d = windowStart; d <= today; d = d.AddDays(1))
+        {
+            if (dayCount < 20)
+                completions[d] = CompletionKind.Full;
+            else if (dayCount < 40)
+                completions[d] = CompletionKind.Minimum;
+            // else: miss
+            dayCount++;
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(50, result);
+    }
+
+    // --- Weekly frequency with weighting ---
+
+    [Fact]
+    public void Weekly_AllWeeksWithFull_Returns100()
+    {
+        var today = new DateOnly(2025, 3, 10); // Monday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: new DateOnly(2024, 12, 1));
+
+        // Use the same approach as the existing weekly tests: find first Monday, iterate
+        var windowStart = today.AddDays(-59);
+        var dayOfWeek = ((int)windowStart.DayOfWeek + 6) % 7;
+        var firstMonday = windowStart.AddDays(-dayOfWeek);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var ws = firstMonday; ws <= today; ws = ws.AddDays(7))
+        {
+            // Add one full completion per week within the window
+            for (var d = ws; d <= ws.AddDays(6); d = d.AddDays(1))
+            {
+                if (d >= windowStart && d <= today)
+                {
+                    completions[d] = CompletionKind.Full;
+                    break;
+                }
+            }
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Weekly_AllWeeksWithMinimumOnly_Returns50()
+    {
+        var today = new DateOnly(2025, 3, 10); // Monday
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: new DateOnly(2024, 12, 1));
+
+        var windowStart = today.AddDays(-59);
+        var dayOfWeek = ((int)windowStart.DayOfWeek + 6) % 7;
+        var firstMonday = windowStart.AddDays(-dayOfWeek);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var ws = firstMonday; ws <= today; ws = ws.AddDays(7))
+        {
+            for (var d = ws; d <= ws.AddDays(6); d = d.AddDays(1))
+            {
+                if (d >= windowStart && d <= today)
+                {
+                    completions[d] = CompletionKind.Minimum;
+                    break;
+                }
+            }
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void Weekly_MixedFullAndMinimumInSameWeek_UsesBest()
+    {
+        // Created on a Monday so we get clean 2-week boundary
+        var today = new DateOnly(2025, 3, 16); // Sunday (end of week 2)
+        var createdDate = new DateOnly(2025, 3, 3); // Monday (start of week 1)
+        var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: createdDate);
+
+        // Week 1 (Mar 3-9): minimum Mon, full Tue
+        // Week 2 (Mar 10-16): minimum Mon only
+        var completionsMinOnly = new Dictionary<DateOnly, CompletionKind>
+        {
+            [new DateOnly(2025, 3, 3)] = CompletionKind.Minimum,
+            [new DateOnly(2025, 3, 10)] = CompletionKind.Minimum,
+        };
+
+        var completionsMixed = new Dictionary<DateOnly, CompletionKind>
+        {
+            [new DateOnly(2025, 3, 3)] = CompletionKind.Minimum,
+            [new DateOnly(2025, 3, 4)] = CompletionKind.Full,     // full in same week upgrades
+            [new DateOnly(2025, 3, 10)] = CompletionKind.Minimum,
+        };
+
+        var resultMin = ConsistencyCalculator.Calculate(habit, completionsMinOnly, today, createdDate);
+        var resultMixed = ConsistencyCalculator.Calculate(habit, completionsMixed, today, createdDate);
+
+        // Both weeks minimum-only: (0.5 + 0.5) / 2 = 50%
+        Assert.Equal(50, resultMin);
+        // Week 1 upgraded to full via best-per-week: (1.0 + 0.5) / 2 = 75%
+        Assert.Equal(75, resultMixed);
+    }
+
+    // --- Custom frequency with weighting ---
+
+    [Fact]
+    public void Custom_MWF_AllMinimum_Returns50()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var customDays = new List<DayOfWeek> { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday };
+        var habit = MakeHabit(frequency: FrequencyType.Custom, customDays: customDays, createdDate: new DateOnly(2024, 12, 1));
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        var windowStart = today.AddDays(-59);
+        for (var d = windowStart; d <= today; d = d.AddDays(1))
+        {
+            if (customDays.Contains(d.DayOfWeek))
+                completions[d] = CompletionKind.Minimum;
+        }
+
+        var result = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(50, result);
+    }
+
+    // --- GetWeight ---
+
+    [Theory]
+    [InlineData(CompletionKind.Full, 1.0)]
+    [InlineData(CompletionKind.Minimum, 0.5)]
+    [InlineData(CompletionKind.None, 0)]
+    public void GetWeight_ReturnsDocumentedValues(CompletionKind kind, double expected)
+    {
+        Assert.Equal(expected, ConsistencyCalculator.GetWeight(kind));
+    }
+
+    // --- Empty completions ---
+
+    [Fact]
+    public void EmptyDictionary_Returns0()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        var result = ConsistencyCalculator.Calculate(habit, new Dictionary<DateOnly, CompletionKind>(), today);
+
+        Assert.Equal(0, result);
+    }
+
+    // --- Backwards compat: HashSet overload still works ---
+
+    [Fact]
+    public void HashSetOverload_TreatsAllAsFull()
+    {
+        var today = new DateOnly(2025, 3, 1);
+        var habit = MakeHabit(createdDate: new DateOnly(2024, 12, 1));
+
+        // Use HashSet overload (all full)
+        var dates = new HashSet<DateOnly>();
+        for (var d = today.AddDays(-59); d <= today; d = d.AddDays(1))
+            dates.Add(d);
+
+        var resultHashSet = ConsistencyCalculator.Calculate(habit, dates, today);
+
+        // Use Dictionary overload with all Full
+        var completions = dates.ToDictionary(d => d, _ => CompletionKind.Full);
+        var resultDict = ConsistencyCalculator.Calculate(habit, completions, today);
+
+        Assert.Equal(resultHashSet, resultDict);
+        Assert.Equal(100, resultHashSet);
     }
 }
