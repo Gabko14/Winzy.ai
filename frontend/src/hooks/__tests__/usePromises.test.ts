@@ -91,7 +91,7 @@ describe("usePromises", () => {
     expect(mockCreatePromise).toHaveBeenCalledWith("habit-1", {
       targetConsistency: 80,
       endDate: "2026-05-01",
-    });
+    }, "UTC");
     // Refresh is called after create
     expect(mockFetchPromise).toHaveBeenCalledTimes(2);
   });

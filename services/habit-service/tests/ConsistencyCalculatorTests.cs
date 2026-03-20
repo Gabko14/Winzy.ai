@@ -677,7 +677,7 @@ public class CalculateForDateRangeTests
         var start = new DateOnly(2025, 2, 1);
         var end = new DateOnly(2025, 2, 14);
 
-        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], start, end);
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, new HashSet<DateOnly>(), start, end);
 
         Assert.Equal(0, result);
     }
@@ -705,7 +705,7 @@ public class CalculateForDateRangeTests
         var start = new DateOnly(2025, 3, 1);
         var end = new DateOnly(2025, 2, 1);
 
-        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], start, end);
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, new HashSet<DateOnly>(), start, end);
 
         Assert.Equal(0, result);
     }
@@ -727,7 +727,7 @@ public class CalculateForDateRangeTests
         var habit = MakeHabit();
         var date = new DateOnly(2025, 2, 10);
 
-        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], date, date);
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, new HashSet<DateOnly>(), date, date);
 
         Assert.Equal(0, result);
     }
@@ -982,7 +982,7 @@ public class CalculateForDateRangeTests
         var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero));
         var date = new DateOnly(2025, 2, 10);
 
-        var result = ConsistencyCalculator.CalculateForDateRange(habit, [], date, date);
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, new HashSet<DateOnly>(), date, date);
 
         Assert.Equal(0, result);
     }
@@ -1007,6 +1007,131 @@ public class CalculateForDateRangeTests
         var habit = MakeHabit(createdAt: new DateTimeOffset(2025, 3, 2, 0, 0, 0, TimeSpan.Zero));
 
         var result = ConsistencyCalculator.CalculateForDateRange(habit, [date], date, date);
+
+        Assert.Equal(0, result);
+    }
+}
+
+// --- Weighted CalculateForDateRange tests ---
+
+public class WeightedCalculateForDateRangeTests
+{
+    private static Habit MakeHabit(
+        FrequencyType frequency = FrequencyType.Daily,
+        List<DayOfWeek>? customDays = null,
+        DateTimeOffset? createdAt = null)
+    {
+        return new Habit
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            Name = "Test Habit",
+            MinimumDescription = "Do a little",
+            Frequency = frequency,
+            CustomDays = customDays,
+            CreatedAt = createdAt ?? new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)
+        };
+    }
+
+    [Fact]
+    public void AllFull_Returns100()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            completions[d] = CompletionKind.Full;
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completions, start, end);
+
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void AllMinimum_Returns50()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            completions[d] = CompletionKind.Minimum;
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completions, start, end);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void MixedFullAndMinimum_ProducesWeightedResult()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 4); // 4 days
+
+        // Full, Minimum, Full, miss = (1.0 + 0.5 + 1.0 + 0) / 4 = 62.5%
+        var completions = new Dictionary<DateOnly, CompletionKind>
+        {
+            [new DateOnly(2025, 2, 1)] = CompletionKind.Full,
+            [new DateOnly(2025, 2, 2)] = CompletionKind.Minimum,
+            [new DateOnly(2025, 2, 3)] = CompletionKind.Full,
+        };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completions, start, end);
+
+        Assert.Equal(62.5, result);
+    }
+
+    [Fact]
+    public void HashSetOverload_DelegatesToWeightedWithFull()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 7);
+
+        var dates = new HashSet<DateOnly>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+            dates.Add(d);
+
+        var resultHashSet = ConsistencyCalculator.CalculateForDateRange(habit, dates, start, end);
+        var resultWeighted = ConsistencyCalculator.CalculateForDateRange(
+            habit, dates.ToDictionary(d => d, _ => CompletionKind.Full), start, end);
+
+        Assert.Equal(resultHashSet, resultWeighted);
+        Assert.Equal(100, resultHashSet);
+    }
+
+    [Fact]
+    public void Weekly_AllMinimum_Returns50()
+    {
+        var habit = MakeHabit(FrequencyType.Weekly);
+        // Two full ISO weeks: Mon Feb 3 - Sun Feb 16
+        var start = new DateOnly(2025, 2, 3);
+        var end = new DateOnly(2025, 2, 16);
+
+        var completions = new Dictionary<DateOnly, CompletionKind>
+        {
+            [new DateOnly(2025, 2, 5)] = CompletionKind.Minimum,
+            [new DateOnly(2025, 2, 12)] = CompletionKind.Minimum,
+        };
+
+        var result = ConsistencyCalculator.CalculateForDateRange(habit, completions, start, end);
+
+        Assert.Equal(50, result);
+    }
+
+    [Fact]
+    public void EmptyDictionary_Returns0()
+    {
+        var habit = MakeHabit();
+        var start = new DateOnly(2025, 2, 1);
+        var end = new DateOnly(2025, 2, 14);
+
+        var result = ConsistencyCalculator.CalculateForDateRange(
+            habit, new Dictionary<DateOnly, CompletionKind>(), start, end);
 
         Assert.Equal(0, result);
     }
