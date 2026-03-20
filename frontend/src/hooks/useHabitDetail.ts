@@ -4,6 +4,7 @@ import {
   fetchHabitStats,
   completeHabit as apiCompleteHabit,
   deleteCompletion as apiDeleteCompletion,
+  updateCompletion as apiUpdateCompletion,
   type Habit,
   type HabitStats,
 } from "../api/habits";
@@ -99,5 +100,20 @@ export function useToggleCompletion(
     [habitId, onSuccess],
   );
 
-  return { ...state, complete, uncomplete };
+  const updateKind = useCallback(
+    async (date: string, completionKind: number) => {
+      setState({ loading: true, error: null });
+      try {
+        await apiUpdateCompletion(habitId, date, completionKind);
+        setState({ loading: false, error: null });
+        onSuccess?.();
+      } catch (err) {
+        setState({ loading: false, error: err as ApiError });
+        throw err;
+      }
+    },
+    [habitId, onSuccess],
+  );
+
+  return { ...state, complete, uncomplete, updateKind };
 }

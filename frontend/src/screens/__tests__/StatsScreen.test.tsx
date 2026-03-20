@@ -11,13 +11,16 @@ const mockHabit = {
   color: "#F97316",
   frequency: "daily" as const,
   customDays: null,
+  minimumDescription: null as string | null,
   createdAt: "2026-01-01T00:00:00Z",
   archivedAt: null,
 };
 
+type CompletionEntry = { date: string; completionKind: "full" | "minimum" };
+
 // 30 completed dates spread across last 60 days for a ~50% consistency
-function generateCompletedDates(count: number, today: string): string[] {
-  const dates: string[] = [];
+function generateCompletedDates(count: number, today: string, kind: "full" | "minimum" = "full"): CompletionEntry[] {
+  const entries: CompletionEntry[] = [];
   const end = new Date(today + "T12:00:00");
   for (let i = 0; i < count; i++) {
     const d = new Date(end);
@@ -25,9 +28,9 @@ function generateCompletedDates(count: number, today: string): string[] {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    dates.push(`${y}-${m}-${day}`);
+    entries.push({ date: `${y}-${m}-${day}`, completionKind: kind });
   }
-  return dates.sort();
+  return entries.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 const today = "2026-03-12";
@@ -40,11 +43,17 @@ const mockStats = {
   totalCompletions: 42,
   completionsInWindow: 39,
   completedToday: true,
+  completedTodayKind: "full" as string | null,
   windowDays: 60,
   windowStart: "2026-01-11",
   today,
   completedDates: completedDates30,
 };
+
+/** Convert date strings to CompletionDateEntry[] for test mocks */
+function fullDates(...dates: string[]): CompletionEntry[] {
+  return dates.map(d => ({ date: d, completionKind: "full" as const }));
+}
 
 const mockFetchHabit = jest.fn();
 const mockFetchHabitStats = jest.fn();
@@ -107,8 +116,8 @@ describe("StatsScreen", () => {
     expect(screen.getByText("Year Overview")).toBeTruthy();
 
     // Legend is present
-    expect(screen.getByText("Less")).toBeTruthy();
-    expect(screen.getByText("More")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
+    expect(screen.getByText("Full")).toBeTruthy();
   });
 
   // --- 3. Happy path: insights section shows encouraging messages ---
@@ -140,7 +149,7 @@ describe("StatsScreen", () => {
     });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: ["2026-03-10", "2026-03-11", "2026-03-12"],
+      completedDates: fullDates("2026-03-10", "2026-03-11", "2026-03-12"),
       totalCompletions: 3,
       completionsInWindow: 3,
       consistency: 5,
@@ -325,7 +334,7 @@ describe("StatsScreen", () => {
     });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: ["2026-03-10", "2026-03-12"],
+      completedDates: fullDates("2026-03-10", "2026-03-12"),
       totalCompletions: 2,
       completionsInWindow: 2,
       consistency: 5,
@@ -375,7 +384,7 @@ describe("StatsScreen", () => {
     ];
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: weeklyDates.sort(),
+      completedDates: weeklyDates.sort().map(d => ({ date: d, completionKind: "full" as const })),
       totalCompletions: 11,
       completionsInWindow: 11,
       consistency: 80,
@@ -405,7 +414,7 @@ describe("StatsScreen", () => {
     ];
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: dates.sort(),
+      completedDates: dates.sort().map(d => ({ date: d, completionKind: "full" as const })),
       totalCompletions: 10,
       completionsInWindow: 10,
       consistency: 90,
@@ -439,7 +448,7 @@ describe("StatsScreen", () => {
     ];
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: dates.sort(),
+      completedDates: dates.sort().map(d => ({ date: d, completionKind: "full" as const })),
       totalCompletions: 9,
       completionsInWindow: 9,
       consistency: 75,
@@ -472,7 +481,7 @@ describe("StatsScreen", () => {
     ];
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: customDates.sort(),
+      completedDates: customDates.sort().map(d => ({ date: d, completionKind: "full" as const })),
       totalCompletions: 16,
       completionsInWindow: 16,
       consistency: 70,
@@ -495,7 +504,7 @@ describe("StatsScreen", () => {
     });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: ["2026-02-15", "2026-03-01"],
+      completedDates: fullDates("2026-02-15", "2026-03-01"),
       totalCompletions: 2,
       completionsInWindow: 2,
       consistency: 3,
@@ -518,7 +527,7 @@ describe("StatsScreen", () => {
     });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: ["2026-03-12"],
+      completedDates: fullDates("2026-03-12"),
       totalCompletions: 1,
       completionsInWindow: 1,
       consistency: 2,
@@ -547,7 +556,7 @@ describe("StatsScreen", () => {
     });
     mockFetchHabitStats.mockResolvedValue({
       ...mockStats,
-      completedDates: ["2026-03-03", "2026-03-10"],
+      completedDates: fullDates("2026-03-03", "2026-03-10"),
       totalCompletions: 2,
       completionsInWindow: 2,
       consistency: 100,

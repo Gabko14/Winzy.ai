@@ -18,7 +18,7 @@ import {
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
 import { UnreadBadge } from "../components/notifications";
-import type { FlameLevel } from "../api/habits";
+import type { FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
   onCreateHabit?: () => void;
@@ -41,8 +41,8 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
   } = useTodayHabits();
 
   const handleToggle = useCallback(
-    (habitId: string) => {
-      toggleCompletion(habitId);
+    (habitId: string, kind?: CompletionKind) => {
+      toggleCompletion(habitId, kind);
     },
     [toggleCompletion],
   );
@@ -190,16 +190,29 @@ function DateHeader({ onNotifications, unreadCount }: DateHeaderProps) {
 
 // --- Habit Row ---
 
+/** Warm amber for minimum completions — lighter than full-completion green */
+const MINIMUM_COLOR = "#F59E0B";
+
 type HabitRowProps = {
   item: TodayHabit;
   completing: boolean;
-  onToggle: (habitId: string) => void;
+  onToggle: (habitId: string, kind?: CompletionKind) => void;
   onPress?: (habitId: string) => void;
 };
 
 function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
   const colors = lightTheme;
-  const { habit, completedToday, flameLevel, consistency } = item;
+  const { habit, completedToday, completedTodayKind, flameLevel, consistency } = item;
+  const hasMinimum = !!habit.minimumDescription;
+  const isMinimumCompletion = completedTodayKind === "minimum";
+
+  // Choose checkbox color based on completion kind
+  const checkboxColor = completedToday
+    ? isMinimumCompletion ? MINIMUM_COLOR : colors.success
+    : "transparent";
+  const checkboxBorder = completedToday
+    ? isMinimumCompletion ? MINIMUM_COLOR : colors.success
+    : colors.border;
 
   return (
     <Card style={styles.habitCard}>
@@ -207,34 +220,88 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
         style={styles.habitRow}
         onPress={() => onPress?.(habit.id)}
         accessibilityRole="button"
-        accessibilityLabel={`${habit.name}, ${completedToday ? "completed" : "not completed"}`}
+        accessibilityLabel={`${habit.name}, ${completedToday ? (isMinimumCompletion ? "minimum completed" : "completed") : "not completed"}`}
         testID={`today-habit-${habit.id}`}
       >
-        {/* Completion toggle */}
-        <Pressable
-          onPress={() => onToggle(habit.id)}
-          disabled={completing}
-          hitSlop={8}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: completedToday }}
-          accessibilityLabel={`Mark ${habit.name} as ${completedToday ? "not done" : "done"}`}
-          testID={`toggle-${habit.id}`}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              {
-                backgroundColor: completedToday ? colors.success : "transparent",
-                borderColor: completedToday ? colors.success : colors.border,
-              },
-              completing && styles.checkboxDisabled,
-            ]}
+        {/* Completion toggle — simple checkbox for habits without minimum */}
+        {!hasMinimum && (
+          <Pressable
+            onPress={() => onToggle(habit.id)}
+            disabled={completing}
+            hitSlop={8}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: completedToday }}
+            accessibilityLabel={`Mark ${habit.name} as ${completedToday ? "not done" : "done"}`}
+            testID={`toggle-${habit.id}`}
           >
-            {completedToday && (
-              <Text style={styles.checkmark}>{"\u2713"}</Text>
-            )}
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  backgroundColor: checkboxColor,
+                  borderColor: checkboxBorder,
+                },
+                completing && styles.checkboxDisabled,
+              ]}
+            >
+              {completedToday && (
+                <Text style={styles.checkmark}>{"\u2713"}</Text>
+              )}
+            </View>
+          </Pressable>
+        )}
+
+        {/* Dual completion buttons for habits with minimum configured */}
+        {hasMinimum && !completedToday && (
+          <View style={styles.dualButtons} testID={`dual-buttons-${habit.id}`}>
+            <Pressable
+              onPress={() => onToggle(habit.id, "full")}
+              disabled={completing}
+              style={[styles.dualButton, { backgroundColor: colors.success, opacity: completing ? 0.5 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Mark ${habit.name} as fully done`}
+              testID={`toggle-full-${habit.id}`}
+            >
+              <Text style={styles.dualButtonText}>{"\u2713"}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onToggle(habit.id, "minimum")}
+              disabled={completing}
+              style={[styles.dualButton, { backgroundColor: MINIMUM_COLOR, opacity: completing ? 0.5 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={`Log minimum: ${habit.minimumDescription}`}
+              testID={`toggle-minimum-${habit.id}`}
+            >
+              <Text style={styles.dualButtonText}>{"~"}</Text>
+            </Pressable>
           </View>
-        </Pressable>
+        )}
+
+        {/* Completed state for habits with minimum — shows checkbox with undo */}
+        {hasMinimum && completedToday && (
+          <Pressable
+            onPress={() => onToggle(habit.id)}
+            disabled={completing}
+            hitSlop={8}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: true }}
+            accessibilityLabel={`Undo ${isMinimumCompletion ? "minimum" : "full"} completion for ${habit.name}`}
+            testID={`toggle-${habit.id}`}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  backgroundColor: checkboxColor,
+                  borderColor: checkboxBorder,
+                },
+                completing && styles.checkboxDisabled,
+              ]}
+            >
+              <Text style={styles.checkmark}>{isMinimumCompletion ? "~" : "\u2713"}</Text>
+            </View>
+          </Pressable>
+        )}
 
         {/* Habit icon */}
         <View style={[styles.habitIcon, { backgroundColor: habit.color ?? colors.brandMuted }]}>
@@ -253,6 +320,14 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
           >
             {habit.name}
           </Text>
+          {completedToday && isMinimumCompletion && (
+            <Text
+              style={[styles.minimumLabel, { color: MINIMUM_COLOR }]}
+              testID={`minimum-label-${habit.id}`}
+            >
+              Kept the ember alive
+            </Text>
+          )}
         </View>
 
         {/* Flame indicator */}
@@ -370,6 +445,27 @@ const styles = StyleSheet.create({
   habitNameCompleted: {
     textDecorationLine: "line-through",
     opacity: 0.6,
+  },
+  minimumLabel: {
+    ...typography.caption,
+    fontStyle: "italic",
+    marginTop: 2,
+  },
+  dualButtons: {
+    flexDirection: "column",
+    gap: 4,
+  },
+  dualButton: {
+    width: 28,
+    height: 22,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dualButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
   },
   fab: {
     position: "absolute",

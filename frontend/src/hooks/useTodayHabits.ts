@@ -4,8 +4,10 @@ import {
   fetchHabitStats,
   completeHabit,
   deleteCompletion,
+  COMPLETION_KIND,
   type Habit,
   type FlameLevel,
+  type CompletionKind,
 } from "../api/habits";
 import type { ApiError } from "../api/types";
 import { isApiError } from "../api/types";
@@ -13,6 +15,7 @@ import { isApiError } from "../api/types";
 export type TodayHabit = {
   habit: Habit;
   completedToday: boolean;
+  completedTodayKind: CompletionKind | null;
   flameLevel: FlameLevel;
   consistency: number;
 };
@@ -88,6 +91,7 @@ export function useTodayHabits() {
         return {
           habit,
           completedToday: stats?.completedToday ?? false,
+          completedTodayKind: stats?.completedTodayKind ?? null,
           flameLevel: (stats?.flameLevel ?? "none") as FlameLevel,
           consistency: stats?.consistency ?? 0,
         };
@@ -105,13 +109,15 @@ export function useTodayHabits() {
   }, [load]);
 
   const toggleCompletion = useCallback(
-    async (habitId: string) => {
+    async (habitId: string, kind?: CompletionKind) => {
       const tz = getUserTimezone();
       const today = getTodayDate();
       const currentItem = state.items.find((i) => i.habit.id === habitId);
       if (!currentItem) return;
 
       const wasCompleted = currentItem.completedToday;
+      const targetKind = kind ?? "full";
+      const backendKind = targetKind === "minimum" ? COMPLETION_KIND.minimum : COMPLETION_KIND.full;
 
       // Prevent double-taps while a completion is in flight
       if (completing.has(habitId)) return;
@@ -121,7 +127,9 @@ export function useTodayHabits() {
       setState((s) => ({
         ...s,
         items: s.items.map((i) =>
-          i.habit.id === habitId ? { ...i, completedToday: !wasCompleted } : i,
+          i.habit.id === habitId
+            ? { ...i, completedToday: !wasCompleted, completedTodayKind: wasCompleted ? null : targetKind }
+            : i,
         ),
       }));
 
@@ -129,7 +137,7 @@ export function useTodayHabits() {
         if (wasCompleted) {
           await deleteCompletion(habitId, today);
         } else {
-          await completeHabit(habitId, { timezone: tz, date: today });
+          await completeHabit(habitId, { timezone: tz, date: today, completionKind: backendKind });
         }
 
         if (!mountedRef.current) return;
@@ -144,6 +152,8 @@ export function useTodayHabits() {
               i.habit.id === habitId
                 ? {
                     ...i,
+                    completedToday: updatedStats.completedToday,
+                    completedTodayKind: updatedStats.completedTodayKind,
                     flameLevel: updatedStats.flameLevel as FlameLevel,
                     consistency: updatedStats.consistency,
                   }
@@ -171,7 +181,7 @@ export function useTodayHabits() {
           setState((s) => ({
             ...s,
             items: s.items.map((i) =>
-              i.habit.id === habitId ? { ...i, completedToday: false } : i,
+              i.habit.id === habitId ? { ...i, completedToday: false, completedTodayKind: null } : i,
             ),
           }));
           return;
@@ -181,7 +191,9 @@ export function useTodayHabits() {
         setState((s) => ({
           ...s,
           items: s.items.map((i) =>
-            i.habit.id === habitId ? { ...i, completedToday: wasCompleted } : i,
+            i.habit.id === habitId
+              ? { ...i, completedToday: wasCompleted, completedTodayKind: wasCompleted ? currentItem.completedTodayKind : null }
+              : i,
           ),
         }));
       } finally {

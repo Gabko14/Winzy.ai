@@ -17,6 +17,7 @@ const mockHabit = {
   color: "#F97316",
   frequency: "daily" as const,
   customDays: null,
+  minimumDescription: null,
   createdAt: "2026-01-01T00:00:00Z",
   archivedAt: null,
 };

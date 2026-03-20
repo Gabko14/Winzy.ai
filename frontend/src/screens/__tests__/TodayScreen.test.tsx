@@ -1,5 +1,5 @@
 import React from "react";
-import { render, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent } from "@testing-library/react-native";
 import { TodayScreen } from "../TodayScreen";
 import type { TodayHabit } from "../../hooks/useTodayHabits";
 import type { FlameLevel } from "../../api/habits";
@@ -30,11 +30,13 @@ function makeHabit(overrides: Partial<TodayHabit> = {}): TodayHabit {
       color: null,
       frequency: "daily" as const,
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
       ...overrides.habit,
     },
     completedToday: overrides.completedToday ?? false,
+    completedTodayKind: overrides.completedTodayKind ?? null,
     flameLevel: overrides.flameLevel ?? ("none" as FlameLevel),
     consistency: overrides.consistency ?? 0,
   };
@@ -175,7 +177,7 @@ describe("TodayScreen", () => {
     const { getByTestId } = render(<TodayScreen />);
 
     fireEvent.press(getByTestId("toggle-h1"));
-    expect(mockUseTodayHabits.toggleCompletion).toHaveBeenCalledWith("h1");
+    expect(mockUseTodayHabits.toggleCompletion).toHaveBeenCalledWith("h1", undefined);
   });
 
   it("shows completed habit with visual feedback", () => {
@@ -275,5 +277,115 @@ describe("TodayScreen", () => {
     const list = getByTestId("today-habits-list");
     expect(list).toBeTruthy();
     // The FlatList has a refreshControl prop — we verify the list renders
+  });
+
+  // --- Honest Minimums ---
+
+  it("shows dual buttons for habits with minimumDescription configured", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId } = render(<TodayScreen />);
+    expect(getByTestId("dual-buttons-h1")).toBeTruthy();
+    expect(getByTestId("toggle-full-h1")).toBeTruthy();
+    expect(getByTestId("toggle-minimum-h1")).toBeTruthy();
+  });
+
+  it("does not show dual buttons for habits without minimumDescription", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Run" } as TodayHabit["habit"],
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId, queryByTestId } = render(<TodayScreen />);
+    expect(getByTestId("toggle-h1")).toBeTruthy();
+    expect(queryByTestId("dual-buttons-h1")).toBeNull();
+  });
+
+  it("calls toggleCompletion with 'full' when full button is pressed", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId } = render(<TodayScreen />);
+    fireEvent.press(getByTestId("toggle-full-h1"));
+    expect(mockUseTodayHabits.toggleCompletion).toHaveBeenCalledWith("h1", "full");
+  });
+
+  it("calls toggleCompletion with 'minimum' when minimum button is pressed", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId } = render(<TodayScreen />);
+    fireEvent.press(getByTestId("toggle-minimum-h1"));
+    expect(mockUseTodayHabits.toggleCompletion).toHaveBeenCalledWith("h1", "minimum");
+  });
+
+  it("shows supportive copy for minimum completions", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+        completedToday: true,
+        completedTodayKind: "minimum",
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+    mockUseTodayHabits.completedCount = 1;
+
+    const { getByTestId } = render(<TodayScreen />);
+    expect(getByTestId("minimum-label-h1")).toBeTruthy();
+  });
+
+  it("does not show supportive copy for full completions", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+        completedToday: true,
+        completedTodayKind: "full",
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    const { queryByTestId } = render(<TodayScreen />);
+    expect(queryByTestId("minimum-label-h1")).toBeNull();
+  });
+
+  it("contains no streak language in minimum completion UI", () => {
+    const items = [
+      makeHabit({
+        habit: { id: "h1", name: "Workout", minimumDescription: "10-minute walk" } as TodayHabit["habit"],
+        completedToday: true,
+        completedTodayKind: "minimum",
+      }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+
+    render(<TodayScreen />);
+    // Check supportive copy — no streak language
+    expect(screen.queryByText(/streak/i)).toBeNull();
+    expect(screen.queryByText(/days in a row/i)).toBeNull();
+    expect(screen.queryByText(/failed/i)).toBeNull();
+    // Positive check: supportive message is shown
+    expect(screen.getByText("Kept the ember alive")).toBeTruthy();
   });
 });

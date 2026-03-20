@@ -72,6 +72,7 @@ describe("CreateHabitScreen", () => {
         color: "#F97316",
         frequency: "daily",
         customDays: null,
+        minimumDescription: null,
         createdAt: "2026-01-01T00:00:00Z",
         archivedAt: null,
       },
@@ -88,6 +89,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -121,6 +123,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily" as const,
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -174,6 +177,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily" as const,
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -213,6 +217,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -266,6 +271,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -311,6 +317,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily" as const,
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -446,6 +453,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "weekly",
       customDays: [1, 3, 5],
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -557,6 +565,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -584,6 +593,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -620,6 +630,7 @@ describe("CreateHabitScreen", () => {
         color: "#F97316",
         frequency: "daily",
         customDays: null,
+        minimumDescription: null,
         createdAt: "2026-01-01T00:00:00Z",
         archivedAt: null,
       },
@@ -646,6 +657,7 @@ describe("CreateHabitScreen", () => {
       color: "#7C3AED",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -795,6 +807,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -826,6 +839,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -871,6 +885,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily",
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -911,6 +926,7 @@ describe("CreateHabitScreen", () => {
       color: "#F97316",
       frequency: "daily" as const,
       customDays: null,
+      minimumDescription: null,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -948,6 +964,132 @@ describe("CreateHabitScreen", () => {
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(existingHabit);
       expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  // --- Honest Minimums ---
+
+  it("renders honest minimum text field", () => {
+    renderCreateForm();
+    expect(screen.getByTestId("minimum-description-input")).toBeTruthy();
+  });
+
+  it("sends minimumDescription on create when provided", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Workout",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      minimumDescription: "10-minute walk",
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Workout");
+    fireEvent.changeText(screen.getByTestId("minimum-description-input"), "10-minute walk");
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      expect(createHabit).toHaveBeenCalledWith(
+        expect.objectContaining({ minimumDescription: "10-minute walk" }),
+      );
+    });
+  });
+
+  it("does not send minimumDescription when field is empty", async () => {
+    const newHabit = {
+      id: "h1",
+      name: "Run",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily",
+      customDays: null,
+      minimumDescription: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    createHabit.mockResolvedValue(newHabit);
+
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("habit-name-input"), "Run");
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Create habit"));
+    });
+
+    await waitFor(() => {
+      const call = createHabit.mock.calls[0][0];
+      expect(call.minimumDescription).toBeUndefined();
+    });
+  });
+
+  it("populates minimumDescription from editHabit when editing", () => {
+    renderCreate({
+      editHabit: {
+        id: "h1",
+        name: "Workout",
+        icon: "\uD83D\uDCAA",
+        color: "#F97316",
+        frequency: "daily",
+        customDays: null,
+        minimumDescription: "10-minute walk",
+        createdAt: "2026-01-01T00:00:00Z",
+        archivedAt: null,
+      },
+    });
+    expect(screen.getByTestId("minimum-description-input").props.value).toBe("10-minute walk");
+  });
+
+  it("shows clear button when minimum description has text", () => {
+    renderCreateForm();
+    expect(screen.queryByTestId("minimum-clear")).toBeNull();
+
+    fireEvent.changeText(screen.getByTestId("minimum-description-input"), "Walk");
+    expect(screen.getByTestId("minimum-clear")).toBeTruthy();
+  });
+
+  it("clears minimum description when clear button is pressed", () => {
+    renderCreateForm();
+    fireEvent.changeText(screen.getByTestId("minimum-description-input"), "Walk");
+    fireEvent.press(screen.getByTestId("minimum-clear"));
+    expect(screen.getByTestId("minimum-description-input").props.value).toBe("");
+  });
+
+  it("sends clearMinimumDescription when editing and clearing minimum", async () => {
+    const existingHabit = {
+      id: "h1",
+      name: "Workout",
+      icon: "\uD83D\uDCAA",
+      color: "#F97316",
+      frequency: "daily" as const,
+      customDays: null,
+      minimumDescription: "10-minute walk",
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    updateHabit.mockResolvedValue({ ...existingHabit, minimumDescription: null });
+
+    renderCreate({ editHabit: existingHabit });
+
+    // Clear the minimum
+    fireEvent.press(screen.getByTestId("minimum-clear"));
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Save changes"));
+    });
+
+    await waitFor(() => {
+      expect(updateHabit).toHaveBeenCalledWith(
+        "h1",
+        expect.objectContaining({ clearMinimumDescription: true }),
+      );
     });
   });
 });
