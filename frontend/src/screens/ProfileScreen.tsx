@@ -3,24 +3,13 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Button } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
-import type { UserProfile } from "../api";
+import { getInitials } from "../utils/getInitials";
 
 type Props = {
   onEditProfile: () => void;
   onSettings: () => void;
   onChallenges?: () => void;
 };
-
-function getInitials(user: UserProfile): string {
-  if (user.displayName) {
-    const parts = user.displayName.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return user.username.slice(0, 2).toUpperCase();
-}
 
 export function ProfileScreen({ onEditProfile, onSettings, onChallenges }: Props) {
   const auth = useAuth();
@@ -29,7 +18,7 @@ export function ProfileScreen({ onEditProfile, onSettings, onChallenges }: Props
   if (auth.status !== "authenticated") return null;
 
   const { user } = auth;
-  const initials = getInitials(user);
+  const initials = getInitials(user.displayName, user.username);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="profile-screen">

@@ -9,8 +9,9 @@ import {
   Button,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
-import type { FlameLevel } from "../design-system";
 import { fetchFriendProfile } from "../api/social";
+import { getInitials } from "../utils/getInitials";
+import { flameLevelFromConsistency, flameBackgroundColor, flameTextColor } from "../utils/flameHelpers";
 import type { FriendHabit, FriendProfileResponse } from "../api/social";
 import type { ApiError } from "../api/types";
 
@@ -239,48 +240,6 @@ function HabitRow({ habit }: { habit: FriendHabit }) {
       </View>
     </Card>
   );
-}
-
-// --- Helpers ---
-
-function getInitials(displayName?: string | null, username?: string, friendId?: string): string {
-  if (displayName) {
-    const parts = displayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (username) return username.slice(0, 2).toUpperCase();
-  return (friendId ?? "??").slice(0, 2).toUpperCase();
-}
-
-function flameLevelFromConsistency(consistency: number): FlameLevel {
-  if (consistency >= 80) return "blazing";
-  if (consistency >= 55) return "strong";
-  if (consistency >= 30) return "steady";
-  if (consistency >= 10) return "ember";
-  return "none";
-}
-
-function flameBackgroundColor(level: FlameLevel): string {
-  switch (level) {
-    case "blazing": return "#FEE2E2";
-    case "strong": return "#FFEDD5";
-    case "steady": return "#FFF7ED";
-    case "ember": return "#FEF3C7";
-    case "none":
-    default: return "#F5F5F4";
-  }
-}
-
-function flameTextColor(level: FlameLevel): string {
-  switch (level) {
-    case "blazing": return "#DC2626";
-    case "strong": return "#F97316";
-    case "steady": return "#EA580C";
-    case "ember": return "#D97706";
-    case "none":
-    default: return "#78716C";
-  }
 }
 
 // --- Styles ---

@@ -20,6 +20,7 @@ import {
 } from "../api/visibility";
 import { exportMyData } from "../api/account";
 import { isApiError } from "../api";
+import { getInitials } from "../utils/getInitials";
 
 const APP_VERSION = "1.0.0";
 
@@ -615,17 +616,6 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
       </Modal>
     </View>
   );
-}
-
-function getInitials(displayName: string | null, username: string): string {
-  if (displayName) {
-    const parts = displayName.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return username.slice(0, 2).toUpperCase();
 }
 
 const styles = StyleSheet.create({

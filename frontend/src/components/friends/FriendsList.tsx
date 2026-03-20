@@ -3,21 +3,12 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Card, Flame } from "../../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../../design-system";
 import type { Friend } from "../../api/social";
+import { getInitials } from "../../utils/getInitials";
 
 export function friendDisplayName(friend: Friend): string {
   if (friend.displayName) return friend.displayName;
   if (friend.username) return friend.username;
   return `User ${friend.friendId.slice(0, 8)}`;
-}
-
-export function friendInitials(friend: Friend): string {
-  if (friend.displayName) {
-    const parts = friend.displayName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  }
-  if (friend.username) return friend.username.slice(0, 2).toUpperCase();
-  return friend.friendId.slice(0, 2).toUpperCase();
 }
 
 type FriendRowProps = {
@@ -30,7 +21,7 @@ type FriendRowProps = {
 export function FriendRow({ friend, onPress, onOptions, processing }: FriendRowProps) {
   const colors = lightTheme;
   const name = friendDisplayName(friend);
-  const initials = friendInitials(friend);
+  const initials = getInitials(friend.displayName, friend.username, friend.friendId);
   const flameLevel = friend.flameLevel ?? "none";
 
   return (

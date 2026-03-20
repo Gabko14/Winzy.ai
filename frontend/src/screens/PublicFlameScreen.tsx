@@ -16,6 +16,7 @@ import {
   type FlameLevel,
 } from "../design-system";
 import { apiRequest } from "../api";
+import { flameLevelFromConsistency, flameBackgroundColor, flameTextColor } from "../utils/flameHelpers";
 
 type PublicHabit = {
   id: string;
@@ -111,7 +112,7 @@ export function PublicFlameScreen({ username, onNavigateToSignUp }: Props) {
       ? data.habits.reduce((sum, h) => sum + h.consistency, 0) / data.habits.length
       : 0;
 
-  const aggregateFlameLevel = getAggregateFlameLevelFromConsistency(aggregateConsistency);
+  const aggregateFlameLevel = flameLevelFromConsistency(aggregateConsistency);
 
   return (
     <ScrollView
@@ -172,11 +173,11 @@ export function PublicFlameScreen({ username, onNavigateToSignUp }: Props) {
                 <View
                   style={[
                     styles.flameBadge,
-                    { backgroundColor: getFlameBackgroundColor(habit.flameLevel) },
+                    { backgroundColor: flameBackgroundColor(habit.flameLevel) },
                   ]}
                 >
                   <Text
-                    style={[styles.flameBadgeText, { color: getFlameTextColor(habit.flameLevel) }]}
+                    style={[styles.flameBadgeText, { color: flameTextColor(habit.flameLevel) }]}
                   >
                     {habit.flameLevel}
                   </Text>
@@ -212,46 +213,6 @@ export function PublicFlameScreen({ username, onNavigateToSignUp }: Props) {
       </View>
     </ScrollView>
   );
-}
-
-function getAggregateFlameLevelFromConsistency(consistency: number): FlameLevel {
-  if (consistency >= 80) return "blazing";
-  if (consistency >= 55) return "strong";
-  if (consistency >= 30) return "steady";
-  if (consistency >= 10) return "ember";
-  return "none";
-}
-
-function getFlameBackgroundColor(level: FlameLevel): string {
-  switch (level) {
-    case "blazing":
-      return "#FEE2E2";
-    case "strong":
-      return "#FFEDD5";
-    case "steady":
-      return "#FFF7ED";
-    case "ember":
-      return "#FEF3C7";
-    case "none":
-    default:
-      return "#F5F5F4";
-  }
-}
-
-function getFlameTextColor(level: FlameLevel): string {
-  switch (level) {
-    case "blazing":
-      return "#DC2626";
-    case "strong":
-      return "#F97316";
-    case "steady":
-      return "#EA580C";
-    case "ember":
-      return "#D97706";
-    case "none":
-    default:
-      return "#78716C";
-  }
 }
 
 const styles = StyleSheet.create({
