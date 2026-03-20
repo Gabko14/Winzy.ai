@@ -7,6 +7,7 @@ jest.mock("../../api/habits", () => ({
   fetchHabitStats: jest.fn(),
   completeHabit: jest.fn(),
   deleteCompletion: jest.fn(),
+  COMPLETION_KIND: { full: 1, minimum: 2 },
 }));
 
 // Also need to mock the isApiError import from types
@@ -33,6 +34,7 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
     color: null,
     frequency: "daily",
     customDays: null,
+    minimumDescription: null,
     createdAt: "2026-01-01T00:00:00Z",
     archivedAt: null,
     ...overrides,
@@ -47,6 +49,7 @@ function makeStats(overrides: Partial<HabitStats> = {}): HabitStats {
     totalCompletions: 30,
     completionsInWindow: 20,
     completedToday: false,
+    completedTodayKind: null,
     windowDays: 60,
     windowStart: "2026-01-14",
     today: "2026-03-14",
@@ -251,6 +254,7 @@ describe("useTodayHabits — loading and stats", () => {
     expect(result.current.items[0]).toEqual({
       habit,
       completedToday: true,
+      completedTodayKind: null,
       flameLevel: "blazing",
       consistency: 0.95,
     });

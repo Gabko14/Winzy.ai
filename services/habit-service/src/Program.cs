@@ -208,6 +208,15 @@ app.MapDelete("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbConte
     if (habit is null)
         return Results.NotFound();
 
+    // Cancel any active promise before archiving
+    var activePromise = await db.Promises
+        .FirstOrDefaultAsync(p => p.HabitId == id && p.UserId == userId && p.Status == PromiseStatus.Active);
+    if (activePromise is not null)
+    {
+        activePromise.Status = PromiseStatus.Cancelled;
+        activePromise.ResolvedAt = DateTimeOffset.UtcNow;
+    }
+
     // Soft-delete via archiving
     habit.ArchivedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
@@ -873,6 +882,186 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
     return Results.Content(svg, "image/svg+xml");
 });
 
+// --- Flame Promises ---
+
+app.MapPost("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == habitId && h.UserId == userId && h.ArchivedAt == null);
+    if (habit is null)
+        return Results.NotFound();
+
+    CreatePromiseRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<CreatePromiseRequest>(jsonOptions);
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    // Validate target consistency (1-100)
+    if (request.TargetConsistency is < 1 or > 100)
+        return Results.BadRequest(new { error = "Target consistency must be between 1 and 100" });
+
+    // Validate end date
+    if (!DateOnly.TryParse(request.EndDate, out var endDate))
+        return Results.BadRequest(new { error = $"Invalid end date format: {request.EndDate}" });
+
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    if (endDate <= today)
+        return Results.BadRequest(new { error = "End date must be in the future" });
+
+    // Validate private note length
+    var privateNote = request.PrivateNote?.Trim();
+    if (privateNote is not null && privateNote.Length > 512)
+        return Results.BadRequest(new { error = "Private note must not exceed 512 characters" });
+
+    // Check for existing active promise on this habit
+    var existingActive = await db.Promises
+        .AnyAsync(p => p.UserId == userId && p.HabitId == habitId && p.Status == PromiseStatus.Active);
+    if (existingActive)
+        return Results.Conflict(new { error = "An active promise already exists for this habit" });
+
+    var promise = new Promise
+    {
+        UserId = userId,
+        HabitId = habitId,
+        TargetConsistency = request.TargetConsistency,
+        EndDate = endDate,
+        PrivateNote = string.IsNullOrWhiteSpace(privateNote) ? null : privateNote,
+        Status = PromiseStatus.Active
+    };
+
+    db.Promises.Add(promise);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/habits/{habitId}/promise", MapPromiseToResponse(promise, null));
+});
+
+app.MapGet("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var timezoneHeader = ctx.Request.Headers["X-Timezone"].FirstOrDefault();
+
+    // Include past promises for history
+    var includeHistory = ctx.Request.Query["history"].FirstOrDefault() == "true";
+
+    var habit = await db.Habits.FirstOrDefaultAsync(h => h.Id == habitId && h.UserId == userId && h.ArchivedAt == null);
+    if (habit is null)
+        return Results.NotFound();
+
+    // Resolve timezone for consistency calculation
+    TimeZoneInfo tz = TimeZoneInfo.Utc;
+    if (!string.IsNullOrWhiteSpace(timezoneHeader))
+    {
+        try
+        {
+            tz = TimeZoneInfo.FindSystemTimeZoneById(timezoneHeader);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            // fall back to UTC
+        }
+    }
+
+    // Check if active promise has expired and resolve it
+    var activePromise = await db.Promises
+        .FirstOrDefaultAsync(p => p.UserId == userId && p.HabitId == habitId && p.Status == PromiseStatus.Active);
+
+    if (activePromise is not null)
+    {
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
+
+        if (activePromise.EndDate < today)
+        {
+            // Promise period has ended — resolve it
+            var completionData = await db.Completions
+                .Where(c => c.HabitId == habitId)
+                .Select(c => new { c.LocalDate, c.CompletionKind })
+                .ToListAsync();
+
+            var completionMap = completionData.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+            // Promise evaluation uses the 60-day rolling window consistency (same as the flame),
+            // not a promise-period-specific calculation. This matches the bead spec: "Promise progress
+            // should be derived from the same underlying consistency contract the flame already uses."
+            var consistency = ConsistencyCalculator.Calculate(habit, completionMap, tz);
+
+            activePromise.Status = consistency >= activePromise.TargetConsistency
+                ? PromiseStatus.Kept
+                : PromiseStatus.EndedBelow;
+            activePromise.ResolvedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    // Re-fetch active promise (may have been resolved above)
+    activePromise = await db.Promises
+        .FirstOrDefaultAsync(p => p.UserId == userId && p.HabitId == habitId && p.Status == PromiseStatus.Active);
+
+    // Calculate current consistency for on-track status
+    double? currentConsistency = null;
+    if (activePromise is not null)
+    {
+        var completionData = await db.Completions
+            .Where(c => c.HabitId == habitId)
+            .Select(c => new { c.LocalDate, c.CompletionKind })
+            .ToListAsync();
+
+        var completionMap = completionData.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+        currentConsistency = ConsistencyCalculator.Calculate(habit, completionMap, tz);
+    }
+
+    if (!includeHistory)
+    {
+        if (activePromise is null)
+            return Results.Ok(new { active = (object?)null, history = Array.Empty<object>() });
+
+        return Results.Ok(new
+        {
+            active = MapPromiseToResponse(activePromise, currentConsistency),
+            history = Array.Empty<object>()
+        });
+    }
+
+    // Include historical (resolved) promises
+    var pastPromises = await db.Promises
+        .Where(p => p.UserId == userId && p.HabitId == habitId && p.Status != PromiseStatus.Active)
+        .OrderByDescending(p => p.ResolvedAt)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        active = activePromise is not null ? MapPromiseToResponse(activePromise, currentConsistency) : null,
+        history = pastPromises.Select(p => MapPromiseToResponse(p, null))
+    });
+});
+
+app.MapDelete("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    var promise = await db.Promises
+        .FirstOrDefaultAsync(p => p.UserId == userId && p.HabitId == habitId && p.Status == PromiseStatus.Active);
+
+    if (promise is null)
+        return Results.NotFound();
+
+    promise.Status = PromiseStatus.Cancelled;
+    promise.ResolvedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
 app.Run();
 
 // --- Helper methods ---
@@ -882,6 +1071,30 @@ static bool TryGetUserId(HttpContext ctx, out Guid userId)
     userId = Guid.Empty;
     var header = ctx.Request.Headers["X-User-Id"].FirstOrDefault();
     return header is not null && Guid.TryParse(header, out userId);
+}
+
+static object MapPromiseToResponse(Promise promise, double? currentConsistency) => new
+{
+    id = promise.Id,
+    habitId = promise.HabitId,
+    targetConsistency = promise.TargetConsistency,
+    endDate = promise.EndDate.ToString("yyyy-MM-dd"),
+    privateNote = promise.PrivateNote,
+    status = promise.Status.ToString().ToLowerInvariant(),
+    onTrack = promise.Status == PromiseStatus.Active && currentConsistency.HasValue
+        ? currentConsistency.Value >= promise.TargetConsistency
+        : (bool?)null,
+    currentConsistency = currentConsistency,
+    statement = GeneratePromiseStatement(promise),
+    createdAt = promise.CreatedAt,
+    resolvedAt = promise.ResolvedAt
+};
+
+static string GeneratePromiseStatement(Promise promise)
+{
+    var target = (int)promise.TargetConsistency;
+    var endDateStr = promise.EndDate.ToString("MMMM d");
+    return $"Keeping above {target}% through {endDateStr}";
 }
 
 static object MapToResponse(Habit habit) => new
@@ -903,6 +1116,7 @@ internal record CreateHabitRequest(string Name, string? Icon, string? Color, Fre
 internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays, string? MinimumDescription, bool? ClearMinimumDescription);
 internal record CompleteHabitRequest(string? Date, string Timezone, Winzy.Contracts.CompletionKind? CompletionKind);
 internal record UpdateCompletionRequest(Winzy.Contracts.CompletionKind CompletionKind);
+internal record CreatePromiseRequest(double TargetConsistency, string EndDate, string? PrivateNote);
 internal record ResolvedUserResponse(Guid UserId);
 internal record VisibilityResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
 

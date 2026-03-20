@@ -120,6 +120,7 @@ public sealed class HabitServiceFixture : IAsyncLifetime
         MockAuthHandler.Reset();
         MockSocialHandler.Reset();
         using var db = CreateDbContext();
+        await db.Promises.ExecuteDeleteAsync();
         await db.Completions.ExecuteDeleteAsync();
         await db.Habits.ExecuteDeleteAsync();
     }
