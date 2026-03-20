@@ -9,9 +9,10 @@ type Props = {
   onEditProfile: () => void;
   onSettings: () => void;
   onChallenges?: () => void;
+  onWitnessLinks?: () => void;
 };
 
-export function ProfileScreen({ onEditProfile, onSettings, onChallenges }: Props) {
+export function ProfileScreen({ onEditProfile, onSettings, onChallenges, onWitnessLinks }: Props) {
   const auth = useAuth();
   const colors = lightTheme;
 
@@ -65,6 +66,18 @@ export function ProfileScreen({ onEditProfile, onSettings, onChallenges }: Props
             >
               <Text style={[styles.settingsText, { color: colors.brandPrimary }]}>
                 My Challenges
+              </Text>
+            </Pressable>
+          )}
+
+          {onWitnessLinks && (
+            <Pressable
+              onPress={onWitnessLinks}
+              style={[styles.settingsLink]}
+              testID="witness-links-link"
+            >
+              <Text style={[styles.settingsText, { color: colors.brandPrimary }]}>
+                Witness Links
               </Text>
             </Pressable>
           )}

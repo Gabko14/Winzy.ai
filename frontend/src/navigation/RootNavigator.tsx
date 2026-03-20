@@ -24,6 +24,8 @@ import { StatsScreen } from "../screens/StatsScreen";
 import { CreateHabitScreen } from "../screens/CreateHabitScreen";
 import { MyChallengesScreen } from "../screens/MyChallengesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { WitnessLinksScreen } from "../screens/WitnessLinksScreen";
+import { WitnessViewerScreen } from "../screens/WitnessViewerScreen";
 import { fetchHabit, archiveHabit } from "../api/habits";
 import { useVisibility } from "../hooks/useVisibility";
 import { useUnreadCount } from "../hooks/useUnreadCount";
@@ -54,6 +56,22 @@ function getPublicFlameUsername(): string | null {
 }
 
 /**
+ * Extracts the witness token from a /w/{token} URL path on web.
+ * Returns null if the path doesn't match the pattern.
+ * Tokens are 43-char base64url strings (32 bytes).
+ */
+function getWitnessToken(): string | null {
+  if (Platform.OS !== "web") return null;
+  try {
+    const path = window.location.pathname;
+    const match = path.match(/^\/w\/([A-Za-z0-9_-]{20,64})$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Root navigator that switches between auth and main app.
  *
  * Authenticated shell has a bottom tab bar with:
@@ -68,6 +86,7 @@ export function RootNavigator() {
   const [activeTab, setActiveTab] = useState<TabId>("today");
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
+  const [exitWitnessView, setExitWitnessView] = useState(false);
   const overlay = useOverlayRouter();
 
   const isAuthenticated = auth.status === "authenticated";
@@ -83,6 +102,7 @@ export function RootNavigator() {
   const goToHabits = useCallback(() => overlay.push("habits"), [overlay]);
   const goToAddFriend = useCallback(() => overlay.push("addFriend"), [overlay]);
   const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
+  const goToWitnessLinks = useCallback(() => overlay.push("witnessLinks"), [overlay]);
   const handleEditHabit = useCallback(async (habitId: string) => {
     try {
       const habit = await fetchHabit(habitId);
@@ -147,6 +167,24 @@ export function RootNavigator() {
       window.history.replaceState(null, "", "/");
     }
   }, []);
+
+  const handleWitnessViewCta = useCallback(() => {
+    setExitWitnessView(true);
+    if (Platform.OS === "web") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
+
+  // Witness viewer: /w/{token} route (web only, no auth required)
+  const witnessToken = getWitnessToken();
+  if (witnessToken && !exitWitnessView) {
+    return (
+      <>
+        <WitnessViewerScreen token={witnessToken} onNavigateToSignUp={handleWitnessViewCta} />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
 
   // Public flame page: /@username route (web only, no auth required)
   const publicUsername = getPublicFlameUsername();
@@ -390,6 +428,20 @@ export function RootNavigator() {
     );
   }
 
+  if (overlay.current === "witnessLinks") {
+    return (
+      <>
+        <OfflineIndicator />
+        <ErrorBoundary>
+          <WitnessLinksScreen
+            onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
+          />
+        </ErrorBoundary>
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   if (overlay.current === "stats" && overlay.params.habitId) {
     return (
       <>
@@ -439,7 +491,7 @@ export function RootNavigator() {
     case "profile":
       tabContent = (
         <ErrorBoundary>
-          <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => overlay.push("challenges")} />
+          <ProfileScreen onEditProfile={goToEditProfile} onSettings={goToSettings} onChallenges={() => overlay.push("challenges")} onWitnessLinks={goToWitnessLinks} />
         </ErrorBoundary>
       );
       break;
