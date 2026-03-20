@@ -12,6 +12,7 @@ const mockHabit = {
   color: "#F97316",
   frequency: "daily" as const,
   customDays: null,
+  minimumDescription: null as string | null,
   createdAt: "2026-01-01T00:00:00Z",
   archivedAt: null,
 };
@@ -22,21 +23,26 @@ const mockStats = {
   flameLevel: "strong" as const,
   totalCompletions: 42,
   completionsInWindow: 39,
+  completedToday: false,
+  completedTodayKind: null as string | null,
   windowDays: 60,
   windowStart: "2026-01-11",
   today: "2026-03-12",
+  completedDates: [] as { date: string; completionKind: string }[],
 };
 
 const mockFetchHabit = jest.fn();
 const mockFetchHabitStats = jest.fn();
 const mockCompleteHabit = jest.fn();
 const mockDeleteCompletion = jest.fn();
+const mockUpdateCompletion = jest.fn();
 
 jest.mock("../../api/habits", () => ({
   fetchHabit: (...args: unknown[]) => mockFetchHabit(...args),
   fetchHabitStats: (...args: unknown[]) => mockFetchHabitStats(...args),
   completeHabit: (...args: unknown[]) => mockCompleteHabit(...args),
   deleteCompletion: (...args: unknown[]) => mockDeleteCompletion(...args),
+  updateCompletion: (...args: unknown[]) => mockUpdateCompletion(...args),
 }));
 
 jest.mock("../../api", () => ({
@@ -55,6 +61,13 @@ beforeEach(() => {
     consistency: 66,
   });
   mockDeleteCompletion.mockResolvedValue(undefined);
+  mockUpdateCompletion.mockResolvedValue({
+    id: "comp-1",
+    habitId: "habit-1",
+    localDate: "2026-03-12",
+    completedAt: "2026-03-12T10:00:00Z",
+    completionKind: "full",
+  });
 });
 
 function renderDetail(props: Partial<React.ComponentProps<typeof HabitDetailScreen>> = {}) {

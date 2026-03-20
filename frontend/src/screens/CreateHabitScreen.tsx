@@ -63,6 +63,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   const [color, setColor] = useState(editHabit?.color ?? HABIT_COLORS[0]);
   const [frequency, setFrequency] = useState<FrequencyType>(editHabit?.frequency ?? "daily");
   const [customDays, setCustomDays] = useState<number[]>(editHabit?.customDays ?? []);
+  const [minimumDescription, setMinimumDescription] = useState(editHabit?.minimumDescription ?? "");
   const [visibility, setVisibility] = useState<HabitVisibility>(editVisibility ?? "private");
 
   // Track whether user has manually touched the visibility picker — prevents
@@ -107,6 +108,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
     setColor(editHabit?.color ?? HABIT_COLORS[0]);
     setFrequency(editHabit?.frequency ?? "daily");
     setCustomDays(editHabit?.customDays ?? []);
+    setMinimumDescription(editHabit?.minimumDescription ?? "");
     setVisibility(editVisibility ?? "private");
     setErrors({});
     setServerError(null);
@@ -183,21 +185,28 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         if (!validateForm()) return;
 
         if (isEditing && editHabit) {
+          const trimmedMin = minimumDescription.trim();
+          const hadMinimum = !!editHabit.minimumDescription;
+          const hasMinimum = trimmedMin.length > 0;
           const request: UpdateHabitRequest = {
             name: name.trim(),
             icon,
             color,
             frequency,
             ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
+            ...(hasMinimum ? { minimumDescription: trimmedMin } : {}),
+            ...(hadMinimum && !hasMinimum ? { clearMinimumDescription: true } : {}),
           };
           savedHabit = await update(editHabit.id, request);
         } else {
+          const trimmedMin = minimumDescription.trim();
           const request: CreateHabitRequest = {
             name: name.trim(),
             icon,
             color,
             frequency,
             ...(frequency === "weekly" || frequency === "custom" ? { customDays } : {}),
+            ...(trimmedMin ? { minimumDescription: trimmedMin } : {}),
           };
           savedHabit = await create(request);
         }
@@ -236,7 +245,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
         setServerError("Something went wrong. Please try again.");
       }
     }
-  }, [name, icon, color, frequency, customDays, visibility, isEditing, editHabit, create, update, updateVisibility, validateForm, handleSaved, pendingVisibilityHabit]);
+  }, [name, icon, color, frequency, customDays, minimumDescription, visibility, isEditing, editHabit, create, update, updateVisibility, validateForm, handleSaved, pendingVisibilityHabit]);
 
   // --- Custom day toggle ---
   const toggleDay = useCallback((day: number) => {
@@ -297,6 +306,43 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
           maxLength={256}
           testID="habit-name-input"
         />
+
+        {/* Honest Minimum (optional) */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
+            Honest Minimum (optional)
+          </Text>
+          <Text style={[styles.minimumHint, { color: colors.textTertiary }]}>
+            What's the smallest version of this habit? e.g. "10-minute walk" for a 45-minute workout
+          </Text>
+          <View style={styles.minimumRow}>
+            <View style={styles.minimumInputWrapper}>
+              <TextInput
+                placeholder="e.g. Read 2 pages, Walk 10 min"
+                value={minimumDescription}
+                onChangeText={setMinimumDescription}
+                autoCapitalize="sentences"
+                autoCorrect
+                returnKeyType="done"
+                maxLength={512}
+                testID="minimum-description-input"
+              />
+            </View>
+            {minimumDescription.length > 0 && (
+              <Pressable
+                onPress={() => setMinimumDescription("")}
+                style={styles.minimumClear}
+                accessibilityRole="button"
+                accessibilityLabel="Clear honest minimum"
+                testID="minimum-clear"
+              >
+                <Text style={[styles.minimumClearText, { color: colors.textTertiary }]}>
+                  {"\u2715"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
 
         {/* Icon picker */}
         <View style={styles.section}>
@@ -536,6 +582,25 @@ const styles = StyleSheet.create({
   fieldError: {
     ...typography.caption,
     marginTop: spacing.xs,
+  },
+  minimumHint: {
+    ...typography.caption,
+    marginBottom: spacing.sm,
+  },
+  minimumRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  minimumInputWrapper: {
+    flex: 1,
+  },
+  minimumClear: {
+    padding: spacing.sm,
+  },
+  minimumClearText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
   submitSection: {
     marginTop: spacing["2xl"],

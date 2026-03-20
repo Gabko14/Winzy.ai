@@ -21,7 +21,7 @@ import {
   brand,
 } from "../design-system";
 import { useHabitDetail } from "../hooks/useHabitDetail";
-import type { FlameLevel, FrequencyType } from "../api/habits";
+import type { FlameLevel, FrequencyType, CompletionDateEntry } from "../api/habits";
 
 type Props = {
   habitId: string;
@@ -43,11 +43,11 @@ function getDaysOfData(createdAt: string, today: string): number {
 
 // --- Insight computations ---
 
-function getMostConsistentDay(completedDates: string[]): string | null {
+function getMostConsistentDay(completedDates: CompletionDateEntry[]): string | null {
   if (completedDates.length < 7) return null;
   const counts = [0, 0, 0, 0, 0, 0, 0];
-  for (const d of completedDates) {
-    const day = new Date(d + "T12:00:00").getDay();
+  for (const entry of completedDates) {
+    const day = new Date(entry.date + "T12:00:00").getDay();
     counts[day]++;
   }
   let maxIdx = 0;
@@ -76,7 +76,7 @@ function getExpectedPerWeek(frequency: FrequencyType, customDays: number[] | nul
 }
 
 function getMonthlyCompletion(
-  completedDates: string[],
+  completedDates: CompletionDateEntry[],
   today: string,
   frequency: FrequencyType,
   customDays: number[] | null,
@@ -90,8 +90,8 @@ function getMonthlyCompletion(
 
   let current = 0;
   let previous = 0;
-  for (const d of completedDates) {
-    const date = new Date(d + "T12:00:00");
+  for (const entry of completedDates) {
+    const date = new Date(entry.date + "T12:00:00");
     if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) current++;
     if (date.getMonth() === prevMonth && date.getFullYear() === prevYear) previous++;
   }
@@ -103,14 +103,14 @@ function getMonthlyCompletion(
 }
 
 function getBestMonth(
-  completedDates: string[],
+  completedDates: CompletionDateEntry[],
   frequency: FrequencyType,
   customDays: number[] | null,
 ): string | null {
   if (completedDates.length === 0) return null;
   const counts: Record<string, number> = {};
-  for (const d of completedDates) {
-    const date = new Date(d + "T12:00:00");
+  for (const entry of completedDates) {
+    const date = new Date(entry.date + "T12:00:00");
     const key = `${date.getFullYear()}-${date.getMonth()}`;
     counts[key] = (counts[key] || 0) + 1;
   }
@@ -132,14 +132,20 @@ function getBestMonth(
 
 // --- Heatmap helpers ---
 
+/** Warm amber for minimum completions */
+const MINIMUM_COLOR = "#F59E0B";
+
 type HeatmapDay = {
   date: string;
-  count: number;
+  kind: "full" | "minimum" | "none";
   month: number;
 };
 
-function buildHeatmapData(completedDates: string[], today: string): HeatmapDay[] {
-  const completedSet = new Set(completedDates);
+function buildHeatmapData(completedDates: CompletionDateEntry[], today: string): HeatmapDay[] {
+  const completedMap = new Map<string, string>();
+  for (const entry of completedDates) {
+    completedMap.set(entry.date, entry.completionKind);
+  }
   const end = new Date(today + "T12:00:00");
   const start = new Date(end);
   start.setFullYear(start.getFullYear() - 1);
@@ -152,9 +158,10 @@ function buildHeatmapData(completedDates: string[], today: string): HeatmapDay[]
     const m = String(current.getMonth() + 1).padStart(2, "0");
     const d = String(current.getDate()).padStart(2, "0");
     const dateStr = `${y}-${m}-${d}`;
+    const kind = completedMap.get(dateStr);
     days.push({
       date: dateStr,
-      count: completedSet.has(dateStr) ? 1 : 0,
+      kind: kind === "minimum" ? "minimum" : kind === "full" ? "full" : "none",
       month: current.getMonth(),
     });
     current.setDate(current.getDate() + 1);
@@ -162,9 +169,10 @@ function buildHeatmapData(completedDates: string[], today: string): HeatmapDay[]
   return days;
 }
 
-function getHeatmapColor(count: number, colors: typeof lightTheme): string {
-  if (count === 0) return colors.backgroundSecondary;
-  return brand.flame500;
+function getHeatmapColor(day: HeatmapDay, colors: typeof lightTheme): string {
+  if (day.kind === "minimum") return MINIMUM_COLOR;
+  if (day.kind === "full") return brand.flame500;
+  return colors.backgroundSecondary;
 }
 
 // --- Encouraging insight messages ---
@@ -230,6 +238,11 @@ export function StatsScreen({ habitId, onBack }: Props) {
   const expectedPerWeek = getExpectedPerWeek(habitFrequency, habit.customDays);
   const isSparseHabit = daysOfData >= 7 && expectedPerWeek > 0
     && stats.totalCompletions < expectedPerWeek;
+
+  // Full vs minimum counts
+  const hasMinimum = !!habit.minimumDescription;
+  const fullCount = stats.completedDates.filter(d => d.completionKind === "full").length;
+  const minimumCount = stats.completedDates.filter(d => d.completionKind === "minimum").length;
 
   // Compute insights
   const bestDay = getMostConsistentDay(stats.completedDates);
@@ -333,6 +346,18 @@ export function StatsScreen({ habitId, onBack }: Props) {
           </View>
         </View>
 
+        {/* Full vs minimum breakdown */}
+        {hasMinimum && minimumCount > 0 && (
+          <View style={styles.kindBreakdown} testID="stats-kind-breakdown">
+            <Text style={[styles.kindBreakdownText, { color: colors.textSecondary }]}>
+              {fullCount} full + {minimumCount} minimum completion{minimumCount === 1 ? "" : "s"}
+            </Text>
+            <Text style={[styles.kindBreakdownHint, { color: colors.textTertiary }]}>
+              Minimums contribute less to consistency but keep momentum alive
+            </Text>
+          </View>
+        )}
+
         {/* Consistency message */}
         <Text
           style={[styles.encouragement, { color: colors.textSecondary }]}
@@ -365,19 +390,25 @@ export function StatsScreen({ habitId, onBack }: Props) {
                 key={day.date}
                 style={[
                   styles.heatmapCell,
-                  { backgroundColor: getHeatmapColor(day.count, colors) },
+                  { backgroundColor: getHeatmapColor(day, colors) },
                 ]}
-                accessibilityLabel={`${day.date}${day.count > 0 ? ", completed" : ""}`}
+                accessibilityLabel={`${day.date}${day.kind === "full" ? ", completed" : day.kind === "minimum" ? ", minimum" : ""}`}
                 testID={`heatmap-day-${day.date}`}
               />
             ))}
           </View>
           {/* Legend */}
           <View style={styles.heatmapLegend}>
-            <Text style={[styles.heatmapLegendText, { color: colors.textTertiary }]}>Less</Text>
+            <Text style={[styles.heatmapLegendText, { color: colors.textTertiary }]}>None</Text>
             <View style={[styles.heatmapLegendCell, { backgroundColor: colors.backgroundSecondary }]} />
+            {hasMinimum && (
+              <>
+                <View style={[styles.heatmapLegendCell, { backgroundColor: MINIMUM_COLOR }]} />
+                <Text style={[styles.heatmapLegendText, { color: colors.textTertiary }]}>Min</Text>
+              </>
+            )}
             <View style={[styles.heatmapLegendCell, { backgroundColor: brand.flame500 }]} />
-            <Text style={[styles.heatmapLegendText, { color: colors.textTertiary }]}>More</Text>
+            <Text style={[styles.heatmapLegendText, { color: colors.textTertiary }]}>Full</Text>
           </View>
         </View>
       </Card>
@@ -438,7 +469,10 @@ export function StatsScreen({ habitId, onBack }: Props) {
             <View style={styles.insightRow} testID="insight-total">
               <Text style={styles.insightIcon}>✅</Text>
               <Text style={[styles.insightText, { color: colors.textSecondary }]}>
-                {stats.totalCompletions} total completion{stats.totalCompletions === 1 ? "" : "s"} all time
+                {hasMinimum && minimumCount > 0
+                  ? `${fullCount} full + ${minimumCount} minimum — ${stats.totalCompletions} total all time`
+                  : `${stats.totalCompletions} total completion${stats.totalCompletions === 1 ? "" : "s"} all time`
+                }
               </Text>
             </View>
           </View>
@@ -561,6 +595,19 @@ const styles = StyleSheet.create({
   encouragement: {
     ...typography.body,
     textAlign: "center",
+    fontStyle: "italic",
+  },
+  kindBreakdown: {
+    alignItems: "center",
+    marginBottom: spacing.base,
+  },
+  kindBreakdownText: {
+    ...typography.bodySmall,
+    fontWeight: "500",
+  },
+  kindBreakdownHint: {
+    ...typography.caption,
+    marginTop: spacing.xs,
     fontStyle: "italic",
   },
 

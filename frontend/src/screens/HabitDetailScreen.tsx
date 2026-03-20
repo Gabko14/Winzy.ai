@@ -25,9 +25,10 @@ import {
 import { useHabitDetail, useToggleCompletion } from "../hooks/useHabitDetail";
 import { useVisibility } from "../hooks/useVisibility";
 import { ActiveChallengesSection } from "../components/ActiveChallengesSection";
+import { PromiseSection } from "../components/PromiseSection";
 import { visibilityLabel } from "../components/VisibilityPicker";
 import { isApiError } from "../api";
-import type { FlameLevel } from "../api/habits";
+import type { FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
   habitId: string;
@@ -103,13 +104,17 @@ function getConsistencyVariant(consistency: number): "success" | "info" | "warni
 
 // --- Calendar component ---
 
+/** Warm amber for minimum completions */
+const MINIMUM_COLOR = "#F59E0B";
+
 type CalendarProps = {
   year: number;
   month: number;
-  completedDates: Set<string>;
+  completedDates: Map<string, CompletionKind>;
   windowStart: string;
   today: string;
   mutating: boolean;
+  hasMinimum: boolean;
   onToggleDate: (date: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -122,6 +127,7 @@ function Calendar({
   windowStart,
   today,
   mutating,
+  hasMinimum,
   onToggleDate,
   onPrevMonth,
   onNextMonth,
@@ -142,7 +148,9 @@ function Calendar({
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = formatDate(year, month, day);
-    const isCompleted = completedDates.has(dateStr);
+    const completionKind = completedDates.get(dateStr);
+    const isCompleted = completionKind != null;
+    const isMinimum = completionKind === "minimum";
     const isToday = dateStr === today;
 
     // Can only toggle dates within the 60-day window and not in the future
@@ -152,12 +160,18 @@ function Calendar({
     const isFuture = dateStr > today;
     const isPast = dateStr < windowStart;
 
+    const bgColor = isCompleted
+      ? isMinimum ? MINIMUM_COLOR : colors.brandPrimary
+      : undefined;
+
+    const kindLabel = isMinimum ? ", minimum" : isCompleted ? ", completed" : "";
+
     cells.push(
       <Pressable
         key={dateStr}
         style={[
           styles.calendarCell,
-          isCompleted && { backgroundColor: colors.brandPrimary },
+          isCompleted && { backgroundColor: bgColor },
           isToday && !isCompleted && styles.calendarToday,
           (isFuture || isPast) && styles.calendarDisabled,
         ]}
@@ -168,7 +182,7 @@ function Calendar({
         }}
         disabled={!isInWindow || mutating}
         accessibilityRole="button"
-        accessibilityLabel={`${MONTH_NAMES[month]} ${day}${isCompleted ? ", completed" : ""}${isToday ? ", today" : ""}`}
+        accessibilityLabel={`${MONTH_NAMES[month]} ${day}${kindLabel}${isToday ? ", today" : ""}`}
         accessibilityState={{ disabled: !isInWindow || mutating }}
         testID={`calendar-day-${dateStr}`}
       >
@@ -220,6 +234,18 @@ function Calendar({
         ))}
       </View>
       <View style={styles.calendarGrid}>{cells}</View>
+      {hasMinimum && (
+        <View style={styles.calendarLegend} testID="calendar-legend">
+          <View style={styles.calendarLegendItem}>
+            <View style={[styles.calendarLegendDot, { backgroundColor: colors.brandPrimary }]} />
+            <Text style={[styles.calendarLegendText, { color: colors.textSecondary }]}>Full</Text>
+          </View>
+          <View style={styles.calendarLegendItem}>
+            <View style={[styles.calendarLegendDot, { backgroundColor: MINIMUM_COLOR }]} />
+            <Text style={[styles.calendarLegendText, { color: colors.textSecondary }]}>Minimum</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -231,8 +257,8 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   const { habit, stats, loading, error, refresh, timezone } = useHabitDetail(habitId);
   const { getVisibility, loading: visibilityLoading, error: visibilityError } = useVisibility();
 
-  // Track completed dates locally for optimistic calendar updates
-  const [completedDates, setCompletedDates] = useState<Set<string>>(new Set());
+  // Track completed dates locally for optimistic calendar updates (date -> kind)
+  const [completedDates, setCompletedDates] = useState<Map<string, CompletionKind>>(new Map());
 
   // Error feedback for failed date toggles (web only — native uses Alert.alert)
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -252,7 +278,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   // Build completed dates set from stats window when stats load
   // We derive from completionsInWindow + windowStart + today for the calendar
   // The real completion dates come from the stats refresh cycle
-  const { complete, uncomplete, loading: mutating } = useToggleCompletion(
+  const { complete, uncomplete, updateKind, loading: mutating } = useToggleCompletion(
     habitId,
     timezone,
     useCallback(() => {
@@ -263,40 +289,66 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   // Populate completed dates from stats when they load or refresh
   useEffect(() => {
     if (stats) {
-      setCompletedDates(new Set(stats.completedDates));
+      const map = new Map<string, CompletionKind>();
+      for (const entry of stats.completedDates) {
+        map.set(entry.date, entry.completionKind);
+      }
+      setCompletedDates(map);
     }
   }, [stats]);
 
   const handleToggleDate = useCallback(
     async (date: string) => {
-      const wasCompleted = completedDates.has(date);
+      const currentKind = completedDates.get(date);
+      const wasCompleted = currentKind != null;
+      const hasMinimum = !!habit?.minimumDescription;
+
+      // Cycle: none -> full -> minimum (if has minimum) -> none
+      // For habits without minimum: none -> full -> none
+      let action: "complete" | "uncomplete" | "updateKind";
+      let targetKind: CompletionKind | null;
+
+      if (!wasCompleted) {
+        action = "complete";
+        targetKind = "full";
+      } else if (hasMinimum && currentKind === "full") {
+        action = "updateKind";
+        targetKind = "minimum";
+      } else {
+        action = "uncomplete";
+        targetKind = null;
+      }
 
       // Clear any previous error when starting a new toggle
       setToggleError(null);
 
       // Optimistic update
+      const prevKind = currentKind;
       setCompletedDates((prev) => {
-        const next = new Set(prev);
-        if (wasCompleted) {
+        const next = new Map(prev);
+        if (targetKind === null) {
           next.delete(date);
         } else {
-          next.add(date);
+          next.set(date, targetKind);
         }
         return next;
       });
 
       try {
-        if (wasCompleted) {
+        if (action === "uncomplete") {
           await uncomplete(date);
+        } else if (action === "updateKind") {
+          // 2 = minimum backend enum
+          await updateKind(date, targetKind === "minimum" ? 2 : 1);
         } else {
           await complete(date);
         }
       } catch (err) {
         // Revert optimistic update
         setCompletedDates((prev) => {
-          const next = new Set(prev);
-          if (wasCompleted) {
-            next.add(date);
+          const next = new Map(prev);
+          if (prevKind != null) {
+            next.set(date, prevKind);
           } else {
             next.delete(date);
           }
@@ -311,7 +363,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
         }
       }
     },
-    [completedDates, complete, uncomplete],
+    [completedDates, complete, uncomplete, updateKind, habit],
   );
 
   const handlePrevMonth = useCallback(() => {
@@ -483,6 +535,9 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
       {/* Active challenges */}
       <ActiveChallengesSection habitId={habitId} />
 
+      {/* Flame Promise */}
+      <PromiseSection habitId={habitId} timezone={timezone} />
+
       {/* Calendar card */}
       <Card style={styles.calendarCard}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -509,6 +564,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
           windowStart={stats.windowStart}
           today={stats.today}
           mutating={mutating}
+          hasMinimum={!!habit.minimumDescription}
           onToggleDate={handleToggleDate}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
@@ -741,6 +797,25 @@ const styles = StyleSheet.create({
   },
   calendarDisabled: {
     opacity: 0.3,
+  },
+  calendarLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: spacing.base,
+    marginTop: spacing.md,
+  },
+  calendarLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  calendarLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: radii.sm,
+  },
+  calendarLegendText: {
+    ...typography.caption,
   },
 
   // Actions
