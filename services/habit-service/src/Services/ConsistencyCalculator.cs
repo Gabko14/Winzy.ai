@@ -1,3 +1,4 @@
+using Winzy.Contracts;
 using Winzy.HabitService.Entities;
 
 namespace Winzy.HabitService.Services;
@@ -6,19 +7,22 @@ namespace Winzy.HabitService.Services;
 /// Calculates habit consistency using a 60-day rolling window.
 /// Consistency replaces streaks — missing a day doesn't reset to zero.
 /// Returns a percentage 0-100.
+///
+/// Honest Minimums weighting (v1):
+///   Full completion = 1.0 weight
+///   Minimum completion = 0.5 weight
 /// </summary>
 public static class ConsistencyCalculator
 {
     public const int WindowDays = 60;
+    public const double FullWeight = 1.0;
+    public const double MinimumWeight = 0.5;
 
     /// <summary>
     /// Calculates the consistency percentage for a habit over a 60-day rolling window.
     /// All date calculations use the user's supplied IANA timezone.
+    /// Treats all completions as full (backwards-compatible).
     /// </summary>
-    /// <param name="habit">The habit with its frequency configuration.</param>
-    /// <param name="completedLocalDates">Set of local dates where the habit was completed.</param>
-    /// <param name="userTimeZone">The user's IANA timezone for resolving "today".</param>
-    /// <returns>Consistency percentage from 0 to 100.</returns>
     public static double Calculate(
         Habit habit,
         HashSet<DateOnly> completedLocalDates,
@@ -37,10 +41,49 @@ public static class ConsistencyCalculator
     /// <summary>
     /// Calculates the consistency percentage for a habit over a 60-day rolling window.
     /// Uses explicit "today" and "habitCreatedDate" for testability.
+    /// Treats all completions as full (backwards-compatible).
     /// </summary>
     public static double Calculate(
         Habit habit,
         HashSet<DateOnly> completedLocalDates,
+        DateOnly today,
+        DateOnly? habitCreatedLocalDate = null)
+    {
+        // Convert HashSet to Dictionary with all Full completions for the weighted overload
+        var weighted = new Dictionary<DateOnly, CompletionKind>(completedLocalDates.Count);
+        foreach (var date in completedLocalDates)
+            weighted[date] = CompletionKind.Full;
+
+        return Calculate(habit, weighted, today, habitCreatedLocalDate);
+    }
+
+    /// <summary>
+    /// Calculates the weighted consistency percentage for a habit over a 60-day rolling window.
+    /// All date calculations use the user's supplied IANA timezone.
+    /// Full = 1.0 weight, Minimum = 0.5 weight.
+    /// </summary>
+    public static double Calculate(
+        Habit habit,
+        Dictionary<DateOnly, CompletionKind> completions,
+        TimeZoneInfo userTimeZone)
+    {
+        var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, userTimeZone);
+        var today = DateOnly.FromDateTime(userNow);
+
+        var habitCreatedLocal = TimeZoneInfo.ConvertTimeFromUtc(habit.CreatedAt.UtcDateTime, userTimeZone);
+        var habitCreatedDate = DateOnly.FromDateTime(habitCreatedLocal);
+
+        return Calculate(habit, completions, today, habitCreatedDate);
+    }
+
+    /// <summary>
+    /// Calculates the weighted consistency percentage for a habit over a 60-day rolling window.
+    /// Uses explicit "today" and "habitCreatedDate" for testability.
+    /// Full = 1.0 weight, Minimum = 0.5 weight.
+    /// </summary>
+    public static double Calculate(
+        Habit habit,
+        Dictionary<DateOnly, CompletionKind> completions,
         DateOnly today,
         DateOnly? habitCreatedLocalDate = null)
     {
@@ -58,10 +101,10 @@ public static class ConsistencyCalculator
 
         // Weekly frequency uses a different algorithm: weeks with completions / total weeks
         if (habit.Frequency == FrequencyType.Weekly)
-            return CalculateWeekly(effectiveStart, today, completedLocalDates);
+            return CalculateWeeklyWeighted(effectiveStart, today, completions);
 
         var applicableDays = 0;
-        var completedDays = 0;
+        var weightedSum = 0.0;
 
         for (var date = effectiveStart; date <= today; date = date.AddDays(1))
         {
@@ -69,19 +112,71 @@ public static class ConsistencyCalculator
                 continue;
 
             applicableDays++;
-            if (completedLocalDates.Contains(date))
-                completedDays++;
+            if (completions.TryGetValue(date, out var kind))
+                weightedSum += GetWeight(kind);
         }
 
         if (applicableDays == 0)
             return 0;
 
-        return Math.Round((double)completedDays / applicableDays * 100, 1);
+        return Math.Round(weightedSum / applicableDays * 100, 1);
+    }
+
+    /// <summary>
+    /// Weekly consistency with weighting: for each week, the best completion kind determines the weight.
+    /// Full in any day of the week = 1.0, only minimums = 0.5, no completions = 0.
+    /// </summary>
+    private static double CalculateWeeklyWeighted(
+        DateOnly effectiveStart,
+        DateOnly today,
+        Dictionary<DateOnly, CompletionKind> completions)
+    {
+        var totalWeeks = 0;
+        var weightedSum = 0.0;
+
+        var weekStart = GetIsoWeekStart(effectiveStart);
+
+        while (weekStart <= today)
+        {
+            var weekEnd = weekStart.AddDays(6);
+
+            var overlapStart = weekStart < effectiveStart ? effectiveStart : weekStart;
+            var overlapEnd = weekEnd > today ? today : weekEnd;
+
+            if (overlapStart <= overlapEnd)
+            {
+                totalWeeks++;
+
+                // Find the best completion kind in this week
+                var bestWeight = 0.0;
+                for (var d = overlapStart; d <= overlapEnd; d = d.AddDays(1))
+                {
+                    if (completions.TryGetValue(d, out var kind))
+                    {
+                        var w = GetWeight(kind);
+                        if (w > bestWeight)
+                            bestWeight = w;
+                        if (bestWeight >= FullWeight)
+                            break; // Can't do better than full
+                    }
+                }
+
+                weightedSum += bestWeight;
+            }
+
+            weekStart = weekStart.AddDays(7);
+        }
+
+        if (totalWeeks == 0)
+            return 0;
+
+        return Math.Round(weightedSum / totalWeeks * 100, 1);
     }
 
     /// <summary>
     /// Weekly consistency: number of weeks with at least one completion / total weeks in window.
-    /// A "week" is Monday–Sunday (ISO week). Partial weeks at window boundaries still count.
+    /// A "week" is Monday-Sunday (ISO week). Partial weeks at window boundaries still count.
+    /// Backwards-compatible (unweighted) overload.
     /// </summary>
     private static double CalculateWeekly(
         DateOnly effectiveStart,
@@ -155,18 +250,18 @@ public static class ConsistencyCalculator
     {
         // Rising thresholds — used when consistency is improving or no previous level known.
         // "Grows quickly": lower thresholds so users see flame growth fast.
-        //   0-9%   → None
-        //   10-29% → Ember
-        //   30-54% → Steady
-        //   55-79% → Strong
-        //   80%+   → Blazing
+        //   0-9%   -> None
+        //   10-29% -> Ember
+        //   30-54% -> Steady
+        //   55-79% -> Strong
+        //   80%+   -> Blazing
         //
         // Falling thresholds — used when consistency would cause a level drop.
         // "Shrinks slowly": the flame holds its level until consistency drops further.
-        //   below 5%  → None
-        //   below 20% → Ember (was Steady, holds until 20%)
-        //   below 40% → Steady (was Strong, holds until 40%)
-        //   below 65% → Strong (was Blazing, holds until 65%)
+        //   below 5%  -> None
+        //   below 20% -> Ember (was Steady, holds until 20%)
+        //   below 40% -> Steady (was Strong, holds until 40%)
+        //   below 65% -> Strong (was Blazing, holds until 65%)
 
         var risingLevel = consistency switch
         {
@@ -216,12 +311,6 @@ public static class ConsistencyCalculator
     /// Used by the challenge service for CustomDateRange milestones.
     /// Uses explicit habitCreatedLocalDate for testability; falls back to UTC if not provided.
     /// </summary>
-    /// <param name="habit">The habit with its frequency configuration.</param>
-    /// <param name="completedLocalDates">Set of local dates where the habit was completed.</param>
-    /// <param name="rangeStart">Start of the custom date range (inclusive).</param>
-    /// <param name="rangeEnd">End of the custom date range (inclusive).</param>
-    /// <param name="habitCreatedLocalDate">The habit's creation date in the user's local timezone. Falls back to UTC if not provided.</param>
-    /// <returns>Consistency percentage from 0 to 100.</returns>
     public static double CalculateForDateRange(
         Habit habit,
         HashSet<DateOnly> completedLocalDates,
@@ -261,6 +350,17 @@ public static class ConsistencyCalculator
 
         return Math.Round((double)completedDays / applicableDays * 100, 1);
     }
+
+    /// <summary>
+    /// Returns the weight for a completion kind.
+    /// Full = 1.0, Minimum = 0.5, None = 0.
+    /// </summary>
+    public static double GetWeight(CompletionKind kind) => kind switch
+    {
+        CompletionKind.Full => FullWeight,
+        CompletionKind.Minimum => MinimumWeight,
+        _ => 0
+    };
 
     /// <summary>
     /// Determines whether a given date is an "applicable" day for this habit

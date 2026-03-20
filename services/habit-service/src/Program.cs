@@ -78,6 +78,10 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
         && (request.CustomDays is null || request.CustomDays.Count == 0))
         return Results.BadRequest(new { error = "CustomDays required for Weekly and Custom frequency" });
 
+    var minimumDesc = request.MinimumDescription?.Trim();
+    if (minimumDesc is not null && minimumDesc.Length > 512)
+        return Results.BadRequest(new { error = "MinimumDescription must not exceed 512 characters" });
+
     var habit = new Habit
     {
         UserId = userId,
@@ -85,7 +89,8 @@ app.MapPost("/habits", async (HttpContext ctx, HabitDbContext db, NatsEventPubli
         Icon = request.Icon?.Trim(),
         Color = request.Color?.Trim(),
         Frequency = request.Frequency,
-        CustomDays = request.Frequency is FrequencyType.Weekly or FrequencyType.Custom ? request.CustomDays : null
+        CustomDays = request.Frequency is FrequencyType.Weekly or FrequencyType.Custom ? request.CustomDays : null,
+        MinimumDescription = string.IsNullOrWhiteSpace(minimumDesc) ? null : minimumDesc
     };
 
     db.Habits.Add(habit);
@@ -176,6 +181,19 @@ app.MapPut("/habits/{id:guid}", async (Guid id, HttpContext ctx, HabitDbContext 
         habit.CustomDays = request.CustomDays;
     }
 
+    // Handle MinimumDescription: explicit null clearing via ClearMinimumDescription flag
+    if (request.ClearMinimumDescription == true)
+    {
+        habit.MinimumDescription = null;
+    }
+    else if (request.MinimumDescription is not null)
+    {
+        var minDesc = request.MinimumDescription.Trim();
+        if (minDesc.Length > 512)
+            return Results.BadRequest(new { error = "MinimumDescription must not exceed 512 characters" });
+        habit.MinimumDescription = string.IsNullOrWhiteSpace(minDesc) ? null : minDesc;
+    }
+
     await db.SaveChangesAsync();
 
     return Results.Ok(MapToResponse(habit));
@@ -259,6 +277,15 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
     if (localDate < windowStart)
         return Results.BadRequest(new { error = $"Cannot log completions more than {ConsistencyCalculator.WindowDays - 1} days in the past" });
 
+    // Resolve completion kind (default to Full)
+    var completionKind = request.CompletionKind ?? Winzy.Contracts.CompletionKind.Full;
+    if (completionKind is not (Winzy.Contracts.CompletionKind.Full or Winzy.Contracts.CompletionKind.Minimum))
+        return Results.BadRequest(new { error = "Invalid completionKind. Must be 'full' or 'minimum'" });
+
+    // Validate: can't log minimum if habit has no MinimumDescription configured
+    if (completionKind == Winzy.Contracts.CompletionKind.Minimum && string.IsNullOrWhiteSpace(habit.MinimumDescription))
+        return Results.BadRequest(new { error = "Cannot log minimum completion for a habit without a configured minimum description" });
+
     // Check for duplicate completion
     var exists = await db.Completions.AnyAsync(c => c.HabitId == id && c.LocalDate == localDate);
     if (exists)
@@ -269,26 +296,28 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
         HabitId = id,
         UserId = userId,
         CompletedAt = DateTimeOffset.UtcNow,
-        LocalDate = localDate
+        LocalDate = localDate,
+        CompletionKind = completionKind
     };
 
     db.Completions.Add(completion);
     await db.SaveChangesAsync();
 
-    // Calculate consistency for the event
-    var completedDates = await db.Completions
+    // Calculate weighted consistency for the event
+    var completionData = await db.Completions
         .Where(c => c.HabitId == id)
-        .Select(c => c.LocalDate)
+        .Select(c => new { c.LocalDate, c.CompletionKind })
         .ToListAsync();
 
-    var consistency = ConsistencyCalculator.Calculate(habit, [.. completedDates], tz);
+    var completionMap = completionData.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+    var consistency = ConsistencyCalculator.Calculate(habit, completionMap, tz);
 
     try
     {
         // DisplayName omitted: habit-service doesn't have the user's display name without an
         // extra auth-service call. The notification subscriber falls back to "A friend" when null.
         await nats.PublishAsync(Subjects.HabitCompleted,
-            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone, HabitName: habit.Name));
+            new HabitCompletedEvent(userId, id, localDate.ToDateTime(TimeOnly.MinValue), consistency, request.Timezone, HabitName: habit.Name, CompletionKind: completionKind));
     }
     catch (Exception ex) when (ex is NatsException or OperationCanceledException)
     {
@@ -301,6 +330,7 @@ app.MapPost("/habits/{id:guid}/complete", async (Guid id, HttpContext ctx, Habit
         habitId = id,
         localDate = localDate.ToString("yyyy-MM-dd"),
         completedAt = completion.CompletedAt,
+        completionKind = completionKind.ToString().ToLowerInvariant(),
         consistency
     });
 });
@@ -323,6 +353,54 @@ app.MapDelete("/habits/{id:guid}/completions/{date}", async (Guid id, string dat
     await db.SaveChangesAsync();
 
     return Results.NoContent();
+});
+
+app.MapPut("/habits/{id:guid}/completions/{date}", async (Guid id, string date, HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    if (!DateOnly.TryParse(date, out var localDate))
+        return Results.BadRequest(new { error = $"Invalid date format: {date}" });
+
+    UpdateCompletionRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<UpdateCompletionRequest>(jsonOptions);
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    if (request.CompletionKind is not (Winzy.Contracts.CompletionKind.Full or Winzy.Contracts.CompletionKind.Minimum))
+        return Results.BadRequest(new { error = "Invalid completionKind. Must be 'full' or 'minimum'" });
+
+    var completion = await db.Completions
+        .Include(c => c.Habit)
+        .FirstOrDefaultAsync(c => c.HabitId == id && c.LocalDate == localDate && c.UserId == userId);
+
+    if (completion is null)
+        return Results.NotFound();
+
+    // Validate: can't change to minimum if habit has no MinimumDescription configured
+    if (request.CompletionKind == Winzy.Contracts.CompletionKind.Minimum
+        && string.IsNullOrWhiteSpace(completion.Habit.MinimumDescription))
+        return Results.BadRequest(new { error = "Cannot set minimum completion for a habit without a configured minimum description" });
+
+    completion.CompletionKind = request.CompletionKind;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        id = completion.Id,
+        habitId = id,
+        localDate = localDate.ToString("yyyy-MM-dd"),
+        completedAt = completion.CompletedAt,
+        completionKind = completion.CompletionKind.ToString().ToLowerInvariant()
+    });
 });
 
 app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbContext db) =>
@@ -348,20 +426,22 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
     if (habit is null)
         return Results.NotFound();
 
-    var completedDates = await db.Completions
+    var completionData = await db.Completions
         .Where(c => c.HabitId == id)
-        .Select(c => c.LocalDate)
+        .Select(c => new { c.LocalDate, c.CompletionKind })
         .ToListAsync();
 
-    var consistency = ConsistencyCalculator.Calculate(habit, [.. completedDates], tz);
+    var completionMap = completionData.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+    var consistency = ConsistencyCalculator.Calculate(habit, completionMap, tz);
     var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
-    var totalCompletions = completedDates.Count;
+    var totalCompletions = completionData.Count;
 
     var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
     var today = DateOnly.FromDateTime(userNow);
     var windowStart = today.AddDays(-(ConsistencyCalculator.WindowDays - 1));
 
-    var completionsInWindow = completedDates.Count(d => d >= windowStart && d <= today);
+    var completionsInWindow = completionData.Count(d => d.LocalDate >= windowStart && d.LocalDate <= today);
+    var todayCompletion = completionData.FirstOrDefault(d => d.LocalDate == today);
 
     return Results.Ok(new
     {
@@ -370,11 +450,16 @@ app.MapGet("/habits/{id:guid}/stats", async (Guid id, HttpContext ctx, HabitDbCo
         flameLevel = flameLevel.ToString().ToLowerInvariant(),
         totalCompletions,
         completionsInWindow,
-        completedToday = completedDates.Contains(today),
+        completedToday = todayCompletion is not null,
+        completedTodayKind = todayCompletion?.CompletionKind.ToString().ToLowerInvariant(),
         windowDays = ConsistencyCalculator.WindowDays,
         windowStart = windowStart.ToString("yyyy-MM-dd"),
         today = today.ToString("yyyy-MM-dd"),
-        completedDates = completedDates.Select(d => d.ToString("yyyy-MM-dd"))
+        completedDates = completionData.Select(d => new
+        {
+            date = d.LocalDate.ToString("yyyy-MM-dd"),
+            completionKind = d.CompletionKind.ToString().ToLowerInvariant()
+        })
     });
 });
 
@@ -401,7 +486,11 @@ app.MapGet("/habits/completions", async (HttpContext ctx, HabitDbContext db) =>
             h.Name,
             h.Icon,
             h.Color,
-            Completed = db.Completions.Any(c => c.HabitId == h.Id && c.LocalDate == date)
+            h.MinimumDescription,
+            Completion = db.Completions
+                .Where(c => c.HabitId == h.Id && c.LocalDate == date)
+                .Select(c => new { c.CompletionKind })
+                .FirstOrDefault()
         })
         .ToListAsync();
 
@@ -414,7 +503,9 @@ app.MapGet("/habits/completions", async (HttpContext ctx, HabitDbContext db) =>
             name = h.Name,
             icon = h.Icon,
             color = h.Color,
-            completed = h.Completed
+            minimumDescription = h.MinimumDescription,
+            completed = h.Completion is not null,
+            completionKind = h.Completion?.CompletionKind.ToString().ToLowerInvariant()
         })
     });
 });
@@ -454,6 +545,7 @@ app.MapGet("/habits/internal/export/{userId:guid}", async (Guid userId, HabitDbC
                     completionId = c.Id,
                     completedAt = c.CompletedAt,
                     localDate = c.LocalDate.ToString("yyyy-MM-dd"),
+                    completionKind = c.CompletionKind.ToString().ToLowerInvariant(),
                     note = c.Note
                 })
             })
@@ -474,8 +566,8 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
 
     return Results.Ok(habits.Select(h =>
     {
-        var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
-        var consistency = ConsistencyCalculator.Calculate(h, completedDates, TimeZoneInfo.Utc);
+        var completionMap = h.Completions.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+        var consistency = ConsistencyCalculator.Calculate(h, completionMap, TimeZoneInfo.Utc);
         var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
 
         return new
@@ -491,7 +583,8 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
             completions = h.Completions.Select(c => new
             {
                 localDate = c.LocalDate.ToString("yyyy-MM-dd"),
-                completedAt = c.CompletedAt
+                completedAt = c.CompletedAt,
+                completionKind = c.CompletionKind.ToString().ToLowerInvariant()
             })
         };
     }));
@@ -517,7 +610,7 @@ app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, H
     if (habit is null)
         return Results.NotFound();
 
-    var completedDates = await db.Completions
+    var completionData = await db.Completions
         .Where(c => c.HabitId == habitId && c.LocalDate >= from && c.LocalDate <= to)
         .Select(c => c.LocalDate)
         .ToListAsync();
@@ -538,8 +631,8 @@ app.MapGet("/habits/internal/{habitId:guid}/consistency", async (Guid habitId, H
     }
 
     var consistency = tz is not null
-        ? ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to, tz)
-        : ConsistencyCalculator.CalculateForDateRange(habit, [.. completedDates], from, to);
+        ? ConsistencyCalculator.CalculateForDateRange(habit, [.. completionData], from, to, tz)
+        : ConsistencyCalculator.CalculateForDateRange(habit, [.. completionData], from, to);
 
     return Results.Ok(new
     {
@@ -631,8 +724,8 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
 
     var result = filteredHabits.Select(h =>
     {
-        var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
-        var consistency = ConsistencyCalculator.Calculate(h, completedDates, TimeZoneInfo.Utc);
+        var completionMap = h.Completions.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+        var consistency = ConsistencyCalculator.Calculate(h, completionMap, TimeZoneInfo.Utc);
         var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
 
         return new
@@ -727,8 +820,8 @@ app.MapGet("/habits/public/{username}/flame.svg", async (string username, HabitD
     {
         var totalConsistency = habits.Sum(h =>
         {
-            var completedDates = h.Completions.Select(c => c.LocalDate).ToHashSet();
-            return ConsistencyCalculator.Calculate(h, completedDates, TimeZoneInfo.Utc);
+            var completionMap = h.Completions.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
+            return ConsistencyCalculator.Calculate(h, completionMap, TimeZoneInfo.Utc);
         });
         aggregateConsistency = totalConsistency / habits.Count;
     }
@@ -799,15 +892,17 @@ static object MapToResponse(Habit habit) => new
     color = habit.Color,
     frequency = habit.Frequency.ToString().ToLowerInvariant(),
     customDays = habit.CustomDays,
+    minimumDescription = habit.MinimumDescription,
     createdAt = habit.CreatedAt,
     archivedAt = habit.ArchivedAt
 };
 
 // --- Request DTOs ---
 
-internal record CreateHabitRequest(string Name, string? Icon, string? Color, FrequencyType Frequency, List<DayOfWeek>? CustomDays);
-internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays);
-internal record CompleteHabitRequest(string? Date, string Timezone);
+internal record CreateHabitRequest(string Name, string? Icon, string? Color, FrequencyType Frequency, List<DayOfWeek>? CustomDays, string? MinimumDescription);
+internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays, string? MinimumDescription, bool? ClearMinimumDescription);
+internal record CompleteHabitRequest(string? Date, string Timezone, Winzy.Contracts.CompletionKind? CompletionKind);
+internal record UpdateCompletionRequest(Winzy.Contracts.CompletionKind CompletionKind);
 internal record ResolvedUserResponse(Guid UserId);
 internal record VisibilityResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
 
