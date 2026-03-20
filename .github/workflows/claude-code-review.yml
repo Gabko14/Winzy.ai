@@ -12,8 +12,9 @@ jobs:
   claude-review:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
       id-token: write
@@ -23,54 +24,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Detect changed paths
-        id: changes
+      - name: Compute PR diff
+        id: diff
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          git fetch origin "$BASE_SHA" --depth=1
           CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          DELIM="GHOUTPUT_$(openssl rand -hex 8)"
+          echo "files<<${DELIM}" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "${DELIM}" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" | grep -q '^services/\|^shared/' && echo "backend=true" >> "$GITHUB_OUTPUT" || echo "backend=false" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" | grep -q '^frontend/' && echo "frontend=true" >> "$GITHUB_OUTPUT" || echo "frontend=false" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" | grep -q '^e2e/' && echo "e2e=true" >> "$GITHUB_OUTPUT" || echo "e2e=false" >> "$GITHUB_OUTPUT"
-
-      - name: Setup .NET
-        if: steps.changes.outputs.backend == 'true'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Cache NuGet packages
-        if: steps.changes.outputs.backend == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
-      - name: Setup Node.js
-        if: steps.changes.outputs.frontend == 'true' || steps.changes.outputs.e2e == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            e2e/package-lock.json
-
-      - name: Install frontend dependencies
-        if: steps.changes.outputs.frontend == 'true' || steps.changes.outputs.e2e == 'true'
-        run: cd frontend && npm ci
-
-      - name: Install E2E dependencies and Playwright
-        if: steps.changes.outputs.e2e == 'true'
-        run: cd e2e && npm ci && npx playwright install chromium
+          # Truncate diff to 128 KB to stay within GitHub output limits and prompt size
+          DIFF=$(git diff "$BASE_SHA" "$HEAD_SHA" | head -c 131072)
+          DELIM2="GHOUTPUT_$(openssl rand -hex 8)"
+          echo "patch<<${DELIM2}" >> "$GITHUB_OUTPUT"
+          echo "$DIFF" >> "$GITHUB_OUTPUT"
+          echo "${DELIM2}" >> "$GITHUB_OUTPUT"
 
       - name: Run Claude Code Review
         id: claude-review
@@ -78,8 +54,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           show_full_output: true
+          max_turns: 15
           claude_args: |
-            --allowedTools "Edit,Write,Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(git:*),Bash(gh:*),Bash(dotnet:*),Bash(npm:*),Bash(npx:*)"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(git:*)"
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: |
@@ -89,9 +66,19 @@ jobs:
             This is a monorepo with: backend (.NET 10 in services/ and shared/), frontend (React + Expo in frontend/), E2E tests (Playwright in e2e/).
 
             Changed areas in this PR:
-            - Backend: ${{ steps.changes.outputs.backend }}
-            - Frontend: ${{ steps.changes.outputs.frontend }}
-            - E2E: ${{ steps.changes.outputs.e2e }}
+            - Backend: ${{ steps.diff.outputs.backend }}
+            - Frontend: ${{ steps.diff.outputs.frontend }}
+            - E2E: ${{ steps.diff.outputs.e2e }}
+
+            ## Changed files
+            ```
+            ${{ steps.diff.outputs.files }}
+            ```
+
+            ## Full diff (truncated to 128 KB — use Read tool for full files if needed)
+            ```diff
+            ${{ steps.diff.outputs.patch }}
+            ```
 
             ## Review structure
             Organize your review into these sections:
