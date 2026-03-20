@@ -42,3 +42,17 @@ export {
   type FeedPage,
 } from "./feed";
 export { type ExportBundle, exportMyData, deleteMyAccount } from "./account";
+export {
+  type WitnessLink,
+  type WitnessLinksResponse,
+  type CreateWitnessLinkRequest,
+  type UpdateWitnessLinkRequest,
+  type WitnessHabit,
+  type WitnessViewResponse,
+} from "./witnessLinks";
+export {
+  type FlamePromise,
+  type PromiseResponse,
+  type PromiseStatus,
+  type CreatePromiseRequest,
+} from "./promises";
