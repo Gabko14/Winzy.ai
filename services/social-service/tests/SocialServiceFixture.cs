@@ -122,6 +122,8 @@ public sealed class SocialServiceFixture : IAsyncLifetime
         MockHabitHandler.TimeoutUserIds.Clear();
         MockAuthHandler.ProfileResponses.Clear();
         using var db = CreateDbContext();
+        await db.WitnessLinkHabits.ExecuteDeleteAsync();
+        await db.WitnessLinks.ExecuteDeleteAsync();
         await db.VisibilitySettings.ExecuteDeleteAsync();
         await db.SocialPreferences.ExecuteDeleteAsync();
         await db.Friendships.ExecuteDeleteAsync();

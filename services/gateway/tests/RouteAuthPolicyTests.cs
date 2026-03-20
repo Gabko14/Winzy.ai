@@ -98,6 +98,17 @@ public class RouteAuthPolicyTests : IDisposable
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Fact]
+    public async Task SocialWitnessPublicRoute_DoesNotRequireAuth()
+    {
+        using var client = CreateClient();
+
+        var response = await client.GetAsync("/social/witness/some-token", TestContext.Current.CancellationToken);
+
+        // Should proxy (502 since downstream isn't running), NOT reject for auth
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     // ── Protected routes: 401 without JWT ───────────────────────────────
 
     [Theory]
@@ -105,6 +116,8 @@ public class RouteAuthPolicyTests : IDisposable
     [InlineData("/habits", "POST")]
     [InlineData("/habits/some-id", "PUT")]
     [InlineData("/social/friends", "GET")]
+    [InlineData("/social/witness-links", "GET")]
+    [InlineData("/social/witness-links", "POST")]
     [InlineData("/challenges", "GET")]
     [InlineData("/challenges/some-id", "GET")]
     [InlineData("/notifications/subscribe", "POST")]
@@ -238,5 +251,21 @@ public class RouteAuthPolicyTests : IDisposable
         var profileResponse = await client.GetAsync("/auth/profile",
             TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, profileResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task SocialWitnessRoute_TakesPriorityOverProtectedSocialRoute()
+    {
+        using var client = CreateClient();
+
+        // GET /social/witness/some-token should match social-witness-public-route (Order=1, no auth)
+        var witnessResponse = await client.GetAsync("/social/witness/some-token",
+            TestContext.Current.CancellationToken);
+        Assert.NotEqual(HttpStatusCode.Unauthorized, witnessResponse.StatusCode);
+
+        // GET /social/witness-links should match social-route (Order=2, authenticated)
+        var linksResponse = await client.GetAsync("/social/witness-links",
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, linksResponse.StatusCode);
     }
 }
