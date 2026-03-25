@@ -135,7 +135,8 @@ internal class MockAuthHandler : HttpMessageHandler
 
     public static void Reset()
     {
-        UsernameToUserId.Clear();
+        // Don't clear UsernameToUserId — parallel test classes add unique keys
+        // and Clear() races with active lookups in other classes' tests.
         _simulateFailure = false;
     }
 
@@ -179,7 +180,8 @@ internal class MockSocialHandler : HttpMessageHandler
 
     public static void Reset()
     {
-        _visibilityData.Clear();
+        // Don't clear _visibilityData — parallel test classes set per-user entries
+        // and Clear() races with active lookups in other classes' tests.
         _simulateFailure = false;
     }
 

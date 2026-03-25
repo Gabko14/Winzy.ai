@@ -794,19 +794,21 @@ public class PromiseEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLi
         using var client = _fixture.CreateAuthenticatedClient(_userId);
         var habitId = await CreateHabitAsync(client);
 
-        // Set up mock auth + social for public flame
-        MockAuthHandler.UsernameToUserId["testpublic"] = _userId;
+        // Set up mock auth + social for public flame — use unique username to avoid static dict race
+        var username = $"pub_{_userId:N}";
+        MockAuthHandler.UsernameToUserId[username] = _userId;
         MockSocialHandler.SetVisibility(_userId, [habitId], "public");
 
-        // Create a promise with public visibility
+        // Create a promise with public visibility AND a private note
         await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
         {
             targetConsistency = 70.0,
             endDate = FutureDate(),
-            isPublicOnFlame = true
+            isPublicOnFlame = true,
+            privateNote = "secret diary entry"
         }, CT);
 
-        var response = await client.GetAsync("/habits/public/testpublic", CT);
+        var response = await client.GetAsync($"/habits/public/{username}", CT);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         var habits = body.GetProperty("habits");
@@ -825,7 +827,8 @@ public class PromiseEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLi
         using var client = _fixture.CreateAuthenticatedClient(_userId);
         var habitId = await CreateHabitAsync(client);
 
-        MockAuthHandler.UsernameToUserId["testprivate"] = _userId;
+        var username = $"priv_{_userId:N}";
+        MockAuthHandler.UsernameToUserId[username] = _userId;
         MockSocialHandler.SetVisibility(_userId, [habitId], "public");
 
         // Create a promise WITHOUT public visibility (default)
@@ -835,7 +838,7 @@ public class PromiseEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLi
             endDate = FutureDate()
         }, CT);
 
-        var response = await client.GetAsync("/habits/public/testprivate", CT);
+        var response = await client.GetAsync($"/habits/public/{username}", CT);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
         var habits = body.GetProperty("habits");

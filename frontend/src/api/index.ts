@@ -40,7 +40,7 @@ export {
   type FeedEventType,
   type FeedPage,
 } from "./feed";
-export { type ExportBundle, exportMyData, deleteMyAccount } from "./account";
+export { type ExportBundle, exportMyData } from "./account";
 export {
   type WitnessLink,
   type WitnessLinksResponse,

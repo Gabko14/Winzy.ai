@@ -8,7 +8,7 @@ import {
   Platform,
   TextInput as RNTextInput,
 } from "react-native";
-import { Card, Badge, Button } from "../design-system";
+import { Card, Badge, Button, InlineError } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { usePromises } from "../hooks/usePromises";
 import { isApiError } from "../api";
@@ -218,11 +218,13 @@ function ActivePromiseDisplay({ promise, onCancel, cancelling, onToggleVisibilit
       </Text>
 
       <View style={styles.promiseMetaRow}>
-        <Badge
-          label={promise.onTrack ? "On track" : "Below target"}
-          variant={promise.onTrack ? "success" : "warning"}
-          testID="promise-track-badge"
-        />
+        {promise.onTrack !== null && (
+          <Badge
+            label={promise.onTrack ? "On track" : "Below target"}
+            variant={promise.onTrack ? "success" : "warning"}
+            testID="promise-track-badge"
+          />
+        )}
         {promise.currentConsistency !== null && (
           <Text
             style={[styles.promiseConsistency, { color: colors.textSecondary }]}
@@ -334,6 +336,7 @@ export function PromiseSection({ habitId, timezone }: Props) {
   const { data, loading, error, refresh, create, cancel, toggleVisibility } = usePromises(habitId, timezone);
   const [showForm, setShowForm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const handleCreate = async (target: number, endDate: string, note?: string) => {
     await create({ targetConsistency: target, endDate, privateNote: note });
@@ -345,7 +348,11 @@ export function PromiseSection({ habitId, timezone }: Props) {
     try {
       await cancel();
     } catch {
-      Alert.alert("Could not cancel", "Please try again.");
+      if (Platform.OS === "web") {
+        setCancelError("Could not cancel. Please try again.");
+      } else {
+        Alert.alert("Could not cancel", "Please try again.");
+      }
     } finally {
       setCancelling(false);
     }
@@ -369,6 +376,8 @@ export function PromiseSection({ habitId, timezone }: Props) {
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
         Flame Promise
       </Text>
+
+      {cancelError && <InlineError message={cancelError} testID="cancel-error" />}
 
       {activePromise ? (
         <ActivePromiseDisplay

@@ -39,6 +39,8 @@ export function Avatar({ initials, size = "md", testID }: AvatarProps) {
         },
       ]}
       testID={testID}
+      accessibilityLabel={initials}
+      accessibilityRole="image"
     >
       <Text style={[styles.text, { fontSize: dims.fontSize, color: colors.brandPrimary }]}>
         {initials}

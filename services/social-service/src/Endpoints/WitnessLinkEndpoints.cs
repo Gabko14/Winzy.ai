@@ -50,6 +50,9 @@ public static class WitnessLinkEndpoints
 
         if (request.HabitIds is { Count: > 0 })
         {
+            if (request.HabitIds.Count > 50)
+                return Results.BadRequest("Maximum 50 habits per witness link.");
+
             var uniqueIds = request.HabitIds.Distinct().ToList();
             foreach (var habitId in uniqueIds)
             {
@@ -136,6 +139,9 @@ public static class WitnessLinkEndpoints
 
         if (request.HabitIds is not null)
         {
+            if (request.HabitIds.Count > 50)
+                return Results.BadRequest("Maximum 50 habits per witness link.");
+
             // Replace the entire habit allowlist
             var existing = await db.WitnessLinkHabits
                 .Where(wh => wh.WitnessLinkId == id)

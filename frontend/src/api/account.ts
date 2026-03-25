@@ -11,7 +11,3 @@ export type ExportBundle = {
 export async function exportMyData(): Promise<ExportBundle> {
   return api.get<ExportBundle>("/auth/export");
 }
-
-export async function deleteMyAccount(): Promise<void> {
-  return api.delete("/auth/account");
-}
