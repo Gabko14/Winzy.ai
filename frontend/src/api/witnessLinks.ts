@@ -1,4 +1,5 @@
 import { api, apiRequest } from "./client";
+import type { PublicPromise } from "./promises";
 
 // --- Types matching backend contract ---
 // Keep in sync with: services/social-service/src/Program.cs (witness-link endpoints)
@@ -32,6 +33,7 @@ export type WitnessHabit = {
   color: string | null;
   consistency: number;
   flameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
+  promise: PublicPromise | null;
 };
 
 export type WitnessViewResponse = {

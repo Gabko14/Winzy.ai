@@ -70,6 +70,8 @@ public sealed class HabitDbContext(DbContextOptions<HabitDbContext> options) : B
                 .HasConversion<string>()
                 .HasMaxLength(16);
 
+            b.Property(p => p.IsPublicOnFlame).HasDefaultValue(false);
+
             b.Property(p => p.ResolvedAt).HasColumnType("timestamptz");
 
             b.HasOne(p => p.Habit)

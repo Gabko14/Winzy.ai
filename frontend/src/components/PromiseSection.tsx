@@ -186,10 +186,12 @@ type ActiveProps = {
   promise: FlamePromise;
   onCancel: () => void;
   cancelling: boolean;
+  onToggleVisibility: (isPublic: boolean) => Promise<void>;
 };
 
-function ActivePromiseDisplay({ promise, onCancel, cancelling }: ActiveProps) {
+function ActivePromiseDisplay({ promise, onCancel, cancelling, onToggleVisibility }: ActiveProps) {
   const colors = lightTheme;
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   const handleCancel = () => {
     if (Platform.OS === "web") {
@@ -248,6 +250,34 @@ function ActivePromiseDisplay({ promise, onCancel, cancelling }: ActiveProps) {
       )}
 
       <Pressable
+        onPress={async () => {
+          setTogglingVisibility(true);
+          try {
+            await onToggleVisibility(!promise.isPublicOnFlame);
+          } finally {
+            setTogglingVisibility(false);
+          }
+        }}
+        disabled={togglingVisibility}
+        style={styles.visibilityToggle}
+        testID="promise-visibility-toggle"
+        accessibilityLabel={
+          promise.isPublicOnFlame
+            ? "Hide promise from public flame"
+            : "Show promise on public flame"
+        }
+      >
+        <Text style={[styles.visibilityText, { color: colors.textSecondary }]}>
+          {promise.isPublicOnFlame ? "Visible on flame" : "Hidden from flame"}
+        </Text>
+        <Badge
+          label={promise.isPublicOnFlame ? "Public" : "Private"}
+          variant={promise.isPublicOnFlame ? "info" : "default"}
+          testID="promise-visibility-badge"
+        />
+      </Pressable>
+
+      <Pressable
         onPress={handleCancel}
         disabled={cancelling}
         style={styles.cancelLink}
@@ -301,7 +331,7 @@ function PromiseHistory({ promises }: HistoryProps) {
 
 export function PromiseSection({ habitId, timezone }: Props) {
   const colors = lightTheme;
-  const { data, loading, error, refresh, create, cancel } = usePromises(habitId, timezone);
+  const { data, loading, error, refresh, create, cancel, toggleVisibility } = usePromises(habitId, timezone);
   const [showForm, setShowForm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -345,6 +375,7 @@ export function PromiseSection({ habitId, timezone }: Props) {
           promise={activePromise}
           onCancel={handleCancel}
           cancelling={cancelling}
+          onToggleVisibility={toggleVisibility}
         />
       ) : showForm ? (
         <CreatePromiseForm onSubmit={handleCreate} />
@@ -407,6 +438,16 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontStyle: "italic",
     marginBottom: spacing.sm,
+  },
+  visibilityToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  visibilityText: {
+    ...typography.bodySmall,
   },
   cancelLink: {
     marginTop: spacing.xs,

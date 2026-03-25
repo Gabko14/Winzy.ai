@@ -50,6 +50,7 @@ public class PromiseEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLi
         Assert.Equal("active", body.GetProperty("status").GetString());
         Assert.True(body.TryGetProperty("statement", out var statement));
         Assert.Contains("70%", statement.GetString()!);
+        Assert.False(body.GetProperty("isPublicOnFlame").GetBoolean());
     }
 
     [Fact]
@@ -665,5 +666,232 @@ public class PromiseEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLi
         var response = await otherClient.DeleteAsync($"/habits/{habitId}/promise", CT);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ===== Promise Visibility =====
+
+    [Fact]
+    public async Task ToggleVisibility_SetPublic_ReturnsOk()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate()
+        }, CT);
+
+        var response = await client.PatchAsJsonAsync($"/habits/{habitId}/promise/visibility", new
+        {
+            isPublicOnFlame = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.GetProperty("isPublicOnFlame").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_SetPrivate_ReturnsOk()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate(),
+            isPublicOnFlame = true
+        }, CT);
+
+        var response = await client.PatchAsJsonAsync($"/habits/{habitId}/promise/visibility", new
+        {
+            isPublicOnFlame = false
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.False(body.GetProperty("isPublicOnFlame").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_NoActivePromise_Returns404()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        var response = await client.PatchAsJsonAsync($"/habits/{habitId}/promise/visibility", new
+        {
+            isPublicOnFlame = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_OtherUsersPromise_Returns404()
+    {
+        using var ownerClient = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(ownerClient);
+
+        await ownerClient.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate()
+        }, CT);
+
+        using var otherClient = _fixture.CreateAuthenticatedClient(Guid.NewGuid());
+        var response = await otherClient.PatchAsJsonAsync($"/habits/{habitId}/promise/visibility", new
+        {
+            isPublicOnFlame = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreatePromise_WithIsPublicOnFlame_PersistsValue()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        var response = await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate(),
+            isPublicOnFlame = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        Assert.True(body.GetProperty("isPublicOnFlame").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetPromise_IncludesIsPublicOnFlame()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate(),
+            isPublicOnFlame = true
+        }, CT);
+
+        var response = await client.GetAsync($"/habits/{habitId}/promise", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var active = body.GetProperty("active");
+        Assert.True(active.GetProperty("isPublicOnFlame").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PublicFlame_IncludesPromiseWhenPublic()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        // Set up mock auth + social for public flame
+        MockAuthHandler.UsernameToUserId["testpublic"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [habitId], "public");
+
+        // Create a promise with public visibility
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate(),
+            isPublicOnFlame = true
+        }, CT);
+
+        var response = await client.GetAsync("/habits/public/testpublic", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+        Assert.Equal(1, habits.GetArrayLength());
+        var habit = habits[0];
+        Assert.True(habit.TryGetProperty("promise", out var promise));
+        Assert.NotEqual(JsonValueKind.Null, promise.ValueKind);
+        Assert.Contains("70%", promise.GetProperty("statement").GetString()!);
+        // PrivateNote must NOT appear on public surface
+        Assert.False(promise.TryGetProperty("privateNote", out _));
+    }
+
+    [Fact]
+    public async Task PublicFlame_ExcludesPromiseWhenNotPublic()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        MockAuthHandler.UsernameToUserId["testprivate"] = _userId;
+        MockSocialHandler.SetVisibility(_userId, [habitId], "public");
+
+        // Create a promise WITHOUT public visibility (default)
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate()
+        }, CT);
+
+        var response = await client.GetAsync("/habits/public/testprivate", CT);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
+        var habits = body.GetProperty("habits");
+        Assert.Equal(1, habits.GetArrayLength());
+        var habit = habits[0];
+        Assert.True(habit.TryGetProperty("promise", out var promise));
+        Assert.Equal(JsonValueKind.Null, promise.ValueKind);
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_MissingBody_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate()
+        }, CT);
+
+        var content = new StringContent("", System.Text.Encoding.UTF8);
+        content.Headers.ContentType = null;
+        var response = await client.PatchAsync($"/habits/{habitId}/promise/visibility", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_MalformedJson_Returns400()
+    {
+        using var client = _fixture.CreateAuthenticatedClient(_userId);
+        var habitId = await CreateHabitAsync(client);
+
+        await client.PostAsJsonAsync($"/habits/{habitId}/promise", new
+        {
+            targetConsistency = 70.0,
+            endDate = FutureDate()
+        }, CT);
+
+        var content = new StringContent("{invalid", System.Text.Encoding.UTF8, "application/json");
+        var response = await client.PatchAsync($"/habits/{habitId}/promise/visibility", content, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ToggleVisibility_MissingUserId_Returns400()
+    {
+        using var client = _fixture.Factory.CreateClient();
+
+        var response = await client.PatchAsJsonAsync($"/habits/{Guid.NewGuid()}/promise/visibility", new
+        {
+            isPublicOnFlame = true
+        }, CT);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

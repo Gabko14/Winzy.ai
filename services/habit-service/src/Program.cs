@@ -573,11 +573,30 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
         .OrderBy(h => h.CreatedAt)
         .ToListAsync();
 
+    // Load active, non-expired promises with IsPublicOnFlame=true for witness/share surfaces.
+    // Auto-resolution is lazy (triggered by owner's GET), so filter on EndDate to avoid showing
+    // expired promises that haven't been resolved yet.
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var habitIds = habits.Select(h => h.Id).ToList();
+    var publicPromises = habitIds.Count > 0
+        ? await db.Promises
+            .Where(p => p.UserId == userId
+                && p.Status == PromiseStatus.Active
+                && p.IsPublicOnFlame
+                && p.EndDate >= today
+                && habitIds.Contains(p.HabitId))
+            .ToDictionaryAsync(p => p.HabitId)
+        : new Dictionary<Guid, Promise>();
+
     return Results.Ok(habits.Select(h =>
     {
         var completionMap = h.Completions.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
         var consistency = ConsistencyCalculator.Calculate(h, completionMap, TimeZoneInfo.Utc);
         var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        object? promiseData = null;
+        if (publicPromises.TryGetValue(h.Id, out var promise))
+            promiseData = MapPromiseToPublicResponse(promise, consistency);
 
         return new
         {
@@ -589,6 +608,7 @@ app.MapGet("/habits/user/{userId:guid}", async (Guid userId, HabitDbContext db) 
             createdAt = h.CreatedAt,
             consistency,
             flameLevel = flameLevel.ToString().ToLowerInvariant(),
+            promise = promiseData,
             completions = h.Completions.Select(c => new
             {
                 localDate = c.LocalDate.ToString("yyyy-MM-dd"),
@@ -733,11 +753,30 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
         ? habits.Where(h => !excludedHabitIds.Contains(h.Id)).ToList()
         : habits.Where(h => visibleHabitIds.Contains(h.Id)).ToList();
 
+    // Load active, non-expired promises with IsPublicOnFlame=true for visible habits.
+    // Auto-resolution is lazy (triggered by owner's GET), so filter on EndDate to avoid showing
+    // expired promises that haven't been resolved yet.
+    var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+    var filteredHabitIds = filteredHabits.Select(h => h.Id).ToList();
+    var publicPromises = filteredHabitIds.Count > 0
+        ? await db.Promises
+            .Where(p => p.UserId == resolvedUserId
+                && p.Status == PromiseStatus.Active
+                && p.IsPublicOnFlame
+                && p.EndDate >= todayUtc
+                && filteredHabitIds.Contains(p.HabitId))
+            .ToDictionaryAsync(p => p.HabitId)
+        : new Dictionary<Guid, Promise>();
+
     var result = filteredHabits.Select(h =>
     {
         var completionMap = h.Completions.ToDictionary(c => c.LocalDate, c => c.CompletionKind);
         var consistency = ConsistencyCalculator.Calculate(h, completionMap, TimeZoneInfo.Utc);
         var flameLevel = ConsistencyCalculator.GetFlameLevel(consistency);
+
+        object? promiseData = null;
+        if (publicPromises.TryGetValue(h.Id, out var promise))
+            promiseData = MapPromiseToPublicResponse(promise, consistency);
 
         return new
         {
@@ -746,7 +785,8 @@ app.MapGet("/habits/public/{username}", async (string username, HabitDbContext d
             icon = h.Icon,
             color = h.Color,
             consistency,
-            flameLevel = flameLevel.ToString().ToLowerInvariant()
+            flameLevel = flameLevel.ToString().ToLowerInvariant(),
+            promise = promiseData
         };
     });
 
@@ -949,6 +989,7 @@ app.MapPost("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext c
         TargetConsistency = request.TargetConsistency,
         EndDate = endDate,
         PrivateNote = string.IsNullOrWhiteSpace(privateNote) ? null : privateNote,
+        IsPublicOnFlame = request.IsPublicOnFlame ?? false,
         Status = PromiseStatus.Active
     };
 
@@ -1083,6 +1124,42 @@ app.MapDelete("/habits/{habitId:guid}/promise", async (Guid habitId, HttpContext
     return Results.NoContent();
 });
 
+// --- Promise Visibility Toggle ---
+
+app.MapPatch("/habits/{habitId:guid}/promise/visibility", async (Guid habitId, HttpContext ctx, HabitDbContext db) =>
+{
+    if (!TryGetUserId(ctx, out var userId))
+        return Results.BadRequest(new { error = "Missing X-User-Id header" });
+
+    UpdatePromiseVisibilityRequest? request;
+    try
+    {
+        request = await ctx.Request.ReadFromJsonAsync<UpdatePromiseVisibilityRequest>(jsonOptions);
+    }
+    catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+    {
+        return Results.BadRequest(new { error = "Invalid JSON in request body" });
+    }
+    if (request is null)
+        return Results.BadRequest(new { error = "Request body is required" });
+
+    // Verify the habit exists and isn't archived before toggling visibility
+    var habitExists = await db.Habits.AnyAsync(h => h.Id == habitId && h.UserId == userId && h.ArchivedAt == null);
+    if (!habitExists)
+        return Results.NotFound();
+
+    var promise = await db.Promises
+        .FirstOrDefaultAsync(p => p.UserId == userId && p.HabitId == habitId && p.Status == PromiseStatus.Active);
+
+    if (promise is null)
+        return Results.NotFound();
+
+    promise.IsPublicOnFlame = request.IsPublicOnFlame;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { isPublicOnFlame = promise.IsPublicOnFlame });
+});
+
 app.Run();
 
 // --- Helper methods ---
@@ -1106,9 +1183,22 @@ static object MapPromiseToResponse(Promise promise, double? currentConsistency) 
         ? currentConsistency.Value >= promise.TargetConsistency
         : (bool?)null,
     currentConsistency = currentConsistency,
+    isPublicOnFlame = promise.IsPublicOnFlame,
     statement = GeneratePromiseStatement(promise),
     createdAt = promise.CreatedAt,
     resolvedAt = promise.ResolvedAt
+};
+
+// Public-safe promise response — excludes PrivateNote and internal fields.
+// Used on public flame and witness surfaces.
+static object MapPromiseToPublicResponse(Promise promise, double? currentConsistency) => new
+{
+    targetConsistency = promise.TargetConsistency,
+    endDate = promise.EndDate.ToString("yyyy-MM-dd"),
+    statement = GeneratePromiseStatement(promise),
+    onTrack = promise.Status == PromiseStatus.Active && currentConsistency.HasValue
+        ? currentConsistency.Value >= promise.TargetConsistency
+        : (bool?)null,
 };
 
 static string GeneratePromiseStatement(Promise promise)
@@ -1137,7 +1227,8 @@ internal record CreateHabitRequest(string Name, string? Icon, string? Color, Fre
 internal record UpdateHabitRequest(string? Name, string? Icon, string? Color, FrequencyType? Frequency, List<DayOfWeek>? CustomDays, string? MinimumDescription, bool? ClearMinimumDescription);
 internal record CompleteHabitRequest(string? Date, string Timezone, Winzy.Contracts.CompletionKind? CompletionKind);
 internal record UpdateCompletionRequest(Winzy.Contracts.CompletionKind CompletionKind);
-internal record CreatePromiseRequest(double TargetConsistency, string EndDate, string? PrivateNote);
+internal record CreatePromiseRequest(double TargetConsistency, string EndDate, string? PrivateNote, bool? IsPublicOnFlame);
+internal record UpdatePromiseVisibilityRequest(bool IsPublicOnFlame);
 internal record ResolvedUserResponse(Guid UserId);
 internal record VisibilityResponse(List<Guid>? HabitIds, List<Guid>? ExcludedHabitIds, string? DefaultVisibility);
 
