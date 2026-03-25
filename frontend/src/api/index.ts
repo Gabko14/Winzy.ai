@@ -5,7 +5,6 @@ export {
   type AuthResponse,
   type UpdateProfileRequest,
   type UserProfile,
-  type ValidationProblem,
   isApiError,
 } from "./types";
 export {
@@ -45,8 +44,6 @@ export { type ExportBundle, exportMyData, deleteMyAccount } from "./account";
 export {
   type WitnessLink,
   type WitnessLinksResponse,
-  type CreateWitnessLinkRequest,
-  type UpdateWitnessLinkRequest,
   type WitnessHabit,
   type WitnessViewResponse,
 } from "./witnessLinks";
