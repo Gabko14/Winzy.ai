@@ -15,6 +15,8 @@ import {
   ErrorState,
   Button,
   Badge,
+  ScreenHeader,
+  InlineError,
 } from "../design-system";
 import {
   spacing,
@@ -424,9 +426,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
     >
       {/* Back button */}
       {onBack && (
-        <Pressable onPress={onBack} style={styles.backButton} accessibilityLabel="Go back" testID="back-button">
-          <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"< Back"}</Text>
-        </Pressable>
+        <ScreenHeader title="" onBack={onBack} style={styles.detailHeader} />
       )}
 
       {/* Header card with flame */}
@@ -544,15 +544,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
           Completion History
         </Text>
         {toggleError && (
-          <View
-            style={[styles.toggleError, { backgroundColor: colors.errorBackground }]}
-            accessibilityRole="alert"
-            testID="toggle-error"
-          >
-            <Text style={[styles.toggleErrorText, { color: colors.error }]}>
-              {toggleError}
-            </Text>
-          </View>
+          <InlineError message={toggleError} testID="toggle-error" />
         )}
         <Text style={[styles.calendarHint, { color: colors.textTertiary }]}>
           Tap a date to log or correct a completion
@@ -638,13 +630,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing["3xl"],
   },
-  backButton: {
-    marginBottom: spacing.base,
-    alignSelf: "flex-start",
-  },
-  backText: {
-    ...typography.body,
-    fontWeight: "600",
+  detailHeader: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: spacing.sm,
   },
 
   // Header
@@ -739,15 +728,6 @@ const styles = StyleSheet.create({
   // Calendar
   calendarCard: {
     marginBottom: spacing.base,
-  },
-  toggleError: {
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginBottom: spacing.sm,
-  },
-  toggleErrorText: {
-    ...typography.bodySmall,
-    fontWeight: "500",
   },
   calendarHint: {
     ...typography.caption,
