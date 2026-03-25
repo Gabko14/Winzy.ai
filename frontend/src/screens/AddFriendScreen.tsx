@@ -15,10 +15,13 @@ import {
   ErrorState,
   Button,
   Badge,
+  Avatar,
+  ScreenHeader,
 } from "../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
+import { spacing, typography, lightTheme, shadows } from "../design-system";
 import { useUserSearch } from "../hooks/useUserSearch";
 import { sendFriendRequest } from "../api/social";
+import { getInitials } from "../utils/getInitials";
 import type { UserSearchResult } from "../api/social";
 import type { ApiError } from "../api/types";
 
@@ -70,11 +73,7 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
       return (
         <Card style={styles.userCard}>
           <View style={styles.userRow}>
-            <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-              <Text style={[styles.avatarText, { color: colors.brandPrimary }]}>
-                {(item.displayName ?? item.username).slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
+            <Avatar initials={getInitials(item.displayName, item.username)} size="md" />
 
             <View style={styles.userInfo}>
               {item.displayName && (
@@ -110,20 +109,7 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="add-friend-screen">
-      <View style={styles.header}>
-        {onBack && (
-          <Pressable
-            onPress={onBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={styles.backButton}
-            testID="back-button"
-          >
-            <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"\u2190"}</Text>
-          </Pressable>
-        )}
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Find Friends</Text>
-      </View>
+      <ScreenHeader title="Find Friends" onBack={onBack} />
 
       <View style={styles.searchContainer}>
         <TextInput
@@ -206,23 +192,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing["3xl"],
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  backText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    ...typography.h2,
-  },
   searchContainer: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.base,
@@ -270,17 +239,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.base,
     gap: spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "600",
   },
   userInfo: {
     flex: 1,

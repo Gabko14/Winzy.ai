@@ -10,7 +10,7 @@ import {
   Linking,
 } from "react-native";
 import { usePushNotifications } from "../hooks/usePushNotifications";
-import { Button, Card, Modal } from "../design-system";
+import { Button, Card, Modal, Avatar, ScreenHeader, InlineError } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -210,29 +210,14 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            onPress={onBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={styles.backButton}
-            testID="settings-back"
-          >
-            <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"\u2190"}</Text>
-          </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Settings</Text>
-        </View>
+        <ScreenHeader title="Settings" onBack={onBack} backTestID="settings-back" style={styles.headerStyle} />
 
         {/* Account Section */}
         <View style={styles.section} testID="settings-account-section">
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Account</Text>
           <Card>
             <View style={styles.accountRow}>
-              <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-                <Text style={[styles.avatarText, { color: colors.brandPrimary }]}>
-                  {getInitials(user.displayName, user.username)}
-                </Text>
-              </View>
+              <Avatar initials={getInitials(user.displayName, user.username)} size="base" />
               <View style={styles.accountInfo}>
                 <Text style={[styles.accountName, { color: colors.textPrimary }]} testID="settings-display-name">
                   {user.displayName || user.username}
@@ -265,15 +250,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
             </Text>
 
             {visibilityError && (
-              <View
-                style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-                accessibilityRole="alert"
-                testID="visibility-error"
-              >
-                <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-                  {visibilityError}
-                </Text>
-              </View>
+              <InlineError message={visibilityError} testID="visibility-error" />
             )}
 
             <View style={styles.optionGroup}>
@@ -404,15 +381,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
               ) : (
                 <View testID="push-toggle-row">
                   {push.error && (
-                    <View
-                      style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-                      accessibilityRole="alert"
-                      testID="push-error"
-                    >
-                      <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-                        {push.error}
-                      </Text>
-                    </View>
+                    <InlineError message={push.error} testID="push-error" />
                   )}
                   <View style={styles.pushRow}>
                     <View style={styles.actionContent}>
@@ -477,15 +446,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Data & Account</Text>
           <Card>
             {exportError && (
-              <View
-                style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-                accessibilityRole="alert"
-                testID="export-error"
-              >
-                <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-                  {exportError}
-                </Text>
-              </View>
+              <InlineError message={exportError} testID="export-error" />
             )}
             <Pressable
               onPress={handleExport}
@@ -510,15 +471,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
             {deleteError && (
-              <View
-                style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-                accessibilityRole="alert"
-                testID="delete-error"
-              >
-                <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-                  {deleteError}
-                </Text>
-              </View>
+              <InlineError message={deleteError} testID="delete-error" />
             )}
             <Pressable
               onPress={() => setShowDeleteConfirm(true)}
@@ -556,15 +509,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
         {/* Sign Out */}
         <View style={styles.section} testID="settings-sign-out">
           {signOutError && (
-            <View
-              style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-              accessibilityRole="alert"
-              testID="sign-out-error"
-            >
-              <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-                {signOutError}
-              </Text>
-            </View>
+            <InlineError message={signOutError} testID="sign-out-error" />
           )}
           <Button
             title="Sign out"
@@ -585,15 +530,7 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
           This will permanently delete your account and all associated data. This action cannot be undone.
         </Text>
         {deleteError && (
-          <View
-            style={[styles.inlineError, { backgroundColor: colors.errorBackground }]}
-            accessibilityRole="alert"
-            testID="delete-modal-error"
-          >
-            <Text style={[styles.inlineErrorText, { color: colors.error }]}>
-              {deleteError}
-            </Text>
-          </View>
+          <InlineError message={deleteError} testID="delete-modal-error" />
         )}
         <View style={styles.modalActions}>
           <Button
@@ -629,22 +566,9 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
+  headerStyle: {
     marginBottom: spacing.xl,
     paddingTop: spacing["2xl"],
-    gap: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  backText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    ...typography.h2,
-    flex: 1,
   },
   section: {
     marginBottom: spacing.xl,
@@ -660,17 +584,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    ...typography.body,
-    fontWeight: "600",
   },
   accountInfo: {
     flex: 1,
@@ -694,15 +607,6 @@ const styles = StyleSheet.create({
   settingHint: {
     ...typography.bodySmall,
     marginBottom: spacing.base,
-  },
-  inlineError: {
-    padding: spacing.sm,
-    borderRadius: radii.sm,
-    marginBottom: spacing.sm,
-  },
-  inlineErrorText: {
-    ...typography.bodySmall,
-    fontWeight: "500",
   },
   optionGroup: {
     gap: spacing.sm,

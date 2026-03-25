@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
 } from "react-native";
 import {
   Card,
@@ -12,6 +11,7 @@ import {
   Badge,
   LoadingState,
   ErrorState,
+  ScreenHeader,
 } from "../design-system";
 import {
   spacing,
@@ -262,20 +262,7 @@ export function StatsScreen({ habitId, onBack }: Props) {
       testID="stats-screen"
     >
       {/* Header with back button */}
-      <View style={styles.header}>
-        {onBack && (
-          <Pressable
-            onPress={onBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            style={styles.backButton}
-            testID="stats-back-button"
-          >
-            <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"\u2190"}</Text>
-          </Pressable>
-        )}
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Statistics</Text>
-      </View>
+      <ScreenHeader title="Statistics" onBack={onBack} backTestID="stats-back-button" />
 
       {/* Habit info */}
       <View style={styles.headerRow}>
@@ -501,23 +488,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing["3xl"],
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.base,
-    gap: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  backText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    ...typography.h2,
-    flex: 1,
-  },
-
   // Header
   headerRow: {
     flexDirection: "row",

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
 import {
   Card,
   Flame,
@@ -7,6 +7,8 @@ import {
   ErrorState,
   EmptyState,
   Button,
+  Avatar,
+  ScreenHeader,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { fetchFriendProfile } from "../api/social";
@@ -64,7 +66,7 @@ export function FriendProfileScreen({
   if (loading && !data) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="friend-profile-loading">
-        <Header name={name} onBack={onBack} />
+        <ScreenHeader title={name} onBack={onBack} />
         <View style={styles.center}>
           <LoadingState message="Loading profile..." />
         </View>
@@ -76,7 +78,7 @@ export function FriendProfileScreen({
   if (error && !data) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="friend-profile-error">
-        <Header name={name} onBack={onBack} />
+        <ScreenHeader title={name} onBack={onBack} />
         <View style={styles.center}>
           <ErrorState message={error.message} onRetry={loadProfile} />
         </View>
@@ -93,7 +95,7 @@ export function FriendProfileScreen({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="friend-profile-screen">
-      <Header name={name} onBack={onBack} />
+      <ScreenHeader title={name} onBack={onBack} />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -109,10 +111,8 @@ export function FriendProfileScreen({
       >
         {/* Profile header */}
         <View style={styles.profileHeader} testID="friend-profile-header">
-          <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-            <Text style={[styles.avatarText, { color: colors.brandPrimary }]}>
-              {initials}
-            </Text>
+          <View style={styles.avatarWrapper}>
+            <Avatar initials={initials} size="lg" />
           </View>
           <Text style={[styles.profileName, { color: colors.textPrimary }]}>{name}</Text>
           {username && displayName && (
@@ -182,35 +182,6 @@ export function FriendProfileScreen({
   );
 }
 
-// --- Header with back button ---
-
-function Header({ name, onBack }: { name: string; onBack?: () => void }) {
-  const colors = lightTheme;
-
-  return (
-    <View style={styles.header}>
-      {onBack && (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={styles.backButton}
-          testID="back-button"
-        >
-          <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"\u2190"}</Text>
-        </Pressable>
-      )}
-      <Text
-        style={[styles.headerTitle, { color: colors.textPrimary }]}
-        numberOfLines={1}
-        accessibilityRole="header"
-      >
-        {name}
-      </Text>
-    </View>
-  );
-}
-
 // --- Habit row with prominent flame ---
 
 function HabitRow({ habit }: { habit: FriendHabit }) {
@@ -254,24 +225,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing["3xl"],
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing["3xl"],
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  backText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    ...typography.h2,
-    flex: 1,
-  },
   scrollContent: {
     paddingBottom: spacing["3xl"],
   },
@@ -281,17 +234,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.base,
     paddingHorizontal: spacing.xl,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
+  avatarWrapper: {
     marginBottom: spacing.base,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: "600",
   },
   profileName: {
     ...typography.h3,

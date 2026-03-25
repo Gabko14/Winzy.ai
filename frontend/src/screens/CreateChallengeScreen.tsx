@@ -17,6 +17,8 @@ import {
   ErrorState,
   AnimatedCheckmark,
   FadeIn,
+  ScreenHeader,
+  InlineError,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import type { FriendHabit } from "../api/social";
@@ -176,7 +178,11 @@ export function CreateChallengeScreen({
   if (loadingHabits && habits.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="create-challenge-loading">
-        <Header step={step} totalSteps={4} onBack={onBack} title="Set Challenge" />
+        <ScreenHeader
+          title="Set Challenge"
+          onBack={onBack}
+          right={<Text style={[styles.stepIndicator, { color: lightTheme.textTertiary }]} testID="step-indicator">{step}/4</Text>}
+        />
         <View style={styles.center}>
           <LoadingState message={`Loading ${displayName}'s habits...`} />
         </View>
@@ -188,7 +194,11 @@ export function CreateChallengeScreen({
   if (loadError && habits.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="create-challenge-error">
-        <Header step={step} totalSteps={4} onBack={onBack} title="Set Challenge" />
+        <ScreenHeader
+          title="Set Challenge"
+          onBack={onBack}
+          right={<Text style={[styles.stepIndicator, { color: lightTheme.textTertiary }]} testID="step-indicator">{step}/4</Text>}
+        />
         <View style={styles.center}>
           <ErrorState message={loadError.message} onRetry={loadHabits} />
         </View>
@@ -228,7 +238,11 @@ export function CreateChallengeScreen({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="create-challenge-screen">
-      <Header step={step} totalSteps={4} onBack={goBack} title="Set Challenge" />
+      <ScreenHeader
+        title="Set Challenge"
+        onBack={goBack}
+        right={<Text style={[styles.stepIndicator, { color: lightTheme.textTertiary }]} testID="step-indicator">{step}/4</Text>}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -458,12 +472,8 @@ export function CreateChallengeScreen({
                 </View>
               </Card>
 
-              {submitError && (
-                <View style={[styles.errorBanner, { backgroundColor: colors.errorBackground }]} testID="submit-error">
-                  <Text style={[styles.errorText, { color: colors.error }]}>
-                    {submitErrorMessage}
-                  </Text>
-                </View>
+              {submitError && submitErrorMessage && (
+                <InlineError message={submitErrorMessage} testID="submit-error" />
               )}
             </View>
           )}
@@ -499,48 +509,6 @@ export function CreateChallengeScreen({
           </View>
         )}
       </KeyboardAvoidingView>
-    </View>
-  );
-}
-
-// --- Header with step indicator ---
-
-function Header({
-  step,
-  totalSteps,
-  onBack,
-  title,
-}: {
-  step: Step;
-  totalSteps: number;
-  onBack?: () => void;
-  title: string;
-}) {
-  const colors = lightTheme;
-
-  return (
-    <View style={styles.header}>
-      {onBack && (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={styles.backButton}
-          testID="back-button"
-        >
-          <Text style={[styles.backText, { color: colors.brandPrimary }]}>{"\u2190"}</Text>
-        </Pressable>
-      )}
-      <Text
-        style={[styles.headerTitle, { color: colors.textPrimary }]}
-        numberOfLines={1}
-        accessibilityRole="header"
-      >
-        {title}
-      </Text>
-      <Text style={[styles.stepIndicator, { color: colors.textTertiary }]} testID="step-indicator">
-        {step}/{totalSteps}
-      </Text>
     </View>
   );
 }
@@ -615,24 +583,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: spacing["3xl"],
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing["3xl"],
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  backButton: {
-    padding: spacing.xs,
-  },
-  backText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    ...typography.h3,
-    flex: 1,
   },
   stepIndicator: {
     ...typography.label,
@@ -794,16 +744,6 @@ const styles = StyleSheet.create({
   previewDivider: {
     height: 1,
   },
-  errorBanner: {
-    marginTop: spacing.xl,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-    borderRadius: radii.md,
-  },
-  errorText: {
-    ...typography.bodySmall,
-  },
-
   // Bottom bar
   bottomBar: {
     paddingHorizontal: spacing.xl,
