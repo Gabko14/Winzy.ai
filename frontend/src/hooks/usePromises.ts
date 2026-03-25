@@ -3,6 +3,7 @@ import {
   fetchPromise,
   createPromise as apiCreatePromise,
   cancelPromise as apiCancelPromise,
+  togglePromiseVisibility as apiToggleVisibility,
   type PromiseResponse,
   type CreatePromiseRequest,
 } from "../api/promises";
@@ -48,10 +49,19 @@ export function usePromises(habitId: string, timezone: string) {
     await load();
   }, [habitId, load]);
 
+  const toggleVisibility = useCallback(
+    async (isPublicOnFlame: boolean) => {
+      await apiToggleVisibility(habitId, isPublicOnFlame);
+      await load();
+    },
+    [habitId, load],
+  );
+
   return {
     ...state,
     refresh: load,
     create,
     cancel,
+    toggleVisibility,
   };
 }

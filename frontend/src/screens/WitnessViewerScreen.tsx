@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from "react-native";
 import {
   Flame,
   Card,
+  Badge,
   Button,
   LoadingState,
   ErrorState,
@@ -174,6 +175,19 @@ export function WitnessViewerScreen({ token, onNavigateToSignUp }: Props) {
                   </Text>
                 </View>
               </View>
+              {habit.promise && (
+                <View style={styles.promiseRow} testID={`witness-promise-${habit.id}`}>
+                  {habit.promise.onTrack !== null && (
+                    <Badge
+                      label={habit.promise.onTrack ? "On track" : "Below target"}
+                      variant={habit.promise.onTrack ? "success" : "warning"}
+                    />
+                  )}
+                  <Text style={[styles.promiseStatement, { color: colors.textSecondary }]}>
+                    {habit.promise.statement}
+                  </Text>
+                </View>
+              )}
             </Card>
           ))}
         </View>
@@ -280,6 +294,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "600",
     textTransform: "capitalize",
+  },
+  promiseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  promiseStatement: {
+    ...typography.caption,
+    flex: 1,
   },
   ctaSection: {
     marginHorizontal: spacing.xl,

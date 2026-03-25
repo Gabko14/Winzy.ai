@@ -948,6 +948,7 @@ app.MapGet("/social/witness/{token}", async (string token, HttpContext ctx, Soci
         var color = h.TryGetProperty("color", out var co) && co.ValueKind != JsonValueKind.Null ? co.GetString() : null;
         var consistency = h.TryGetProperty("consistency", out var cons) ? cons.GetDouble() : 0.0;
         var flameLevel = h.TryGetProperty("flameLevel", out var fl) ? fl.GetString() ?? "none" : "none";
+        var promise = h.TryGetProperty("promise", out var pr) && pr.ValueKind != JsonValueKind.Null ? (object?)pr : null;
 
         return new
         {
@@ -956,7 +957,8 @@ app.MapGet("/social/witness/{token}", async (string token, HttpContext ctx, Soci
             icon,
             color,
             consistency,
-            flameLevel
+            flameLevel,
+            promise
         };
     }).ToList();
 

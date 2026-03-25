@@ -26,6 +26,13 @@ public sealed class Promise : BaseEntity
     public PromiseStatus Status { get; set; } = PromiseStatus.Active;
 
     /// <summary>
+    /// Whether this promise appears on public flame and witness surfaces.
+    /// Can only be true when the habit itself is publicly visible (narrower-than-habit rule).
+    /// PrivateNote is never exposed regardless of this setting.
+    /// </summary>
+    public bool IsPublicOnFlame { get; set; }
+
+    /// <summary>
     /// When the promise was resolved (kept, ended below, or cancelled).
     /// Null while active.
     /// </summary>

@@ -14,9 +14,18 @@ export type FlamePromise = {
   status: PromiseStatus;
   onTrack: boolean | null;
   currentConsistency: number | null;
+  isPublicOnFlame: boolean;
   statement: string;
   createdAt: string;
   resolvedAt: string | null;
+};
+
+/** Promise data visible on public/witness surfaces (no privateNote, no internal fields). */
+export type PublicPromise = {
+  targetConsistency: number;
+  endDate: string;
+  statement: string;
+  onTrack: boolean | null;
 };
 
 export type PromiseResponse = {
@@ -28,6 +37,7 @@ export type CreatePromiseRequest = {
   targetConsistency: number;
   endDate: string;
   privateNote?: string;
+  isPublicOnFlame?: boolean;
 };
 
 // --- API functions ---
@@ -57,4 +67,14 @@ export function createPromise(
 
 export function cancelPromise(habitId: string): Promise<void> {
   return api.delete<void>(`/habits/${habitId}/promise`);
+}
+
+export function togglePromiseVisibility(
+  habitId: string,
+  isPublicOnFlame: boolean,
+): Promise<{ isPublicOnFlame: boolean }> {
+  return api.patch<{ isPublicOnFlame: boolean }>(
+    `/habits/${habitId}/promise/visibility`,
+    { isPublicOnFlame },
+  );
 }
