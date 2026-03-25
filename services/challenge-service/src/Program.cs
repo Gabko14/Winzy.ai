@@ -457,8 +457,6 @@ static async Task<Dictionary<Guid, string>> FetchDisplayNames(
     }
 }
 
-internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
-
 // --- Request DTOs ---
 
 internal record CreateChallengeRequest(

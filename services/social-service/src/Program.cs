@@ -1328,7 +1328,6 @@ static string GenerateWitnessToken()
 internal record FriendRequestDto(Guid FriendId);
 internal record VisibilityUpdateDto(HabitVisibility Visibility);
 internal record PreferencesUpdateDto(HabitVisibility DefaultHabitVisibility);
-internal record ProfileInfo(Guid UserId, string Username, string? DisplayName);
 internal record FlameInfo(string FlameLevel, double Consistency, bool HabitsUnavailable);
 internal record WitnessLinkCreateDto(string? Label, List<Guid>? HabitIds);
 internal record WitnessLinkUpdateDto(string? Label, List<Guid>? HabitIds);
