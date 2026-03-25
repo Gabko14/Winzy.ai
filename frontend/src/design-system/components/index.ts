@@ -12,3 +12,6 @@ export { PressableScale, type PressableScaleProps } from "./PressableScale";
 export { ShakeView, type ShakeViewProps } from "./ShakeView";
 export { AnimatedCheckmark, type AnimatedCheckmarkProps } from "./AnimatedCheckmark";
 export { SkeletonLoader, type SkeletonLoaderProps } from "./SkeletonLoader";
+export { ScreenHeader, type ScreenHeaderProps } from "./ScreenHeader";
+export { InlineError, type InlineErrorProps } from "./InlineError";
+export { Avatar, type AvatarProps, type AvatarSize } from "./Avatar";
