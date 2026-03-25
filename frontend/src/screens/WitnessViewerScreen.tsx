@@ -45,7 +45,7 @@ export function WitnessViewerScreen({ token, onNavigateToSignUp }: Props) {
         typeof err === "object" &&
         err !== null &&
         "code" in err &&
-        (err as { code: string }).code === "not_found"
+        (err as Record<string, unknown>).code === "not_found"
       ) {
         setNotAvailable(true);
       } else {

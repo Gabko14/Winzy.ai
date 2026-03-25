@@ -36,6 +36,5 @@ app.MapWitnessLinkEndpoints();
 app.MapInternalEndpoints();
 
 app.Run();
-
 // Make Program accessible for WebApplicationFactory in tests
 public partial class Program;

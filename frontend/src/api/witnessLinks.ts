@@ -26,6 +26,13 @@ export type UpdateWitnessLinkRequest = {
   habitIds?: string[];
 };
 
+export type WitnessHabitPromise = {
+  targetConsistency: number;
+  endDate: string;
+  statement: string;
+  onTrack: boolean | null;
+};
+
 export type WitnessHabit = {
   id: string;
   name: string;
