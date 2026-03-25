@@ -33,6 +33,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           git fetch origin "$BASE_SHA" --depth=1
+          git fetch origin "$HEAD_SHA" --depth=1
           CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           DELIM="GHOUTPUT_$(openssl rand -hex 8)"
           echo "files<<${DELIM}" >> "$GITHUB_OUTPUT"
