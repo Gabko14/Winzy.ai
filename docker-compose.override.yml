@@ -3,6 +3,10 @@
 # Add dev-specific config here (debug ports, volume mounts, etc.)
 
 services:
+  nats:
+    ports:
+      - "8222:8222"
+
   api-gateway:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
