@@ -16,9 +16,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@expo/metro-runtime": "~55.0.6",
-    "expo": "~55.0.6",
-    "expo-status-bar": "~55.0.4",
+    "@expo/metro-runtime": "~55.0.11",
+    "expo": "~55.0.26",
+    "expo-status-bar": "~55.0.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
@@ -26,18 +26,23 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-"@testing-library/react-native": "^13.3.3",
+    "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "jest": "^29.7.0",
-    "jest-expo": "^55.0.9",
+    "jest-expo": "~55.0.18",
     "prettier": "^3.4.0",
     "react-test-renderer": "19.2.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.18.0"
+  },
+  "overrides": {
+    "@react-native/virtualized-lists": {
+      "react-native": "0.83.2"
+    }
   },
   "jest": {
     "preset": "jest-expo",

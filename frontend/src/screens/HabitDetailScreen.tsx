@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -272,10 +272,11 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
     return () => clearTimeout(timer);
   }, [toggleError]);
 
-  // Calendar month state — default to current month
+  // Calendar month state — default to current month until stats provide the service date
   const now = new Date();
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [calYear, setCalYear] = useState(now.getFullYear());
+  const initializedCalendarToday = useRef<string | null>(null);
 
   // Build completed dates set from stats window when stats load
   // We derive from completionsInWindow + windowStart + today for the calendar
@@ -297,6 +298,14 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
       }
       setCompletedDates(map);
     }
+  }, [stats]);
+
+  useEffect(() => {
+    if (!stats || initializedCalendarToday.current === stats.today) return;
+    const today = parseDate(stats.today);
+    setCalMonth(today.month);
+    setCalYear(today.year);
+    initializedCalendarToday.current = stats.today;
   }, [stats]);
 
   const handleToggleDate = useCallback(
@@ -378,16 +387,20 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   }, [calMonth]);
 
   const handleNextMonth = useCallback(() => {
-    const today = new Date();
+    const today = stats ? parseDate(stats.today) : {
+      year: new Date().getFullYear(),
+      month: new Date().getMonth(),
+      day: new Date().getDate(),
+    };
     if (calMonth === 11) {
-      if (calYear + 1 <= today.getFullYear()) {
+      if (calYear + 1 <= today.year) {
         setCalMonth(0);
         setCalYear((y) => y + 1);
       }
     } else {
       setCalMonth((m) => m + 1);
     }
-  }, [calMonth, calYear]);
+  }, [calMonth, calYear, stats]);
 
   // --- Loading state ---
   if (loading && !habit) {
