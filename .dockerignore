@@ -5,7 +5,6 @@
 .beads/*.db
 .beads/*.db-shm
 .beads/*.db-wal
-frontend/
 docs/
 **/*.md
 .DS_Store

@@ -147,6 +147,8 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseCors();
 app.UseRateLimiter();
 app.UseMiddleware<InternalRouteBlockMiddleware>();
@@ -181,6 +183,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     }
 });
 app.MapReverseProxy();
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
