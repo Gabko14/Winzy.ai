@@ -89,17 +89,15 @@ public class ConsistencyCalculatorTests
     }
 
     [Fact]
-    public void Daily_HabitCreatedToday_WithCompletion_Returns0()
+    public void Daily_HabitCreatedToday_WithCompletion_Returns100()
     {
-        // A habit created today has zero track record — consistency is 0 regardless of completion.
-        // The frontend uses the separate "completedToday" flag for today's status.
         var today = new DateOnly(2025, 3, 1);
         var habit = MakeHabit(createdDate: today);
 
         var completed = new HashSet<DateOnly> { today };
         var result = ConsistencyCalculator.Calculate(habit, completed, today);
 
-        Assert.Equal(0, result);
+        Assert.Equal(100, result);
     }
 
     [Fact]
@@ -144,7 +142,7 @@ public class ConsistencyCalculatorTests
     }
 
     [Fact]
-    public void Weekly_HabitCreatedToday_Returns0()
+    public void Weekly_HabitCreatedToday_WithCompletion_Returns100()
     {
         var today = new DateOnly(2025, 3, 10); // Monday
         var habit = MakeHabit(frequency: FrequencyType.Weekly, createdDate: today);
@@ -152,11 +150,11 @@ public class ConsistencyCalculatorTests
         var completed = new HashSet<DateOnly> { today };
         var result = ConsistencyCalculator.Calculate(habit, completed, today, today);
 
-        Assert.Equal(0, result);
+        Assert.Equal(100, result);
     }
 
     [Fact]
-    public void Custom_HabitCreatedToday_Returns0()
+    public void Custom_HabitCreatedToday_WithCompletion_Returns100()
     {
         var today = new DateOnly(2025, 3, 3); // Monday
         var customDays = new List<DayOfWeek> { DayOfWeek.Monday };
@@ -165,7 +163,25 @@ public class ConsistencyCalculatorTests
         var completed = new HashSet<DateOnly> { today };
         var result = ConsistencyCalculator.Calculate(habit, completed, today, today);
 
-        Assert.Equal(0, result);
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void Daily_BackfilledCompletionsBeforeCreation_CountFromFirstBackfilledDate()
+    {
+        var today = new DateOnly(2025, 3, 3);
+        var habit = MakeHabit(createdDate: today);
+
+        var completed = new HashSet<DateOnly>
+        {
+            today.AddDays(-2),
+            today.AddDays(-1),
+            today,
+        };
+
+        var result = ConsistencyCalculator.Calculate(habit, completed, today);
+
+        Assert.Equal(100, result);
     }
 
     // --- Weekly frequency ---

@@ -624,9 +624,7 @@ public class HabitEndpointTests : IClassFixture<HabitServiceFixture>, IAsyncLife
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(CT);
-        // A habit created today has 0% consistency — no track record yet.
-        // The completedToday flag still reflects today's completion independently.
-        Assert.Equal(0, body.GetProperty("consistency").GetDouble());
+        Assert.Equal(100, body.GetProperty("consistency").GetDouble());
         Assert.Equal(1, body.GetProperty("totalCompletions").GetInt32());
         Assert.Equal(60, body.GetProperty("windowDays").GetInt32());
         Assert.True(body.GetProperty("completedToday").GetBoolean());

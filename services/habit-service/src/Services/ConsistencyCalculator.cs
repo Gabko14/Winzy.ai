@@ -90,13 +90,17 @@ public static class ConsistencyCalculator
         var habitCreatedDate = habitCreatedLocalDate ?? DateOnly.FromDateTime(habit.CreatedAt.UtcDateTime);
         var windowStart = today.AddDays(-(WindowDays - 1));
 
-        // If the habit was created after the window start, narrow the window
-        var effectiveStart = windowStart > habitCreatedDate ? windowStart : habitCreatedDate;
+        // If the habit was created after the window start, narrow the window.
+        // Backfilled completions inside the rolling window should count too; otherwise the
+        // calendar can show completions that the flame ignores.
+        var firstCompletionInWindow = completions.Keys
+            .Where(date => date >= windowStart && date <= today)
+            .DefaultIfEmpty(habitCreatedDate)
+            .Min();
+        var scoreStart = firstCompletionInWindow < habitCreatedDate ? firstCompletionInWindow : habitCreatedDate;
+        var effectiveStart = windowStart > scoreStart ? windowStart : scoreStart;
 
-        // If the habit was created today or in the future, no applicable days yet.
-        // A habit created today has zero track record — consistency starts accumulating tomorrow.
-        // The frontend shows "completed today" via the completedToday flag independently.
-        if (effectiveStart >= today)
+        if (effectiveStart > today)
             return 0;
 
         // Weekly frequency uses a different algorithm: weeks with completions / total weeks
