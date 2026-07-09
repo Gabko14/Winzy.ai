@@ -133,7 +133,7 @@ func (h *Handlers) CompleteHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	completion, err := h.service.CompleteHabit(r.Context(), userID, habitID, req)
+	completion, consistency, err := h.service.CompleteHabit(r.Context(), userID, habitID, req)
 	if err != nil {
 		writeHabitsError(w, err)
 		return
@@ -147,8 +147,30 @@ func (h *Handlers) CompleteHabit(w http.ResponseWriter, r *http.Request) {
 		LocalDate:      localDate,
 		CompletedAt:    completion.CompletedAt,
 		CompletionKind: completion.CompletionKind.String(),
-		Consistency:    0, // TODO(winzy.ai-rdc7.3.2): real weighted consistency
+		Consistency:    consistency,
 	})
+}
+
+// Stats handles GET /habits/{id}/stats. The X-Timezone header is required and
+// must be a valid IANA id — a missing header is a distinct 400 message from an
+// invalid value, matching GetStats in CompletionEndpoints.cs (the header check
+// lives here; resolveTimezone in the service handles the invalid-value case).
+func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	habitID := r.PathValue("id")
+
+	timezone := r.Header.Get("X-Timezone")
+	if strings.TrimSpace(timezone) == "" {
+		writeError(w, http.StatusBadRequest, "X-Timezone header is required")
+		return
+	}
+
+	stats, err := h.service.HabitStats(r.Context(), userID, habitID, timezone)
+	if err != nil {
+		writeHabitsError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }
 
 // DeleteCompletion handles DELETE /habits/{id}/completions/{date}.

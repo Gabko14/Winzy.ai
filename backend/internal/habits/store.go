@@ -316,6 +316,42 @@ func completionsForDate(ctx context.Context, db querier, userID string, localDat
 	return result, nil
 }
 
+// habitCompletionDates returns the (local_date, kind) of every completion for
+// habitID, ordered by date — the minimal projection the consistency engine
+// and the stats endpoint consume, matching the C#'s
+// `db.Completions.Where(c => c.HabitId == id).Select(c => new { c.LocalDate,
+// c.CompletionKind })`. The C# query carries no ORDER BY (EF returns physical
+// order); this ports it with an explicit `ORDER BY local_date` so the stats
+// endpoint's completedDates array is deterministic — the calculator itself is
+// order-independent (it keys completions into a map), so ordering changes no
+// computed number. See the bead report's deviations for this one intentional
+// difference from the source.
+func habitCompletionDates(ctx context.Context, db querier, habitID string) ([]DatedCompletion, error) {
+	rows, err := db.Query(ctx, `
+		SELECT local_date, completion_kind FROM completions
+		WHERE habit_id = $1::uuid
+		ORDER BY local_date`,
+		habitID)
+	if err != nil {
+		return nil, fmt.Errorf("habits: listing completion dates: %w", err)
+	}
+	defer rows.Close()
+
+	result := []DatedCompletion{}
+	for rows.Next() {
+		var localDate time.Time
+		var kind string
+		if err := rows.Scan(&localDate, &kind); err != nil {
+			return nil, fmt.Errorf("habits: scanning completion date: %w", err)
+		}
+		result = append(result, DatedCompletion{LocalDate: localDate, Kind: completionKindFromDB(kind)})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("habits: iterating completion dates: %w", err)
+	}
+	return result, nil
+}
+
 // deleteUserData removes every completion and habit owned by userID, in
 // that order to respect the completions -> habits FK — the UserDeleted
 // event handler's cascade, matching UserDeletedSubscriber.cs.

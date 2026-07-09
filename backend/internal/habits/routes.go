@@ -22,6 +22,7 @@ func RegisterRoutes(mux *http.ServeMux, h *Handlers) {
 	mux.HandleFunc("PUT /habits/{id}", h.UpdateHabit)
 	mux.HandleFunc("DELETE /habits/{id}", h.ArchiveHabit)
 	mux.HandleFunc("POST /habits/{id}/complete", h.CompleteHabit)
+	mux.HandleFunc("GET /habits/{id}/stats", h.Stats)
 	mux.HandleFunc("DELETE /habits/{id}/completions/{date}", h.DeleteCompletion)
 	mux.HandleFunc("PUT /habits/{id}/completions/{date}", h.UpdateCompletion)
 }

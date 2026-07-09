@@ -13,18 +13,13 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/events"
 )
 
-// windowDays mirrors ConsistencyCalculator.WindowDays (60) — the only piece
-// of the not-yet-ported consistency engine this bead needs, to validate
-// that a completion's date falls within the 60-day rolling window
-// (windowStart = today-59 .. today). The full calculation lands with
-// winzy.ai-rdc7.3.2.
-const windowDays = 60
-
 // ErrFutureDate and ErrOutsideWindow are the two date-range rejections
-// CompleteHabit applies, matching CompletionEndpoints.cs exactly.
+// CompleteHabit applies, matching CompletionEndpoints.cs exactly. The window
+// size comes from ConsistencyCalculator's WindowDays (60): the window is
+// [today-59 .. today], so a completion before windowStart is rejected.
 var (
 	ErrFutureDate    = newFieldError("Cannot log completions in the future")
-	ErrOutsideWindow = newFieldError(fmt.Sprintf("Cannot log completions more than %d days in the past", windowDays-1))
+	ErrOutsideWindow = newFieldError(fmt.Sprintf("Cannot log completions more than %d days in the past", WindowDays-1))
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -218,30 +213,35 @@ func (s *Service) ArchiveHabit(ctx context.Context, userID, id string) error {
 
 // CompleteHabit resolves the IANA timezone, computes (or accepts) the
 // local date, validates it falls within [today-59, today] and Honest
-// Minimums rules, and inserts a new completion — matching
-// CompleteHabit in CompletionEndpoints.cs.
-func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req CompleteHabitRequest) (Completion, error) {
+// Minimums rules, inserts a new completion, then recomputes the habit's
+// weighted consistency over all completions (including the new one) in the
+// request timezone — matching CompleteHabit in CompletionEndpoints.cs, which
+// loads every completion and calls ConsistencyCalculator.Calculate(habit,
+// map, tz) after saving. The consistency is returned to the caller (for the
+// HTTP response's "consistency" field) and carried in the HabitCompleted
+// event, exactly as the C# does.
+func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req CompleteHabitRequest) (Completion, float64, error) {
 	if !isValidUUID(habitID) {
-		return Completion{}, ErrNotFound
+		return Completion{}, 0, ErrNotFound
 	}
 	habit, found, err := findActiveHabit(ctx, s.pool, userID, habitID)
 	if err != nil {
-		return Completion{}, err
+		return Completion{}, 0, err
 	}
 	if !found {
-		return Completion{}, ErrNotFound
+		return Completion{}, 0, ErrNotFound
 	}
 
 	loc, err := resolveTimezone(req.Timezone)
 	if err != nil {
-		return Completion{}, err
+		return Completion{}, 0, err
 	}
 
 	var localDate time.Time
 	if req.Date != nil {
 		parsed, ok := parseISODate(*req.Date)
 		if !ok {
-			return Completion{}, newFieldError(fmt.Sprintf("Invalid date format: %s", *req.Date))
+			return Completion{}, 0, newFieldError(fmt.Sprintf("Invalid date format: %s", *req.Date))
 		}
 		localDate = parsed
 	} else {
@@ -250,11 +250,11 @@ func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req
 
 	userToday := todayInLocation(loc)
 	if localDate.After(userToday) {
-		return Completion{}, ErrFutureDate
+		return Completion{}, 0, ErrFutureDate
 	}
-	windowStart := userToday.AddDate(0, 0, -(windowDays - 1))
+	windowStart := userToday.AddDate(0, 0, -(WindowDays - 1))
 	if localDate.Before(windowStart) {
-		return Completion{}, ErrOutsideWindow
+		return Completion{}, 0, ErrOutsideWindow
 	}
 
 	kind := CompletionFull
@@ -262,27 +262,34 @@ func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req
 		kind = *req.CompletionKind
 	}
 	if !kind.validForLogging() {
-		return Completion{}, newFieldError("Invalid completionKind. Must be 'full' or 'minimum'")
+		return Completion{}, 0, newFieldError("Invalid completionKind. Must be 'full' or 'minimum'")
 	}
 	if kind == CompletionMinimum && emptyDescription(habit.MinimumDescription) {
-		return Completion{}, newFieldError("Cannot log minimum completion for a habit without a configured minimum description")
+		return Completion{}, 0, newFieldError("Cannot log minimum completion for a habit without a configured minimum description")
 	}
 
 	completion, err := createCompletion(ctx, s.pool, habitID, userID, localDate, kind)
 	if err != nil {
-		return Completion{}, err
+		return Completion{}, 0, err
 	}
 
-	// Consistency = 0 with a TODO(winzy.ai-rdc7.3.2) marker: computing the
-	// real weighted consistency requires the not-yet-ported
-	// ConsistencyCalculator. The consistency engine bead wires the real
-	// value into both this event payload and the HTTP response's
-	// "consistency" field (see handlers.go's Complete handler).
+	// Recompute weighted consistency over ALL completions (the new one
+	// included) in the request timezone — the same source and order as the
+	// C#: load-all, then Calculate(habit, map, tz). A read failure here must
+	// not fail an already-committed completion, so on error we fall back to 0
+	// (the event's consistency is best-effort enrichment) and log.
+	dates, err := habitCompletionDates(ctx, s.pool, habitID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "loading completions for consistency; completion already committed", "habit_id", habitID, "error", err)
+		dates = nil
+	}
+	consistency := Consistency(habit, dates, loc)
+
 	if err := events.Emit(ctx, s.registry, events.HabitCompleted{
 		UserID:         userID,
 		HabitID:        habitID,
 		Date:           localDate,
-		Consistency:    0, // TODO(winzy.ai-rdc7.3.2): real weighted consistency
+		Consistency:    consistency,
 		Timezone:       req.Timezone,
 		HabitName:      habit.Name,
 		CompletionKind: events.CompletionKind(kind.dbValue()),
@@ -290,7 +297,7 @@ func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req
 		s.logger.ErrorContext(ctx, "habit.completed handler failed; completion already committed", "habit_id", habitID, "error", err)
 	}
 
-	return completion, nil
+	return completion, consistency, nil
 }
 
 // DeleteCompletion removes a completion by (habitID, date), scoped
@@ -381,6 +388,79 @@ func (s *Service) CompletionsByDate(ctx context.Context, userID, dateStr string)
 	}
 
 	return CompletionsByDateResponse{Date: formatISODate(localDate), Habits: habitsOut}, nil
+}
+
+// HabitStats builds GET /habits/{id}/stats's payload for an owner: it
+// resolves "today" and the habit's creation date in timezone (an owner
+// surface — the X-Timezone header, IANA, invalid -> 400), computes weighted
+// consistency and the flame level over all completions, and reports the
+// window counters — field-for-field the same as GetStats in
+// CompletionEndpoints.cs. The caller (handlers.go) has already rejected a
+// missing X-Timezone header with the header-specific message; an invalid
+// (but present) id here maps to "Invalid timezone: {tz}" via resolveTimezone,
+// matching the C#.
+func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone string) (HabitStatsResponse, error) {
+	if !isValidUUID(habitID) {
+		return HabitStatsResponse{}, ErrNotFound
+	}
+
+	loc, err := resolveTimezone(timezone)
+	if err != nil {
+		return HabitStatsResponse{}, err
+	}
+
+	habit, found, err := findActiveHabit(ctx, s.pool, userID, habitID)
+	if err != nil {
+		return HabitStatsResponse{}, err
+	}
+	if !found {
+		return HabitStatsResponse{}, ErrNotFound
+	}
+
+	dates, err := habitCompletionDates(ctx, s.pool, habitID)
+	if err != nil {
+		return HabitStatsResponse{}, err
+	}
+
+	consistency := Consistency(habit, dates, loc)
+	flame := GetFlameLevel(consistency, nil)
+
+	today := civilFromTime(time.Now().In(loc))
+	windowStart := today.addDays(-(WindowDays - 1))
+
+	completionsInWindow := 0
+	completedToday := false
+	var completedTodayKind *string
+	entries := make([]CompletionDateEntry, 0, len(dates))
+	for _, d := range dates {
+		cd := civilFromTime(d.LocalDate)
+		if !cd.before(windowStart) && !cd.after(today) {
+			completionsInWindow++
+		}
+		if cd == today {
+			completedToday = true
+			kind := d.Kind.String()
+			completedTodayKind = &kind
+		}
+		entries = append(entries, CompletionDateEntry{
+			Date:           formatISODate(d.LocalDate),
+			CompletionKind: d.Kind.String(),
+		})
+	}
+
+	return HabitStatsResponse{
+		HabitID:             habitID,
+		Consistency:         consistency,
+		FlameLevel:          flame.String(),
+		TotalCompletions:    len(dates),
+		CompletionsInWindow: completionsInWindow,
+		CompletedToday:      completedToday,
+		CompletedTodayKind:  completedTodayKind,
+		WindowDays:          WindowDays,
+		WindowStart:         formatISODate(windowStart.t()),
+		Today:               formatISODate(today.t()),
+		CompletedDates:      entries,
+	}, nil
 }
 
 // resolveTimezone parses tz as an IANA timezone identifier, matching

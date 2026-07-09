@@ -1,8 +1,9 @@
-// Package habits ports habit-service's habits + completions surface (see
-// winzy.ai-rdc7.3.1): CRUD on habits and logging/correcting completions.
-// Stats, promises, and the public flame surfaces are out of scope here —
-// they land with the consistency engine (winzy.ai-rdc7.3.2) and Flame
-// Promises (winzy.ai-rdc7.3.3).
+// Package habits ports habit-service's habits + completions surface
+// (winzy.ai-rdc7.3.1) and the Flame/consistency engine (winzy.ai-rdc7.3.2):
+// CRUD on habits, logging/correcting completions, weighted consistency over a
+// 60-day rolling window (consistency.go), and GET /habits/{id}/stats.
+// Promises and the public flame surfaces land with Flame Promises
+// (winzy.ai-rdc7.3.3).
 package habits
 
 import (
@@ -253,8 +254,9 @@ func toHabitResponse(h Habit) HabitResponse {
 }
 
 // CompletionResponse is POST /habits/{id}/complete's response shape: the
-// full HabitCompletion the frontend types. Consistency is 0 with a
-// TODO(winzy.ai-rdc7.3.2) marker until the consistency engine lands — see
+// full HabitCompletion the frontend types (frontend/src/api/habits.ts).
+// Consistency is the habit's weighted consistency recomputed over all
+// completions after this one commits, in the request timezone — see
 // service.go's CompleteHabit doc comment.
 type CompletionResponse struct {
 	ID             string    `json:"id"`
@@ -263,6 +265,33 @@ type CompletionResponse struct {
 	CompletedAt    time.Time `json:"completedAt"`
 	CompletionKind string    `json:"completionKind"`
 	Consistency    float64   `json:"consistency"`
+}
+
+// HabitStatsResponse is GET /habits/{id}/stats's response shape, field- and
+// name-identical to GetStats's anonymous DTO in CompletionEndpoints.cs and to
+// frontend/src/api/habits.ts's HabitStats type. flameLevel and each
+// completedDates entry's completionKind are lowercase enum names;
+// completedTodayKind is a lowercase name or null (never omitted).
+type HabitStatsResponse struct {
+	HabitID             string                `json:"habitId"`
+	Consistency         float64               `json:"consistency"`
+	FlameLevel          string                `json:"flameLevel"`
+	TotalCompletions    int                   `json:"totalCompletions"`
+	CompletionsInWindow int                   `json:"completionsInWindow"`
+	CompletedToday      bool                  `json:"completedToday"`
+	CompletedTodayKind  *string               `json:"completedTodayKind"`
+	WindowDays          int                   `json:"windowDays"`
+	WindowStart         string                `json:"windowStart"`
+	Today               string                `json:"today"`
+	CompletedDates      []CompletionDateEntry `json:"completedDates"`
+}
+
+// CompletionDateEntry is one element of HabitStatsResponse.CompletedDates —
+// a completed date and its lowercase kind, matching the C#'s per-date
+// projection and frontend/src/api/habits.ts's CompletionDateEntry.
+type CompletionDateEntry struct {
+	Date           string `json:"date"`
+	CompletionKind string `json:"completionKind"`
 }
 
 // UpdateCompletionResponse is PUT /habits/{id}/completions/{date}'s response
