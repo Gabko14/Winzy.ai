@@ -1,0 +1,24 @@
+{
+  "status": 200,
+  "body": {
+    "baselineConsistency": null,
+    "claimedAt": null,
+    "completedAt": null,
+    "completionCount": 0,
+    "createdAt": "{{timestamp}}",
+    "creatorDisplayName": "{{seed:user:challengecreator:displayName}}",
+    "creatorId": "{{seed:user:challengecreator:id}}",
+    "customEndDate": null,
+    "customStartDate": null,
+    "endsAt": "{{timestamp}}",
+    "habitId": "{{seed:habit:challengerecipient:swim}}",
+    "id": "{{uuid:1}}",
+    "milestoneType": "totalCompletions",
+    "periodDays": 30,
+    "progress": 0,
+    "recipientId": "{{seed:user:challengerecipient:id}}",
+    "rewardDescription": "Movie night",
+    "status": "active",
+    "targetValue": 1
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "status": 201,
+  "body": {
+    "createdAt": "{{timestamp}}",
+    "currentConsistency": null,
+    "endDate": "2026-08-08",
+    "habitId": "{{seed:habit:promiser:write}}",
+    "id": "{{uuid:1}}",
+    "isPublicOnFlame": false,
+    "onTrack": null,
+    "privateNote": "Only I should ever see this note",
+    "resolvedAt": null,
+    "statement": "Keeping above 50% through August 8",
+    "status": "active",
+    "targetConsistency": 50
+  }
+}

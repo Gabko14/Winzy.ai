@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "body": {
+    "createdAt": "{{timestamp}}",
+    "friendId": "{{seed:user:friendB:id}}",
+    "id": "{{seed:friendrequest:a-to-b}}",
+    "status": "accepted",
+    "userId": "{{seed:user:friendA:id}}"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "status": 200,
+  "body": {
+    "completedDates": [
+      {
+        "completionKind": "full",
+        "date": "2026-07-10"
+      }
+    ],
+    "completedToday": true,
+    "completedTodayKind": "full",
+    "completionsInWindow": 1,
+    "consistency": 100,
+    "flameLevel": "blazing",
+    "habitId": "{{seed:habit:flameowner:reading}}",
+    "today": "2026-07-10",
+    "totalCompletions": 1,
+    "windowDays": 60,
+    "windowStart": "2026-05-12"
+  }
+}

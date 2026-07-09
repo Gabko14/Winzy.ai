@@ -1,0 +1,28 @@
+{
+  "status": 200,
+  "body": {
+    "items": [
+      {
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "otherUserId": "{{seed:user:notifyactor:id}}"
+        },
+        "id": "{{uuid:1}}",
+        "readAt": null,
+        "type": "friendrequestaccepted"
+      },
+      {
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "fromUserId": "{{seed:user:notifyactor:id}}"
+        },
+        "id": "{{uuid:2}}",
+        "readAt": null,
+        "type": "friendrequestsent"
+      }
+    ],
+    "page": 1,
+    "pageSize": 20,
+    "total": 2
+  }
+}

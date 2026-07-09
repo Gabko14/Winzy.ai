@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "body": {
+    "challengeUpdates": true,
+    "friendActivity": false,
+    "habitReminders": true
+  }
+}

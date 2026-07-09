@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "body": {
+    "habitId": "{{seed:habit:visowner:journal}}",
+    "visibility": "private"
+  }
+}

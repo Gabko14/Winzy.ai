@@ -1,0 +1,18 @@
+{
+  "status": 200,
+  "body": {
+    "degraded": false,
+    "habits": [
+      {
+        "color": null,
+        "consistency": 0,
+        "flameLevel": "none",
+        "icon": null,
+        "id": "{{seed:habit:flameowner:reading}}",
+        "name": "Read",
+        "promise": null
+      }
+    ],
+    "username": "{{seed:user:flameowner:username}}"
+  }
+}

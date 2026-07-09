@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "body": {
+    "active": null,
+    "history": [
+      {
+        "createdAt": "{{timestamp}}",
+        "currentConsistency": null,
+        "endDate": "2026-08-08",
+        "habitId": "{{seed:habit:promiser:write}}",
+        "id": "{{uuid:1}}",
+        "isPublicOnFlame": true,
+        "onTrack": null,
+        "privateNote": "Only I should ever see this note",
+        "resolvedAt": "{{timestamp}}",
+        "statement": "Keeping above 50% through August 8",
+        "status": "cancelled",
+        "targetConsistency": 50
+      }
+    ]
+  }
+}

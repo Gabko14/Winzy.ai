@@ -1,0 +1,26 @@
+{
+  "status": 200,
+  "body": {
+    "date": "2026-07-09",
+    "habits": [
+      {
+        "color": null,
+        "completed": true,
+        "completionKind": "minimum",
+        "icon": null,
+        "id": "{{seed:habit:completer:meditate}}",
+        "minimumDescription": "At least 2 minutes",
+        "name": "Meditate"
+      },
+      {
+        "color": null,
+        "completed": false,
+        "completionKind": null,
+        "icon": null,
+        "id": "{{seed:habit:completer:run}}",
+        "minimumDescription": null,
+        "name": "Run"
+      }
+    ]
+  }
+}

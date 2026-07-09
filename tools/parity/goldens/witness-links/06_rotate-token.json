@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "body": {
+    "createdAt": "{{timestamp}}",
+    "habitIds": [
+      "{{seed:habit:witnessowner:yoga}}"
+    ],
+    "id": "{{uuid:1}}",
+    "label": "Parity witness",
+    "token": "{{token}}"
+  }
+}

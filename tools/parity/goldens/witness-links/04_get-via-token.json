@@ -1,0 +1,19 @@
+{
+  "status": 200,
+  "body": {
+    "habits": [
+      {
+        "color": null,
+        "consistency": 0,
+        "flameLevel": "none",
+        "icon": null,
+        "id": "{{seed:habit:witnessowner:yoga}}",
+        "name": "Yoga",
+        "promise": null
+      }
+    ],
+    "habitsUnavailable": false,
+    "ownerDisplayName": "{{seed:user:witnessowner:displayName}}",
+    "ownerUsername": "{{seed:user:witnessowner:username}}"
+  }
+}

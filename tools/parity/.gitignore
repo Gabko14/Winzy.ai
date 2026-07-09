@@ -1,0 +1,4 @@
+# Failure artifacts are ephemeral run diagnostics, not the golden master —
+# they're regenerated (and overwritten) on every failing run. goldens/ is
+# NOT ignored: it's the committed golden master (see README.md).
+/artifacts/

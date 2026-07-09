@@ -1,0 +1,6 @@
+{
+  "status": 400,
+  "body": {
+    "error": "X-Timezone header is required"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "body": {
+    "incoming": [
+      {
+        "createdAt": "{{timestamp}}",
+        "direction": "incoming",
+        "fromDisplayName": "{{seed:user:notifyactor:displayName}}",
+        "fromUserId": "{{seed:user:notifyactor:id}}",
+        "fromUsername": "{{seed:user:notifyactor:username}}",
+        "id": "{{uuid:1}}"
+      }
+    ],
+    "outgoing": []
+  }
+}

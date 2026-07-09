@@ -1,0 +1,15 @@
+{
+  "status": 201,
+  "body": {
+    "accessToken": "{{token}}",
+    "refreshToken": "{{token}}",
+    "user": {
+      "avatarUrl": null,
+      "createdAt": "{{timestamp}}",
+      "displayName": "{{seed:user:errcreator:displayName}}",
+      "email": "{{seed:user:errcreator:email}}",
+      "id": "{{uuid:1}}",
+      "username": "{{seed:user:errcreator:username}}"
+    }
+  }
+}

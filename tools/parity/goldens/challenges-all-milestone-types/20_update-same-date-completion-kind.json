@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "body": {
+    "completedAt": "{{timestamp}}",
+    "completionKind": "full",
+    "habitId": "{{seed:habit:challengerecipient:swim}}",
+    "id": "{{uuid:1}}",
+    "localDate": "2026-07-09"
+  }
+}

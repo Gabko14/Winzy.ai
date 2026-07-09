@@ -1,0 +1,14 @@
+{
+  "status": 201,
+  "body": {
+    "archivedAt": null,
+    "color": "#336699",
+    "createdAt": "{{timestamp}}",
+    "customDays": null,
+    "frequency": "daily",
+    "icon": "book",
+    "id": "{{uuid:1}}",
+    "minimumDescription": null,
+    "name": "Read"
+  }
+}

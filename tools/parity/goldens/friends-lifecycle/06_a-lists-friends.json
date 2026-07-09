@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "body": {
+    "items": [
+      {
+        "avatarUrl": null,
+        "consistency": 0,
+        "displayName": "{{seed:user:friendB:displayName}}",
+        "flameLevel": "none",
+        "friendId": "{{seed:user:friendB:id}}",
+        "habitsUnavailable": false,
+        "since": "{{timestamp}}",
+        "username": "{{seed:user:friendB:username}}"
+      }
+    ],
+    "page": 1,
+    "pageSize": 20,
+    "total": 1
+  }
+}

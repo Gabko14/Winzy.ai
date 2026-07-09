@@ -1,0 +1,70 @@
+{
+  "status": 200,
+  "body": {
+    "hasMore": false,
+    "items": [
+      {
+        "actorDisplayName": "{{seed:user:visowner:displayName}}",
+        "actorId": "{{seed:user:visowner:id}}",
+        "actorUsername": "{{seed:user:visowner:username}}",
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "habitId": "{{seed:habit:visowner:journal}}",
+          "name": "Journal",
+          "userId": "{{seed:user:visowner:id}}"
+        },
+        "eventType": "habit.created",
+        "id": "{{uuid:1}}"
+      },
+      {
+        "actorDisplayName": "{{seed:user:visfriend:displayName}}",
+        "actorId": "{{seed:user:visfriend:id}}",
+        "actorUsername": "{{seed:user:visfriend:username}}",
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "userId1": "{{seed:user:visowner:id}}",
+          "userId2": "{{seed:user:visfriend:id}}"
+        },
+        "eventType": "{{token}}",
+        "id": "{{uuid:2}}"
+      },
+      {
+        "actorDisplayName": "{{seed:user:visowner:displayName}}",
+        "actorId": "{{seed:user:visowner:id}}",
+        "actorUsername": "{{seed:user:visowner:username}}",
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "userId1": "{{seed:user:visowner:id}}",
+          "userId2": "{{seed:user:visfriend:id}}"
+        },
+        "eventType": "{{token}}",
+        "id": "{{uuid:3}}"
+      },
+      {
+        "actorDisplayName": null,
+        "actorId": "{{seed:user:visfriend:id}}",
+        "actorUsername": "{{seed:user:visfriend:username}}",
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "userId": "{{seed:user:visfriend:id}}",
+          "username": "{{seed:user:visfriend:username}}"
+        },
+        "eventType": "user.registered",
+        "id": "{{uuid:4}}"
+      },
+      {
+        "actorDisplayName": null,
+        "actorId": "{{seed:user:visowner:id}}",
+        "actorUsername": "{{seed:user:visowner:username}}",
+        "createdAt": "{{timestamp}}",
+        "data": {
+          "userId": "{{seed:user:visowner:id}}",
+          "username": "{{seed:user:visowner:username}}"
+        },
+        "eventType": "user.registered",
+        "id": "{{uuid:5}}"
+      }
+    ],
+    "nextCursor": null
+  }
+}

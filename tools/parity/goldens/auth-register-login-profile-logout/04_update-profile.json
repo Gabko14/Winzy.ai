@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "body": {
+    "avatarUrl": null,
+    "createdAt": "{{timestamp}}",
+    "displayName": "Parity Alice Updated",
+    "email": "{{seed:user:alice:email}}",
+    "id": "{{seed:user:alice:id}}",
+    "username": "{{seed:user:alice:username}}"
+  }
+}

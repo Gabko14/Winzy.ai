@@ -1,0 +1,23 @@
+{
+  "status": 200,
+  "body": {
+    "degraded": false,
+    "habits": [
+      {
+        "color": null,
+        "consistency": 0,
+        "flameLevel": "none",
+        "icon": null,
+        "id": "{{seed:habit:promiser:write}}",
+        "name": "Write",
+        "promise": {
+          "endDate": "2026-08-08",
+          "onTrack": false,
+          "statement": "Keeping above 50% through August 8",
+          "targetConsistency": 50
+        }
+      }
+    ],
+    "username": "{{seed:user:promiser:username}}"
+  }
+}

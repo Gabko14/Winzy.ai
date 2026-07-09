@@ -1,0 +1,18 @@
+{
+  "status": 201,
+  "body": {
+    "claimedAt": null,
+    "completedAt": null,
+    "createdAt": "{{timestamp}}",
+    "creatorId": "{{seed:user:challengecreator:id}}",
+    "endsAt": "{{timestamp}}",
+    "habitId": "{{seed:habit:challengerecipient:hike}}",
+    "id": "{{uuid:1}}",
+    "milestoneType": "customDateRange",
+    "periodDays": 30,
+    "recipientId": "{{seed:user:challengerecipient:id}}",
+    "rewardDescription": "Board game night",
+    "status": "active",
+    "targetValue": 10
+  }
+}

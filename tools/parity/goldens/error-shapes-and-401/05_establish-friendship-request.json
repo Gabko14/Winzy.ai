@@ -1,0 +1,10 @@
+{
+  "status": 201,
+  "body": {
+    "createdAt": "{{timestamp}}",
+    "friendId": "{{seed:user:errrecipient:id}}",
+    "id": "{{uuid:1}}",
+    "status": "pending",
+    "userId": "{{seed:user:errcreator:id}}"
+  }
+}
