@@ -54,7 +54,8 @@ Every test module must cover three areas:
 
 - Work on `main` by default. Use a `feature/` or `fix/` branch only for risky or experimental work you might throw away.
 - Conventional commits. Include the beads issue ID when the commit maps to a specific issue.
-- **Quality gates before every push** — CI runs on `main` after the fact, and the Railway deployment tracks `main`, so a broken push is a broken deploy candidate. Run the gates listed under Workflow step 5 first.
+- **Quality gates before every push** — CI runs on `main` after the fact; run the gates listed under Workflow step 5 first.
+- **Railway deploys are manual, via the `railway` CLI** (`railway up`). Services are NOT repo-connected — pushing `main` does not deploy. Claude operates Railway; the config source of truth is the Railway project itself (`winzy-staging`).
 
 ## Agent Instructions
 
