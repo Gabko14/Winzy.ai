@@ -164,6 +164,12 @@ func TestLogin_ErrorCase_MissingFieldsReturnsBadRequest(t *testing.T) {
 	})
 
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("status = %d, want 400", resp.StatusCode)
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := decodeBody[map[string]string](t, resp)
+	// Verbatim AuthEndpoints.cs: Results.BadRequest(new { error =
+	// "Email/username and password are required." })
+	if body["error"] != "Email/username and password are required." {
+		t.Errorf(`error = %q, want "Email/username and password are required."`, body["error"])
 	}
 }

@@ -3,7 +3,9 @@
 package auth_test
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/Gabko14/winzy/backend/internal/auth"
@@ -150,8 +152,10 @@ func TestRegister_ErrorCase_DuplicateEmailReturnsConflict(t *testing.T) {
 		t.Errorf("status = %d, want 409", resp.StatusCode)
 	}
 	body := decodeBody[map[string]string](t, resp)
-	if body["error"] == "" {
-		t.Error(`409 response body should have a non-empty "error" field`)
+	// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Email already registered." })
+	// — the parity harness diffs this string, so it must match exactly.
+	if body["error"] != "Email already registered." {
+		t.Errorf(`error = %q, want "Email already registered."`, body["error"])
 	}
 }
 
@@ -167,6 +171,68 @@ func TestRegister_ErrorCase_DuplicateUsernameReturnsConflict(t *testing.T) {
 
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status = %d, want 409", resp.StatusCode)
+	}
+	body := decodeBody[map[string]string](t, resp)
+	// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Username already taken." })
+	if body["error"] != "Username already taken." {
+		t.Errorf(`error = %q, want "Username already taken."`, body["error"])
+	}
+}
+
+func TestRegister_ErrorCase_ConcurrentDuplicateRegistrationsResolveToExactlyOneWinner(t *testing.T) {
+	// Concurrent registrations for the same email race between
+	// Service.Register's pre-check SELECTs and the DB's unique index.
+	// Depending on scheduling, a loser can hit either the pre-check branch
+	// ("Email already registered.") or createUser's isUniqueViolation
+	// branch ("Email or username already taken." — see
+	// TestCreateUser_ErrorCase_UniqueViolationReturnsRaceMessage in
+	// store_integration_test.go for a deterministic test of that exact
+	// message). This test only asserts the race resolves safely: exactly
+	// one winner, everyone else conflicted.
+	srv := newTestServer(t)
+
+	const n = 8
+	statuses := make([]int, n)
+	bodies := make([]map[string]string, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			resp := doRequest(t, srv, testRequest{
+				method: http.MethodPost,
+				path:   "/auth/register",
+				body: auth.RegisterRequest{
+					Email: "race1@example.com", Username: fmt.Sprintf("raceuser%d", i), Password: "Password123!",
+				},
+			})
+			statuses[i] = resp.StatusCode
+			if resp.StatusCode != http.StatusCreated {
+				bodies[i] = decodeBody[map[string]string](t, resp)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	created, conflicted := 0, 0
+	for i := 0; i < n; i++ {
+		switch statuses[i] {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			conflicted++
+			if bodies[i]["error"] != "Email already registered." && bodies[i]["error"] != "Email or username already taken." {
+				t.Errorf("conflicted response %d error = %q, want one of the two known conflict messages", i, bodies[i]["error"])
+			}
+		default:
+			t.Errorf("response %d status = %d, want 201 or 409", i, statuses[i])
+		}
+	}
+	if created != 1 {
+		t.Errorf("created = %d, want exactly 1 (the rest must lose the race)", created)
+	}
+	if conflicted != n-1 {
+		t.Errorf("conflicted = %d, want %d", conflicted, n-1)
 	}
 }
 

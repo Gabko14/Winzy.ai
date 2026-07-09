@@ -5,6 +5,7 @@ package auth_test
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/Gabko14/winzy/backend/internal/auth"
@@ -150,5 +151,113 @@ func TestSearchUsers_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// --- ILIKE metacharacter escaping (%, _, \ must match literally) ---
+//
+// Usernames are restricted by validateRegistration's regex to
+// [a-zA-Z0-9_-]{3,64} — they can legitimately contain "_" but never "%" or
+// "\", so the "%" and "\" cases below use DisplayName (unrestricted)
+// instead, and the "_" case uses Username.
+
+func TestSearchUsers_EdgeCase_PercentSignMatchesLiterally(t *testing.T) {
+	srv := newTestServer(t)
+	searcher := registerUser(t, srv, "pctsearcher@example.com", "pctsearcher", "Password123!", nil)
+
+	literal := "Discount50%Off"
+	registerUser(t, srv, "pctliteral@example.com", "pctliteraluser", "Password123!", &literal)
+	decoy := "DiscountFiftyOff"
+	registerUser(t, srv, "pctdecoy@example.com", "pctdecoyuser", "Password123!", &decoy)
+
+	resp := doRequest(t, srv, testRequest{
+		method:  http.MethodGet,
+		path:    "/auth/users/search?q=" + url.QueryEscape("50%"),
+		headers: bearer(searcher.AccessToken),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	results := decodeBody[[]auth.UserSearchResult](t, resp)
+
+	foundLiteral, foundDecoy := false, false
+	for _, r := range results {
+		if r.Username == "pctliteraluser" {
+			foundLiteral = true
+		}
+		if r.Username == "pctdecoyuser" {
+			foundDecoy = true
+		}
+	}
+	if !foundLiteral {
+		t.Errorf("results = %+v, want to include the user whose displayName literally contains 50%%", results)
+	}
+	if foundDecoy {
+		t.Errorf("results = %+v, an unescaped '%%' wildcard over-matched an unrelated user with no literal '%%'", results)
+	}
+}
+
+func TestSearchUsers_EdgeCase_UnderscoreMatchesLiterally(t *testing.T) {
+	srv := newTestServer(t)
+	searcher := registerUser(t, srv, "usearcher@example.com", "usearcher", "Password123!", nil)
+
+	// "r_s" as an unescaped ILIKE pattern (r, any-single-char, s) would also
+	// match "arms1" (substring "rms"); escaped, it must only match a
+	// username with a literal underscore between an "r" and an "s".
+	registerUser(t, srv, "uliteral@example.com", "under_score1", "Password123!", nil)
+	registerUser(t, srv, "udecoy@example.com", "arms1", "Password123!", nil)
+
+	resp := doRequest(t, srv, testRequest{
+		method:  http.MethodGet,
+		path:    "/auth/users/search?q=r_s",
+		headers: bearer(searcher.AccessToken),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	results := decodeBody[[]auth.UserSearchResult](t, resp)
+
+	foundLiteral, foundDecoy := false, false
+	for _, r := range results {
+		if r.Username == "under_score1" {
+			foundLiteral = true
+		}
+		if r.Username == "arms1" {
+			foundDecoy = true
+		}
+	}
+	if !foundLiteral {
+		t.Errorf("results = %+v, want to include under_score1 (literal 'r_s' substring)", results)
+	}
+	if foundDecoy {
+		t.Errorf("results = %+v, an unescaped '_' wildcard over-matched arms1 (substring 'rms', no literal underscore)", results)
+	}
+}
+
+func TestSearchUsers_EdgeCase_BackslashMatchesLiterally(t *testing.T) {
+	srv := newTestServer(t)
+	searcher := registerUser(t, srv, "bslashsearcher@example.com", "bslashsearcher", "Password123!", nil)
+
+	literal := `Back\Slash`
+	registerUser(t, srv, "bslashliteral@example.com", "bslashliteraluser", "Password123!", &literal)
+
+	resp := doRequest(t, srv, testRequest{
+		method:  http.MethodGet,
+		path:    "/auth/users/search?q=" + url.QueryEscape(`ck\Sl`),
+		headers: bearer(searcher.AccessToken),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	results := decodeBody[[]auth.UserSearchResult](t, resp)
+
+	found := false
+	for _, r := range results {
+		if r.Username == "bslashliteraluser" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf(`results = %+v, want to include the user whose displayName literally contains a backslash`, results)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -70,7 +71,13 @@ func createUser(ctx context.Context, db querier, emailLower, usernameLower, pass
 	user, err := scanUser(row)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return User{}, ErrConflict
+			// Verbatim AuthEndpoints.cs's DbUpdateException catch around
+			// SaveChangesAsync: Results.Conflict(new { error = "Email or
+			// username already taken." }) — this is the race path (two
+			// concurrent registrations both passed the pre-check SELECTs
+			// in Service.Register and only one wins the unique index), so
+			// it deliberately does not distinguish which field collided.
+			return User{}, fmt.Errorf("%w: Email or username already taken.", ErrConflict)
 		}
 		return User{}, fmt.Errorf("auth: inserting user: %w", err)
 	}
@@ -177,17 +184,30 @@ func deleteUser(ctx context.Context, db querier, id string) (bool, error) {
 	return tag.RowsAffected() > 0, nil
 }
 
+// likeMetacharacterReplacer escapes the characters Postgres's LIKE/ILIKE
+// pattern matching treats specially — % (any-substring), _ (any-single-char),
+// and \ (the escape character itself, which must be escaped first or it
+// would corrupt the other two substitutions) — so a user-supplied search
+// query is matched as a literal substring, not interpreted as a pattern.
+// EF Core's .Contains() (the C# equivalent this replaces) is a literal
+// substring match; without this, searching for e.g. "50%" would match every
+// username instead of only ones literally containing "50%".
+var likeMetacharacterReplacer = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 // searchUsers matches username or display_name case-insensitively
-// (queryLower must already be lowercased and trimmed by the caller),
-// ordered by username, capped at limit rows.
+// (queryLower must already be lowercased and trimmed by the caller) as a
+// literal substring — not a pattern — ordered by username, capped at limit
+// rows.
 func searchUsers(ctx context.Context, db querier, queryLower string, limit int) ([]UserSearchResult, error) {
+	escaped := likeMetacharacterReplacer.Replace(queryLower)
+
 	rows, err := db.Query(ctx, `
 		SELECT id::text, username, display_name, avatar_url
 		FROM users
 		WHERE username ILIKE '%' || $1 || '%' OR (display_name IS NOT NULL AND display_name ILIKE '%' || $1 || '%')
 		ORDER BY username
 		LIMIT $2`,
-		queryLower, limit)
+		escaped, limit)
 	if err != nil {
 		return nil, fmt.Errorf("auth: searching users: %w", err)
 	}

@@ -23,8 +23,11 @@ var (
 	// undifferentiated, matching Results.Unauthorized()'s empty body.
 	ErrInvalidCredentials = errors.New("auth: invalid credentials")
 	// ErrMissingCredentials is Login's specific "both fields required"
-	// 400, distinct from the {"errors": {...}} validation shape.
-	ErrMissingCredentials = errors.New("email/username and password are required")
+	// 400, distinct from the {"errors": {...}} validation shape. Message
+	// text is verbatim AuthEndpoints.cs's Login: Results.BadRequest(new {
+	// error = "Email/username and password are required." }) — the parity
+	// harness diffs these strings.
+	ErrMissingCredentials = errors.New("Email/username and password are required.")
 	// ErrRateLimited is returned by Export when the per-user export rate
 	// limit (1/60s) rejects the request.
 	ErrRateLimited = errors.New("auth: rate limited")
@@ -92,12 +95,14 @@ func (s *Service) Register(ctx context.Context, email, username, password string
 	if taken, err := emailExists(ctx, s.pool, emailLower); err != nil {
 		return AuthResult{}, err
 	} else if taken {
-		return AuthResult{}, fmt.Errorf("%w: email already registered", ErrConflict)
+		// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Email already registered." })
+		return AuthResult{}, fmt.Errorf("%w: Email already registered.", ErrConflict)
 	}
 	if taken, err := usernameExists(ctx, s.pool, usernameLower); err != nil {
 		return AuthResult{}, err
 	} else if taken {
-		return AuthResult{}, fmt.Errorf("%w: username already taken", ErrConflict)
+		// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Username already taken." })
+		return AuthResult{}, fmt.Errorf("%w: Username already taken.", ErrConflict)
 	}
 
 	hash, err := HashPassword(password)
@@ -319,13 +324,18 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 
 // DeleteAccount deletes the user row and emits UserDeleted inside one
 // transaction: if the event registry reports a handler failure, the delete
-// rolls back too. (The old system published-then-deleted for durability
-// across separate databases; one shared database buys atomicity instead —
-// see the epic's ground truth and internal/events's doc comment. No
-// consumer module has registered a UserDeleted handler yet; once one does,
-// it should read/write through the same transaction by taking it from ctx,
-// which this method does not yet thread through — there is nothing to
-// thread it to today.)
+// itself rolls back too. That guarantee is currently narrower than it
+// sounds, though: habits (winzy.ai-rdc7.3.1) has registered a UserDeleted
+// handler that does its own cleanup over its own *pgxpool.Pool connection —
+// NOT this method's tx — because Emit is only given ctx, not this
+// transaction, and there is no mechanism yet for a handler to join it. So
+// today: if the habits handler errors, this transaction rolls back the auth
+// delete (rollback works, no orphaned auth row) but any habits-side writes
+// that handler already made are NOT rolled back with it (they committed
+// independently); conversely if habits cleanup itself never runs (process
+// crash between commit and the synchronous Emit call returning) the user
+// row is already gone with no way to retry the habits cleanup. Thread-the-
+// transaction-through-ctx is planned as its own bead, not solved here.
 func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
