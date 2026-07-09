@@ -1,0 +1,182 @@
+package ratelimit_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/Gabko14/winzy/backend/internal/ratelimit"
+)
+
+func TestAllow_HappyPath_FirstRequestWithinLimitIsAllowed(t *testing.T) {
+	l := ratelimit.New(1, time.Minute)
+
+	if !l.Allow("1.2.3.4") {
+		t.Error("first request should be allowed")
+	}
+}
+
+func TestAllow_EdgeCase_ExactlyAtLimitStillAllowed(t *testing.T) {
+	l := ratelimit.New(3, time.Minute)
+	key := "1.2.3.4"
+
+	for i := 0; i < 3; i++ {
+		if !l.Allow(key) {
+			t.Fatalf("request %d of 3 should be allowed", i+1)
+		}
+	}
+}
+
+func TestAllow_EdgeCase_DifferentKeysHaveIndependentLimits(t *testing.T) {
+	l := ratelimit.New(1, time.Minute)
+
+	if !l.Allow("1.1.1.1") {
+		t.Error("first key's first request should be allowed")
+	}
+	if !l.Allow("2.2.2.2") {
+		t.Error("second key's first request should be allowed independently")
+	}
+	if l.Allow("1.1.1.1") {
+		t.Error("first key's second request should be denied")
+	}
+}
+
+func TestAllow_EdgeCase_AfterWindowExpiresRequestAllowedAgain(t *testing.T) {
+	l := ratelimit.New(1, 50*time.Millisecond)
+	key := "1.2.3.4"
+
+	if !l.Allow(key) {
+		t.Fatal("first request should be allowed")
+	}
+	if l.Allow(key) {
+		t.Fatal("second request within the window should be denied")
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	if !l.Allow(key) {
+		t.Error("request after the window expired should be allowed")
+	}
+}
+
+func TestAllow_ErrorCase_RequestOverLimitDenied(t *testing.T) {
+	l := ratelimit.New(2, time.Minute)
+	key := "1.2.3.4"
+
+	l.Allow(key)
+	l.Allow(key)
+
+	if l.Allow(key) {
+		t.Error("third request over a limit of 2 should be denied")
+	}
+}
+
+func TestNew_ErrorCase_PanicsOnInvalidLimit(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("New(0, ...) should panic")
+		}
+	}()
+	ratelimit.New(0, time.Minute)
+}
+
+func TestNew_ErrorCase_PanicsOnNonPositiveWindow(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("New(1, 0) should panic")
+		}
+	}()
+	ratelimit.New(1, 0)
+}
+
+func TestClientIP_HappyPath_StripsPort(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.5:54321"
+
+	if got := ratelimit.ClientIP(r); got != "203.0.113.5" {
+		t.Errorf("ClientIP() = %q, want 203.0.113.5", got)
+	}
+}
+
+func TestClientIP_EdgeCase_MalformedRemoteAddrReturnedVerbatim(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "not-a-valid-remote-addr"
+
+	if got := ratelimit.ClientIP(r); got != "not-a-valid-remote-addr" {
+		t.Errorf("ClientIP() = %q, want the raw RemoteAddr as a fallback", got)
+	}
+}
+
+func TestPrefixMiddleware_HappyPath_AuthPrefixUsesAuthLimiter(t *testing.T) {
+	general := ratelimit.New(100, time.Minute)
+	auth := ratelimit.New(1, time.Minute)
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req1 := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+	req1.RemoteAddr = "9.9.9.9:1"
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first /auth/login request status = %d, want 200", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+	req2.RemoteAddr = "9.9.9.9:2"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("second /auth/login request status = %d, want 429 (auth limiter allows only 1)", rec2.Code)
+	}
+}
+
+func TestPrefixMiddleware_EdgeCase_NonAuthPathUnaffectedByAuthLimiter(t *testing.T) {
+	general := ratelimit.New(100, time.Minute)
+	auth := ratelimit.New(1, time.Minute)
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Exhaust the auth limiter for this IP.
+	authReq := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+	authReq.RemoteAddr = "9.9.9.9:1"
+	handler.ServeHTTP(httptest.NewRecorder(), authReq)
+
+	// A request to a non-auth path from the same IP must still be allowed —
+	// it is governed by the separate general limiter.
+	otherReq := httptest.NewRequest(http.MethodGet, "/habits", nil)
+	otherReq.RemoteAddr = "9.9.9.9:2"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, otherReq)
+	if rec.Code != http.StatusOK {
+		t.Errorf("non-auth path status = %d, want 200 (must use the general limiter, not the exhausted auth one)", rec.Code)
+	}
+}
+
+func TestPrefixMiddleware_ErrorCase_GeneralLimiterExhaustedDeniesNonAuthPath(t *testing.T) {
+	general := ratelimit.New(1, time.Minute)
+	auth := ratelimit.New(100, time.Minute)
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req1 := httptest.NewRequest(http.MethodGet, "/habits", nil)
+	req1.RemoteAddr = "8.8.8.8:1"
+	handler.ServeHTTP(httptest.NewRecorder(), req1)
+
+	req2 := httptest.NewRequest(http.MethodGet, "/habits", nil)
+	req2.RemoteAddr = "8.8.8.8:2"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("second /habits request status = %d, want 429", rec2.Code)
+	}
+}

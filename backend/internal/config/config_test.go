@@ -14,10 +14,15 @@ func env(values map[string]string) func(string) string {
 
 func TestLoad_HappyPath_ValidEnvIsParsed(t *testing.T) {
 	cfg, err := load(env(map[string]string{
-		"PORT":         "9090",
-		"DATABASE_URL": "postgres://user:pass@db.internal:5432/winzy?sslmode=require",
-		"LOG_LEVEL":    "debug",
-		"CORS_ORIGIN":  "https://winzy.ai",
+		"PORT":                          "9090",
+		"DATABASE_URL":                  "postgres://user:pass@db.internal:5432/winzy?sslmode=require",
+		"LOG_LEVEL":                     "debug",
+		"CORS_ORIGIN":                   "https://winzy.ai",
+		"JWT_SECRET":                    "a-real-production-secret-that-is-long-enough",
+		"JWT_ACCESS_TOKEN_MINUTES":      "30",
+		"JWT_REFRESH_TOKEN_DAYS":        "14",
+		"RATE_LIMIT_AUTH_PER_MINUTE":    "20",
+		"RATE_LIMIT_GENERAL_PER_MINUTE": "500",
 	}))
 	if err != nil {
 		t.Fatalf("load() returned unexpected error: %v", err)
@@ -33,6 +38,21 @@ func TestLoad_HappyPath_ValidEnvIsParsed(t *testing.T) {
 	}
 	if cfg.CORSOrigin != "https://winzy.ai" {
 		t.Errorf("CORSOrigin = %q, want https://winzy.ai", cfg.CORSOrigin)
+	}
+	if cfg.JWTSecret != "a-real-production-secret-that-is-long-enough" {
+		t.Errorf("JWTSecret = %q, unexpected", cfg.JWTSecret)
+	}
+	if cfg.JWTAccessTokenMinutes != 30 {
+		t.Errorf("JWTAccessTokenMinutes = %d, want 30", cfg.JWTAccessTokenMinutes)
+	}
+	if cfg.JWTRefreshTokenDays != 14 {
+		t.Errorf("JWTRefreshTokenDays = %d, want 14", cfg.JWTRefreshTokenDays)
+	}
+	if cfg.RateLimitAuthPerMinute != 20 {
+		t.Errorf("RateLimitAuthPerMinute = %d, want 20", cfg.RateLimitAuthPerMinute)
+	}
+	if cfg.RateLimitGeneralPerMinute != 500 {
+		t.Errorf("RateLimitGeneralPerMinute = %d, want 500", cfg.RateLimitGeneralPerMinute)
 	}
 }
 
@@ -52,6 +72,21 @@ func TestLoad_EdgeCase_MissingEnvUsesLocalDevDefaults(t *testing.T) {
 	}
 	if cfg.CORSOrigin != "http://localhost:8081" {
 		t.Errorf("CORSOrigin = %q, want default http://localhost:8081", cfg.CORSOrigin)
+	}
+	if cfg.JWTSecret != "" {
+		t.Errorf("JWTSecret = %q, want empty when unset (auth.NewTokenService owns validation)", cfg.JWTSecret)
+	}
+	if cfg.JWTAccessTokenMinutes != 15 {
+		t.Errorf("JWTAccessTokenMinutes = %d, want default 15", cfg.JWTAccessTokenMinutes)
+	}
+	if cfg.JWTRefreshTokenDays != 7 {
+		t.Errorf("JWTRefreshTokenDays = %d, want default 7", cfg.JWTRefreshTokenDays)
+	}
+	if cfg.RateLimitAuthPerMinute != 10 {
+		t.Errorf("RateLimitAuthPerMinute = %d, want default 10", cfg.RateLimitAuthPerMinute)
+	}
+	if cfg.RateLimitGeneralPerMinute != 300 {
+		t.Errorf("RateLimitGeneralPerMinute = %d, want default 300", cfg.RateLimitGeneralPerMinute)
 	}
 }
 
@@ -118,6 +153,7 @@ func TestConfig_LogValue_RedactsCredentials(t *testing.T) {
 		DatabaseURL: "postgres://user:supersecret@db.internal:5432/winzy",
 		LogLevel:    slog.LevelInfo,
 		CORSOrigin:  "http://localhost:8081",
+		JWTSecret:   "a-real-production-secret-that-is-long-enough",
 	}
 	rendered := cfg.LogValue().String()
 	if strings.Contains(rendered, "supersecret") {
@@ -125,5 +161,42 @@ func TestConfig_LogValue_RedactsCredentials(t *testing.T) {
 	}
 	if strings.Contains(rendered, "user:supersecret") {
 		t.Errorf("LogValue() leaked the username:password pair: %s", rendered)
+	}
+	if strings.Contains(rendered, "a-real-production-secret-that-is-long-enough") {
+		t.Errorf("LogValue() leaked JWTSecret: %s", rendered)
+	}
+}
+
+func TestLoad_ErrorCase_GarbageJWTAccessTokenMinutesFailsFast(t *testing.T) {
+	_, err := load(env(map[string]string{"JWT_ACCESS_TOKEN_MINUTES": "not-a-number"}))
+	if err == nil {
+		t.Fatal("load() with garbage JWT_ACCESS_TOKEN_MINUTES should return an error")
+	}
+	if !strings.Contains(err.Error(), "JWT_ACCESS_TOKEN_MINUTES") {
+		t.Errorf("error %q should mention JWT_ACCESS_TOKEN_MINUTES", err.Error())
+	}
+}
+
+func TestLoad_ErrorCase_ZeroJWTRefreshTokenDaysFailsFast(t *testing.T) {
+	_, err := load(env(map[string]string{"JWT_REFRESH_TOKEN_DAYS": "0"}))
+	if err == nil {
+		t.Fatal("load() with JWT_REFRESH_TOKEN_DAYS=0 should return an error")
+	}
+}
+
+func TestLoad_ErrorCase_NegativeRateLimitAuthPerMinuteFailsFast(t *testing.T) {
+	_, err := load(env(map[string]string{"RATE_LIMIT_AUTH_PER_MINUTE": "-1"}))
+	if err == nil {
+		t.Fatal("load() with a negative RATE_LIMIT_AUTH_PER_MINUTE should return an error")
+	}
+}
+
+func TestLoad_ErrorCase_GarbageRateLimitGeneralPerMinuteFailsFast(t *testing.T) {
+	_, err := load(env(map[string]string{"RATE_LIMIT_GENERAL_PER_MINUTE": "lots"}))
+	if err == nil {
+		t.Fatal("load() with garbage RATE_LIMIT_GENERAL_PER_MINUTE should return an error")
+	}
+	if !strings.Contains(err.Error(), "RATE_LIMIT_GENERAL_PER_MINUTE") {
+		t.Errorf("error %q should mention RATE_LIMIT_GENERAL_PER_MINUTE", err.Error())
 	}
 }

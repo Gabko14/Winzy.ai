@@ -23,13 +23,33 @@ type Config struct {
 	LogLevel slog.Level
 	// CORSOrigin is the single allowed Origin for browser requests (the Expo web app).
 	CORSOrigin string
+	// JWTSecret signs and verifies access tokens. It has no local-dev
+	// default — auth.NewTokenService is the single source of truth for
+	// validating it (non-empty, >=32 chars, not a known placeholder), so
+	// Load passes the raw value through unchecked rather than duplicating
+	// that validation here.
+	JWTSecret string
+	// JWTAccessTokenMinutes is the access token lifetime in minutes.
+	JWTAccessTokenMinutes int
+	// JWTRefreshTokenDays is the refresh token lifetime in days.
+	JWTRefreshTokenDays int
+	// RateLimitAuthPerMinute caps requests per client IP per minute to
+	// /auth/* endpoints.
+	RateLimitAuthPerMinute int
+	// RateLimitGeneralPerMinute caps requests per client IP per minute to
+	// every other endpoint.
+	RateLimitGeneralPerMinute int
 }
 
 const (
-	defaultPort        = "8080"
-	defaultDatabaseURL = "postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable"
-	defaultLogLevel    = "info"
-	defaultCORSOrigin  = "http://localhost:8081"
+	defaultPort                      = "8080"
+	defaultDatabaseURL               = "postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable"
+	defaultLogLevel                  = "info"
+	defaultCORSOrigin                = "http://localhost:8081"
+	defaultJWTAccessTokenMinutes     = "15"
+	defaultJWTRefreshTokenDays       = "7"
+	defaultRateLimitAuthPerMinute    = "10"
+	defaultRateLimitGeneralPerMinute = "300"
 )
 
 // Load reads PORT, DATABASE_URL, LOG_LEVEL and CORS_ORIGIN from the
@@ -75,7 +95,48 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	cfg.CORSOrigin = corsOrigin
 
+	// JWTSecret is passed through as-is (even if empty): auth.NewTokenService
+	// is the single source of truth for validating it, so Load only reads it.
+	cfg.JWTSecret = getenv("JWT_SECRET")
+
+	accessMinutes, err := parsePositiveInt("JWT_ACCESS_TOKEN_MINUTES", valueOrDefault(getenv("JWT_ACCESS_TOKEN_MINUTES"), defaultJWTAccessTokenMinutes))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWTAccessTokenMinutes = accessMinutes
+
+	refreshDays, err := parsePositiveInt("JWT_REFRESH_TOKEN_DAYS", valueOrDefault(getenv("JWT_REFRESH_TOKEN_DAYS"), defaultJWTRefreshTokenDays))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWTRefreshTokenDays = refreshDays
+
+	authLimit, err := parsePositiveInt("RATE_LIMIT_AUTH_PER_MINUTE", valueOrDefault(getenv("RATE_LIMIT_AUTH_PER_MINUTE"), defaultRateLimitAuthPerMinute))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.RateLimitAuthPerMinute = authLimit
+
+	generalLimit, err := parsePositiveInt("RATE_LIMIT_GENERAL_PER_MINUTE", valueOrDefault(getenv("RATE_LIMIT_GENERAL_PER_MINUTE"), defaultRateLimitGeneralPerMinute))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.RateLimitGeneralPerMinute = generalLimit
+
 	return cfg, nil
+}
+
+// parsePositiveInt parses value as a positive integer, returning an error
+// naming envVar so a bad setting is easy to trace back to its source.
+func parsePositiveInt(envVar, value string) (int, error) {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("config: %s %q is not a valid integer: %w", envVar, value, err)
+	}
+	if n < 1 {
+		return 0, fmt.Errorf("config: %s %d must be at least 1", envVar, n)
+	}
+	return n, nil
 }
 
 func valueOrDefault(v, def string) string {
@@ -103,11 +164,20 @@ func parseLogLevel(s string) (slog.Level, error) {
 // LogValue implements slog.LogValuer so logging a Config never leaks
 // DATABASE_URL's embedded credentials.
 func (c Config) LogValue() slog.Value {
+	jwtSecretStatus := "unset"
+	if c.JWTSecret != "" {
+		jwtSecretStatus = "REDACTED"
+	}
 	return slog.GroupValue(
 		slog.Int("port", c.Port),
 		slog.String("database_url", redactUserinfo(c.DatabaseURL)),
 		slog.String("log_level", c.LogLevel.String()),
 		slog.String("cors_origin", c.CORSOrigin),
+		slog.String("jwt_secret", jwtSecretStatus),
+		slog.Int("jwt_access_token_minutes", c.JWTAccessTokenMinutes),
+		slog.Int("jwt_refresh_token_days", c.JWTRefreshTokenDays),
+		slog.Int("rate_limit_auth_per_minute", c.RateLimitAuthPerMinute),
+		slog.Int("rate_limit_general_per_minute", c.RateLimitGeneralPerMinute),
 	)
 }
 
