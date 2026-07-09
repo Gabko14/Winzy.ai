@@ -17,6 +17,8 @@ Winzy.ai is a habit tracker with an optional social layer. Users track daily hab
 
 **Product strategy:** Web-first PWA via Expo. Native apps later. Same codebase.
 
+**⚠️ Backend rewrite in progress (decided 2026-07-09, epic `winzy.ai-rdc7`):** the .NET microservices + NATS + per-service Postgres are being replaced by a **single Go service + one Postgres** (the microservices were a school requirement, not a product need). All features are kept; the C# services and their tests are the porting spec. The Key Design Decisions below describe the current live system and stay binding until cutover (`winzy.ai-rdc7.10`).
+
 ## Key Design Decisions
 
 These are the non-obvious choices that agents get wrong without being told:
@@ -53,7 +55,8 @@ Every test module must cover three areas:
 **Solo project — commit directly to `main`.** (The PR workflow was retired 2026-07 when this stopped being a group school project.)
 
 - Work on `main` by default. Use a `feature/` or `fix/` branch only for risky or experimental work you might throw away.
-- Conventional commits. Include the beads issue ID when the commit maps to a specific issue.
+- **Commits must be meaningful.** No standalone commits for small docs/chore/beads tweaks — amend them into the previous commit or let them ride along with the next real change. Conventional commits; include the beads issue ID when the commit maps to a specific issue.
+- **Push in batches, not per commit.** The pre-push hook rebuilds and re-tests every changed service (slow), so push once per work session/milestone, or when the user asks — not after every commit.
 - **Quality gates before every push** — CI runs on `main` after the fact; run the gates listed under Workflow step 5 first.
 - **Railway deploys are manual, via the `railway` CLI** (`railway up`). Services are NOT repo-connected — pushing `main` does not deploy. Claude operates Railway; the config source of truth is the Railway project itself (`winzy-staging`).
 
@@ -101,6 +104,14 @@ br dep add <issue> <depends-on>                   # Add dependency
      git push
      ```
      Push without asking once quality gates pass. Only pause to confirm when the push does something unusual (force-push, history rewrite, deleting things you didn't create).
+
+### PM / Worker Split
+
+Planning, review, and the bead lifecycle belong to the PM session (top-tier model); implementation beads are executed by worker sessions/agents (Sonnet/Opus). Rules for workers:
+
+- Implement exactly **one bead**, following its `EXECUTION STEPS` in order; run the quality gates; then **stop and report** (files changed, decisions, full gate output, deviations, open questions).
+- Workers **never close beads, never commit, never push**, and don't run `br` write commands. A bead is done when the PM has reviewed the diff against the acceptance criteria — not when the worker says so.
+- If a bead has no `EXECUTION STEPS` section, it hasn't been dispatched yet — don't start it.
 
 ### Core Rule
 

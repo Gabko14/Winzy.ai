@@ -50,3 +50,5 @@ e2e/blob-report/
 
 frontend/coverage
 coverage.json
+# br doctor per-run artifacts
+.doctor/

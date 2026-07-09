@@ -9,3 +9,7 @@
 # Temporary
 last-touched
 *.tmp
+.write.lock
+
+# Local merge anchor (br 0.2.x three-way merge)
+beads.base.jsonl
