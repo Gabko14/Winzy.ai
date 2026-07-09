@@ -50,34 +50,11 @@ Every test module must cover three areas:
 
 ## Git Workflow
 
-**All changes go through PRs. No direct pushes to `main`.**
+**Solo project — commit directly to `main`.** (The PR workflow was retired 2026-07 when this stopped being a group school project.)
 
-- New task = new branch from main
-- Branch naming: `feature/description` or `fix/description`
+- Work on `main` by default. Use a `feature/` or `fix/` branch only for risky or experimental work you might throw away.
 - Conventional commits. Include the beads issue ID when the commit maps to a specific issue.
-
-### PR Workflow
-
-**NEVER merge without explicit user approval.** After checks/review pass, ASK the user before merging.
-
-1. Push branch, create PR: `gh pr create`
-2. Wait for checks: `gh pr checks <number> --watch`
-3. Read review: `gh pr view <number> --comments` — **NEVER skip this, even for non-code PRs**
-4. Evaluate feedback critically — fix legit issues (bugs, security, logic), ignore noise (style nitpicks, "optional" suggestions)
-5. Don't be afraid to amend when fixing issues that reviewers find in the previous commits
-6. Push fixes, wait for re-review if needed. Repeat 2-4 until approved.
-7. Before merge, review the commit stack: rebase to clean up fixups, drop noise (beads syncs, WIP), and make sure the remaining commits tell a clean, sensible story
-8. **Ask the user for merge approval** — they may want to test or review the diff first
-9. Merge and cleanup:
-   ```bash
-   gh pr merge <number> --rebase --delete-branch
-   git checkout main && git pull
-   git branch -d <branch>
-   ```
-
-## Agent Teams (Claude Code-specific)
-
-See [`.claude/agents/team-rules.md`](.claude/agents/team-rules.md) for the full agent team workflow rules (shared directory, file coordination, review process, quality gates, beads integration).
+- **Quality gates before every push** — CI runs on `main` after the fact, and the Railway deployment tracks `main`, so a broken push is a broken deploy candidate. Run the gates listed under Workflow step 5 first.
 
 ## Agent Instructions
 
@@ -115,13 +92,14 @@ br dep add <issue> <depends-on>                   # Add dependency
      - Backend: `dotnet format --verify-no-changes && dotnet build && dotnet test`
      - If Dockerfiles changed: `docker compose build`
    - Close finished issues, update in-progress items
-   - Sync and stage:
+   - Sync, commit, push:
      ```bash
      br sync --flush-only
      git add <code files> .beads/
      git pull --rebase
+     git push
      ```
-   - **Ask the user before pushing.** Confirm before `git push`.
+     Push without asking once quality gates pass. Only pause to confirm when the push does something unusual (force-push, history rewrite, deleting things you didn't create).
 
 ### Core Rule
 
