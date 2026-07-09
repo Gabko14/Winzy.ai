@@ -53,6 +53,10 @@ CI (`.github/workflows/ci-go.yml`) runs `go test -tags=integration -race -v ./..
 
 Migrations live in `migrations/*.sql` (embedded into the binary) and are applied automatically on every process start (`db.Migrate`, called from `cmd/api/main.go`) — there is no separate migrate command to run in normal operation. To add one: create `NNNN_description.up.sql` / `NNNN_description.down.sql` in `migrations/`.
 
+## Transactional cascades
+
+An event handler registered on the shared `events.Registry` (e.g. a module's `UserDeleted` cascade) that writes to Postgres must resolve its querier via `db.QuerierFrom(ctx, s.pool)` instead of using its pool directly. When an emitter holds a transaction (`db.WithQuerier(ctx, tx)` before `events.Emit`), this makes the handler join that transaction instead of writing outside it — see `internal/events`' package doc and `auth.Service.DeleteAccount` / `habits.Service.handleUserDeleted` for the reference implementation.
+
 ## Logging convention
 
 Every request produces one JSON log line (`internal/httpserver.RequestLogging`) with `request_id`, `method`, `path`, `status`, `duration_ms`, and `user_id` when authenticated. `request_id` is assigned by the outermost `Recovery` middleware, which also recovers panics and logs them (with `request_id`) before returning a generic 500. Startup logs the resolved config via `slog.LogValuer`, which redacts `DATABASE_URL`'s credentials.

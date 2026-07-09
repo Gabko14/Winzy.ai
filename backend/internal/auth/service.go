@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
@@ -323,19 +324,19 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 }
 
 // DeleteAccount deletes the user row and emits UserDeleted inside one
-// transaction: if the event registry reports a handler failure, the delete
-// itself rolls back too. That guarantee is currently narrower than it
-// sounds, though: habits (winzy.ai-rdc7.3.1) has registered a UserDeleted
-// handler that does its own cleanup over its own *pgxpool.Pool connection —
-// NOT this method's tx — because Emit is only given ctx, not this
-// transaction, and there is no mechanism yet for a handler to join it. So
-// today: if the habits handler errors, this transaction rolls back the auth
-// delete (rollback works, no orphaned auth row) but any habits-side writes
-// that handler already made are NOT rolled back with it (they committed
-// independently); conversely if habits cleanup itself never runs (process
-// crash between commit and the synchronous Emit call returning) the user
-// row is already gone with no way to retry the habits cleanup. Thread-the-
-// transaction-through-ctx is planned as its own bead, not solved here.
+// transaction, with that same transaction threaded through ctx via
+// db.WithQuerier before Emit runs. Every registered UserDeleted handler that
+// resolves its querier via db.QuerierFrom(ctx, ...) — the contract documented
+// on internal/events — therefore writes through this transaction rather than
+// its own pool connection: the user row and every module's cascade delete
+// commit or roll back together. A handler failure aborts dispatch and this
+// method rolls back the whole transaction, so a failed cascade never leaves
+// the user row deleted with orphaned data elsewhere, and a successful
+// cascade is never partially applied by a handler that ran before the
+// failure. This closes the gap winzy.ai-rdc7.13 was filed to fix: before it,
+// habits' UserDeleted handler wrote over its own pool connection outside
+// this transaction, so a failing commit here could delete the user's habits
+// while leaving the account row in place.
 func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -351,7 +352,7 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 		return ErrNotFound
 	}
 
-	if err := events.Emit(ctx, s.registry, events.UserDeleted{UserID: userID}); err != nil {
+	if err := events.Emit(db.WithQuerier(ctx, tx), s.registry, events.UserDeleted{UserID: userID}); err != nil {
 		return err
 	}
 

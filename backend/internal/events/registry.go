@@ -18,6 +18,20 @@
 // duplicate processing on retry) at the cost of no durability across a
 // process crash mid-dispatch: an accepted tradeoff for the single-instance
 // deploy this rewrite targets.
+//
+// CONTRACT EVERY HANDLER THAT WRITES MUST FOLLOW (winzy.ai-rdc7.13): resolve
+// your querier via internal/db's db.QuerierFrom(ctx, fallback) — never a raw
+// *pgxpool.Pool closed over at registration time. An emitter that holds a
+// transaction puts it in ctx with db.WithQuerier before calling Emit (see
+// auth.Service.DeleteAccount for the reference implementation); a handler
+// that instead writes straight to its own pool silently steps outside that
+// transaction, so its writes commit independently and survive a rollback
+// the emitter thinks undid everything. Resolving via QuerierFrom costs
+// nothing when there's no transaction in ctx — it just falls back to the
+// pool you'd have used anyway. Every module bead that registers a
+// UserDeleted handler (social, challenges, notifications, activity) must
+// follow this so the single-transaction cascade habits already joined
+// extends to cover all of them.
 package events
 
 import (

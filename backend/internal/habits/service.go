@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 )
 
@@ -54,8 +55,17 @@ func NewService(pool *pgxpool.Pool, registry *events.Registry, logger *slog.Logg
 	return s
 }
 
+// handleUserDeleted resolves its querier via db.QuerierFrom instead of
+// closing over s.pool directly — the contract documented on internal/events
+// — so that when auth.Service.DeleteAccount emits UserDeleted with its
+// delete transaction threaded through ctx (db.WithQuerier), this cascade
+// writes through that same transaction and commits or rolls back with the
+// user row atomically (see winzy.ai-rdc7.13). With no transaction in ctx
+// (e.g. a UserDeleted emitted from somewhere with no surrounding tx) it
+// falls back to s.pool, matching the old NATS-handler behavior.
 func (s *Service) handleUserDeleted(ctx context.Context, event events.UserDeleted) error {
-	if err := deleteUserData(ctx, s.pool, event.UserID); err != nil {
+	q := db.QuerierFrom(ctx, s.pool)
+	if err := deleteUserData(ctx, q, event.UserID); err != nil {
 		return fmt.Errorf("habits: cascading user.deleted: %w", err)
 	}
 	return nil
