@@ -10,6 +10,7 @@ volumes:
   notification-db-data:
   activity-db-data:
   seq-data:
+  winzy-db-data:
 
 services:
   # --- Infrastructure ---
@@ -48,7 +49,7 @@ services:
       start_period: 15s
 
   # --- Databases ---
-  # Host port scheme: auth=5433, habit=5434, social=5435, challenge=5436, notification=5437, activity=5438
+  # Host port scheme: auth=5433, habit=5434, social=5435, challenge=5436, notification=5437, activity=5438, winzy(Go rewrite, winzy.ai-rdc7)=5439
   # All containers listen on 5432 internally; host ports are offset to avoid collisions.
   # These host mappings are for local dev (services running outside Docker). In-container
   # services connect via Docker DNS on port 5432 (see ConnectionStrings in service envs).
@@ -160,6 +161,28 @@ services:
       - winzy-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U winzy -d activity_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # winzy-db: the single Postgres for the Go rewrite (winzy.ai-rdc7). Lives
+  # alongside the six per-service databases above until cutover
+  # (winzy.ai-rdc7.10); nothing under services/ or their databases is
+  # touched by the rewrite before then.
+  winzy-db:
+    image: postgres:17-alpine
+    ports:
+      - "5439:5432"
+    environment:
+      POSTGRES_DB: winzy
+      POSTGRES_USER: winzy
+      POSTGRES_PASSWORD: winzy
+    volumes:
+      - winzy-db-data:/var/lib/postgresql/data
+    networks:
+      - winzy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U winzy -d winzy"]
       interval: 5s
       timeout: 3s
       retries: 5
