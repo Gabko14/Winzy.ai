@@ -167,6 +167,79 @@ func TestStats_BackfilledMinimum_BankersRounding(t *testing.T) {
 	}
 }
 
+// TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine reproduces the
+// exact parity sequence flagged in review: complete a habit with
+// timezone=Pacific/Kiritimati and NO date (so LocalDate = the owner's "today"
+// in UTC+14, one calendar day ahead of UTC), then read /stats under the owner
+// tz and under UTC.
+//
+// FINDING (verified byte-identical live against the old .NET stack): the OWNER
+// view scores it 100 with completedToday=true — the parity report of
+// "consistency=0 with completedToday=true" in the OWNER view does NOT
+// reproduce on current source; that reading conflated UTC-view consistency
+// with owner-view completedToday (or was captured against stale images).
+//
+// The UTC (share) view is where 0 legitimately appears: the completion is
+// future-dated relative to UTC's "today", so it contributes 0, is not
+// completedToday, and is not in-window — yet is still LISTED in the
+// unfiltered completedDates array. This is the intended per-surface timezone
+// contract, matched exactly by the Go endpoint. The UTC-side assertions are
+// guarded on the date-line split actually being active at run time (it is
+// whenever the UTC clock is past ~10:00), so the test is deterministic in CI.
+func TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine(t *testing.T) {
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "200000000006"))
+	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "kiri"})
+
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits/" + created.ID + "/complete", headers: a,
+		body: habits.CompleteHabitRequest{Timezone: "Pacific/Kiritimati"},
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("complete status = %d, want 201", resp.StatusCode)
+	}
+	completedLocalDate := decodeBody[map[string]any](t, resp)["localDate"].(string)
+
+	// Owner view: the completion is on the owner's own "today" -> counts fully.
+	owner := getStats(t, srv, a, created.ID, "Pacific/Kiritimati")
+	if !owner.CompletedToday {
+		t.Error("owner view completedToday = false, want true")
+	}
+	if owner.Consistency != 100 {
+		t.Errorf("owner view consistency = %v, want 100 (completion is on owner's today — the anomaly does NOT reproduce)", owner.Consistency)
+	}
+
+	kiri, err := time.LoadLocation("Pacific/Kiritimati")
+	if err != nil {
+		t.Fatalf("loading Kiritimati: %v", err)
+	}
+	kiriToday := time.Now().In(kiri).Format("2006-01-02")
+	utcToday := time.Now().UTC().Format("2006-01-02")
+
+	utc := getStats(t, srv, a, created.ID, "UTC")
+	if kiriToday != utcToday {
+		// Date-line split active: the completion is future-dated for UTC.
+		if utc.Consistency != 0 {
+			t.Errorf("UTC view consistency = %v, want 0 (completion one day ahead of UTC)", utc.Consistency)
+		}
+		if utc.CompletedToday {
+			t.Error("UTC view completedToday = true, want false")
+		}
+		if utc.CompletionsInWindow != 0 {
+			t.Errorf("UTC view completionsInWindow = %d, want 0", utc.CompletionsInWindow)
+		}
+		// The quirk: the future/out-of-window date is still listed (unfiltered).
+		if len(utc.CompletedDates) != 1 || utc.CompletedDates[0].Date != completedLocalDate {
+			t.Errorf("UTC completedDates = %+v, want it to still list %s (unfiltered, matching C#)", utc.CompletedDates, completedLocalDate)
+		}
+	} else {
+		// No split (UTC clock before ~10:00): both views agree.
+		if utc.Consistency != 100 {
+			t.Errorf("no date-line split active; UTC consistency = %v, want 100", utc.Consistency)
+		}
+	}
+}
+
 // --- helpers ---
 
 func getStats(t *testing.T, srv *httptest.Server, a map[string]string, habitID, tz string) statsResponse {

@@ -259,8 +259,8 @@ func updateCompletionKind(ctx context.Context, db querier, id string, kind Compl
 }
 
 // habitCompletionOnDate is one row of GetCompletionsByDate's per-habit
-// projection — an active habit joined (via a correlated LEFT JOIN LATERAL)
-// with at most one completion on the queried date.
+// projection — an active habit joined (via a plain LEFT JOIN on
+// habit_id + local_date) with at most one completion on the queried date.
 type habitCompletionOnDate struct {
 	Habit          Habit
 	Completed      bool

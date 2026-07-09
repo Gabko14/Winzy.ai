@@ -280,6 +280,20 @@ func TestDeleteCompletion_ErrorCase_InvalidDateFormatReturns400(t *testing.T) {
 	}
 }
 
+func TestDeleteCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
+	// CompletionEndpoints.cs maps this route with a `{id:guid}` constraint —
+	// a segment that doesn't parse as a Guid never reaches the handler, so
+	// ASP.NET falls through to 404. A malformed id must not reach the
+	// `::uuid` cast in the store query (which would 500 instead).
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "100000000020"))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodDelete, path: "/habits/not-a-uuid/completions/2025-02-15", headers: a})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (a non-uuid segment can never match a row)", resp.StatusCode)
+	}
+}
+
 // --- PUT /habits/{id}/completions/{date} ---
 
 func TestUpdateCompletion_HappyPath_MinimumToFullAndBack(t *testing.T) {
@@ -340,6 +354,22 @@ func TestUpdateCompletion_ErrorCase_NonExistentReturns404(t *testing.T) {
 	})
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestUpdateCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
+	// Same `{id:guid}` route-constraint semantics as
+	// TestDeleteCompletion_ErrorCase_MalformedHabitIDReturns404 — see that
+	// test's comment.
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "100000000014"))
+
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPut, path: "/habits/not-a-uuid/completions/2025-02-15", headers: a,
+		body: habits.UpdateCompletionRequest{CompletionKind: habits.CompletionFull},
+	})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (a non-uuid segment can never match a row)", resp.StatusCode)
 	}
 }
 

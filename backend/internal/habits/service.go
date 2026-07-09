@@ -303,8 +303,15 @@ func (s *Service) CompleteHabit(ctx context.Context, userID, habitID string, req
 // DeleteCompletion removes a completion by (habitID, date), scoped
 // directly to userID on the completions row — see
 // findCompletionByHabitDateUser's doc comment for why this needs no join
-// back to habits.
+// back to habits. habitID is validated as a UUID first (matching
+// CompletionEndpoints.cs's `{id:guid}` route constraint on this endpoint,
+// which never even dispatches to the handler for a malformed id, so ASP.NET
+// falls through to a 404): without this guard a malformed id would reach
+// the `::uuid` cast in the query and fail with a 500 instead.
 func (s *Service) DeleteCompletion(ctx context.Context, userID, habitID, dateStr string) (bool, error) {
+	if !isValidUUID(habitID) {
+		return false, nil
+	}
 	localDate, ok := parseISODate(dateStr)
 	if !ok {
 		return false, newFieldError(fmt.Sprintf("Invalid date format: %s", dateStr))
@@ -325,8 +332,13 @@ func (s *Service) DeleteCompletion(ctx context.Context, userID, habitID, dateStr
 // UpdateCompletion corrects an existing completion's kind, re-checking
 // Honest Minimums against the parent habit's current MinimumDescription —
 // matching UpdateCompletion in CompletionEndpoints.cs (which .Include()s
-// the Habit for exactly this check).
+// the Habit for exactly this check). habitID is validated as a UUID first —
+// see DeleteCompletion's doc comment for why (this endpoint has the same
+// `{id:guid}` route constraint in the C# source).
 func (s *Service) UpdateCompletion(ctx context.Context, userID, habitID, dateStr string, kind CompletionKind) (Completion, bool, error) {
+	if !isValidUUID(habitID) {
+		return Completion{}, false, nil
+	}
 	localDate, ok := parseISODate(dateStr)
 	if !ok {
 		return Completion{}, false, newFieldError(fmt.Sprintf("Invalid date format: %s", dateStr))
