@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS completions;
+DROP TABLE IF EXISTS habits;

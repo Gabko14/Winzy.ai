@@ -18,8 +18,14 @@
 //
 // Usage: build integration-only test files with `//go:build integration`
 // so `go test ./...` (no real DB required) stays green everywhere, and CI
-// additionally runs `go test -tags=integration -race -v ./...` with
+// additionally runs `go test -tags=integration -race -v -p 1 ./...` with
 // TEST_DATABASE_URL pointed at a live Postgres.
+//
+// IMPORTANT: multi-package integration runs MUST pass -p 1. All packages
+// share the one live database and Connect truncates every table per test,
+// so go test's default concurrent package execution lets one package wipe
+// another's rows mid-test (intermittent spurious 404s; found in
+// winzy.ai-rdc7.3.1). Single-package runs don't need it.
 package dbtest
 
 import (

@@ -18,6 +18,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
+	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/health"
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
@@ -69,15 +70,20 @@ func run() error {
 	authService := auth.NewService(pool, tokens, registry, exportRegistry, logger)
 	authHandlers := auth.NewHandlers(authService)
 
+	habitsService := habits.NewService(pool, registry, logger)
+	habitsHandlers := habits.NewHandlers(habitsService)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health.Handler(pool))
 	auth.RegisterRoutes(mux, authHandlers)
+	habits.RegisterRoutes(mux, habitsHandlers)
 
 	// Public-route allowlist: auth's own slice plus GET /health (every
 	// service's health check must be reachable without a token — Railway,
 	// docker healthcheck, and uptime monitoring all hit it directly).
-	// Later module beads (habits, social, notifications) add their own
-	// public routes here too.
+	// habits has no public routes in this bead (public flame surfaces land
+	// with winzy.ai-rdc7.3.3). Later module beads (social, notifications)
+	// add their own public routes here too.
 	publicRoutes := auth.DefaultPublicRoutes()
 	publicRoutes["GET /health"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
