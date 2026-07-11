@@ -44,7 +44,7 @@ func newCascadeFixture(t *testing.T) (*auth.Service, *habits.Service, *events.Re
 	registry := events.New(logger)
 	exportRegistry := export.New(logger)
 	authSvc := auth.NewService(pool, tokens, registry, exportRegistry, logger)
-	habitsSvc := habits.NewService(pool, registry, logger)
+	habitsSvc := habits.NewService(pool, registry, exportRegistry, logger)
 
 	return authSvc, habitsSvc, registry, pool
 }

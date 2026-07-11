@@ -70,7 +70,11 @@ func run() error {
 	authService := auth.NewService(pool, tokens, registry, exportRegistry, logger)
 	authHandlers := auth.NewHandlers(authService)
 
-	habitsService := habits.NewService(pool, registry, logger)
+	habitsService := habits.NewService(pool, registry, exportRegistry, logger)
+	// authService satisfies habits.UsernameResolver structurally (its
+	// ResolveUsername method) — the public flame endpoints' in-process
+	// replacement for the old GET /auth/internal/resolve/{username} call.
+	habitsService.SetUsernameResolver(authService)
 	habitsHandlers := habits.NewHandlers(habitsService)
 
 	mux := http.NewServeMux()
@@ -78,14 +82,18 @@ func run() error {
 	auth.RegisterRoutes(mux, authHandlers)
 	habits.RegisterRoutes(mux, habitsHandlers)
 
-	// Public-route allowlist: auth's own slice plus GET /health (every
-	// service's health check must be reachable without a token — Railway,
-	// docker healthcheck, and uptime monitoring all hit it directly).
-	// habits has no public routes in this bead (public flame surfaces land
-	// with winzy.ai-rdc7.3.3). Later module beads (social, notifications)
-	// add their own public routes here too.
+	// Public-route allowlist: auth's own slice, GET /health (every service's
+	// health check must be reachable without a token — Railway, docker
+	// healthcheck, and uptime monitoring all hit it directly), and habits'
+	// public flame surfaces. "GET /habits/public/*" is a prefix entry (see
+	// auth.Middleware's isPublicRoute doc comment) covering both GET
+	// /habits/public/{username} and its /flame.svg sibling, since neither
+	// endpoint's final path segment (a caller-supplied username) is
+	// enumerable as an exact route. Later module beads (social,
+	// notifications) add their own public routes here too.
 	publicRoutes := auth.DefaultPublicRoutes()
 	publicRoutes["GET /health"] = true
+	publicRoutes["GET /habits/public/*"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 
 	generalLimiter := ratelimit.New(cfg.RateLimitGeneralPerMinute, time.Minute)

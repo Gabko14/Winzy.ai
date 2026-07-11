@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -20,32 +21,99 @@ func NewHandlers(service *Service) *Handlers {
 	return &Handlers{service: service}
 }
 
-// decodeJSON decodes r.Body into T, returning ok=false for a missing,
-// empty, or malformed body. Unlike internal/auth's decodeJSON (which treats
-// an empty body as valid, since every auth DTO's fields are separately
-// optional), every habits request DTO requires an actual JSON object —
-// matching RequestBodyHelper.TryReadBodyAsync, which reports both a
-// missing and a malformed body as the same "Invalid JSON in request body"
-// 400 (see HabitEndpointTests.cs's *_EmptyBody_Returns400 and
-// *_MalformedJson_Returns400 cases, which assert the identical message).
-func decodeJSON[T any](r *http.Request) (T, bool) {
-	var v T
+// decodeOutcome is decodeJSON's three-way result.
+type decodeOutcome int
+
+const (
+	// decodeOK means a JSON value was decoded — possibly a `{}` with every
+	// field at its zero value, which is a perfectly valid, present object.
+	decodeOK decodeOutcome = iota
+	// decodeNull means the body was the literal JSON value `null`.
+	// System.Text.Json's JsonSerializer.Deserialize<T> parses that
+	// successfully into a null reference (T is a C# record — a reference
+	// type) rather than throwing; RequestBodyHelper.TryReadBodyAsync
+	// reports no error either. What a null body maps to varies by endpoint
+	// in the C# source: some (UpdateHabit, UpdateCompletion, CreatePromise,
+	// ToggleVisibility) have a standalone `if (request is null) return
+	// BadRequest("Request body is required")` check; others (CreateHabit,
+	// CompleteHabit) fold the null check into a combined check with another
+	// required field (`request is null || string.IsNullOrWhiteSpace(...)`),
+	// which produces a field-specific message instead — see each handler
+	// below for how it reacts to decodeNull.
+	decodeNull
+	// decodeMalformed means the body was missing, empty, invalid JSON, or
+	// had non-whitespace content after a complete JSON value — matching
+	// System.Text.Json's JsonSerializer, which requires the ENTIRE body to
+	// be consumed and throws JsonException on trailing content;
+	// TryReadBodyAsync maps any such exception to "Invalid JSON in request
+	// body" (see HabitEndpointTests.cs's *_EmptyBody_Returns400 and
+	// *_MalformedJson_Returns400 cases, which assert that identical
+	// message).
+	decodeMalformed
+)
+
+// decodeJSON decodes r.Body into T and reports which of the three outcomes
+// above occurred.
+func decodeJSON[T any](r *http.Request) (T, decodeOutcome) {
+	var zero T
 	if r.Body == nil {
-		return v, false
+		return zero, decodeMalformed
 	}
 	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(&v); err != nil {
-		return v, false
+	var ptr *T
+	if err := dec.Decode(&ptr); err != nil {
+		return zero, decodeMalformed
 	}
-	return v, true
+	// Reject any trailing non-whitespace content after the value — Go's
+	// json.Decoder, unlike System.Text.Json's JsonSerializer, otherwise
+	// happily decodes one leading value from a stream and silently ignores
+	// whatever comes after it.
+	if _, err := dec.Token(); err != io.EOF {
+		return zero, decodeMalformed
+	}
+	if ptr == nil {
+		return zero, decodeNull
+	}
+	return *ptr, decodeOK
+}
+
+// requireDecodedBody decodes r.Body into T, writing the response and
+// reporting ok=false for a malformed body ("Invalid JSON in request body")
+// or a literal JSON null body ("Request body is required") — the pattern
+// UpdateHabit, UpdateCompletion, CreatePromise, and ToggleVisibility all
+// share (their C# counterparts each have a standalone `if (request is null)
+// return BadRequest("Request body is required")` check with no other field
+// involved). CreateHabit and CompleteHabit do NOT use this: their own
+// field-specific validation already reproduces the C#'s combined-check
+// message for a null body without any special case (see decodeOutcome's
+// doc comment on decodeNull).
+func requireDecodedBody[T any](w http.ResponseWriter, r *http.Request) (T, bool) {
+	req, outcome := decodeJSON[T](r)
+	switch outcome {
+	case decodeMalformed:
+		writeError(w, http.StatusBadRequest, "Invalid JSON in request body")
+		return req, false
+	case decodeNull:
+		writeError(w, http.StatusBadRequest, "Request body is required")
+		return req, false
+	default:
+		return req, true
+	}
 }
 
 // CreateHabit handles POST /habits.
 func (h *Handlers) CreateHabit(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 
-	req, ok := decodeJSON[CreateHabitRequest](r)
-	if !ok {
+	// decodeNull deliberately falls through with a zero-valued req rather
+	// than a distinct 400 here — CreateHabit in HabitEndpoints.cs folds its
+	// null check into `request is null || string.IsNullOrWhiteSpace(request.Name)`,
+	// so a null body and an empty Name produce the identical "Name is
+	// required" message once CreateHabit's own validation runs below (see
+	// decodeOutcome's doc comment on decodeNull for the other endpoints that
+	// DO need a standalone check).
+	req, outcome := decodeJSON[CreateHabitRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Invalid JSON in request body")
 		return
 	}
@@ -95,9 +163,8 @@ func (h *Handlers) UpdateHabit(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 	id := r.PathValue("id")
 
-	req, ok := decodeJSON[UpdateHabitRequest](r)
+	req, ok := requireDecodedBody[UpdateHabitRequest](w, r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid JSON in request body")
 		return
 	}
 
@@ -127,8 +194,14 @@ func (h *Handlers) CompleteHabit(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 	habitID := r.PathValue("id")
 
-	req, ok := decodeJSON[CompleteHabitRequest](r)
-	if !ok {
+	// decodeNull falls through with a zero-valued req — CompleteHabit in
+	// CompletionEndpoints.cs folds its null check into `request is null ||
+	// string.IsNullOrWhiteSpace(request.Timezone)`, so a null body and a
+	// blank Timezone produce the identical "Timezone is required" message
+	// once resolveTimezone runs inside Service.CompleteHabit (see
+	// decodeOutcome's doc comment on decodeNull).
+	req, outcome := decodeJSON[CompleteHabitRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Invalid JSON in request body")
 		return
 	}
@@ -197,9 +270,8 @@ func (h *Handlers) UpdateCompletion(w http.ResponseWriter, r *http.Request) {
 	habitID := r.PathValue("id")
 	date := r.PathValue("date")
 
-	req, ok := decodeJSON[UpdateCompletionRequest](r)
+	req, ok := requireDecodedBody[UpdateCompletionRequest](w, r)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "Invalid JSON in request body")
 		return
 	}
 

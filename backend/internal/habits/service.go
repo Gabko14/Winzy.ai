@@ -12,6 +12,7 @@ import (
 
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
+	"github.com/Gabko14/winzy/backend/internal/export"
 )
 
 // ErrFutureDate and ErrOutsideWindow are the two date-range rejections
@@ -40,19 +41,59 @@ type Service struct {
 	pool     *pgxpool.Pool
 	registry *events.Registry
 	logger   *slog.Logger
+
+	// now is every promise-resolution time read's source of "now" (see
+	// promise_service.go and ArchiveHabit's promise-cancel step below) —
+	// defaults to time.Now but is overridable via SetClock so lazy
+	// resolution (Kept/EndedBelow) can be exercised in tests without
+	// waiting for real time to pass a promise's EndDate (winzy.ai-rdc7.3.3's
+	// SCOPE ADDITION). Nothing in the habit/completion paths reads this;
+	// consistency.go's own Calculate already takes an explicit "today"
+	// instead of reading a clock at all.
+	now func() time.Time
+
+	// usernameResolver backs the public flame surfaces' username->userID
+	// lookup (promise_public.go) — nil until SetUsernameResolver is called
+	// (see its doc comment for why this is wired after construction rather
+	// than through NewService).
+	usernameResolver UsernameResolver
 }
 
-// NewService wires a Service and registers its UserDeleted handler with
+// NewService wires a Service, registers its UserDeleted handler with
 // registry — the in-process replacement for UserDeletedSubscriber.cs,
-// cascading a deleted account's habits and completions. This is not called
-// out as a numbered step in the bead's dispatch, but it is the same data
-// the old habit-service cleaned up on user.deleted; leaving it unported
-// would silently orphan rows the C# system always removed. Flagged in the
-// bead report as a decision beyond the literal step list.
-func NewService(pool *pgxpool.Pool, registry *events.Registry, logger *slog.Logger) *Service {
-	s := &Service{pool: pool, registry: registry, logger: logger}
+// cascading a deleted account's habits, completions, and promises — and
+// registers its export.Section (habits + completions + promises) into
+// exportReg under the name "habit" (singular — matching the golden-pinned
+// InternalExport in InternalEndpoints.cs, which sets `service = "habit"` on
+// its response; NOT the module/package name, which is plural), the
+// in-process replacement for the old GET /habits/internal/export/{userId}
+// endpoint (see export.go).
+func NewService(pool *pgxpool.Pool, registry *events.Registry, exportReg *export.Registry, logger *slog.Logger) *Service {
+	s := &Service{pool: pool, registry: registry, logger: logger, now: time.Now}
 	events.Register(registry, s.handleUserDeleted)
+	exportReg.Register("habit", s.exportSection)
 	return s
+}
+
+// SetClock overrides the clock promise-resolution logic reads "now" from —
+// a test-only hook (see Service.now's doc comment); production code never
+// calls this, so NewService's default (time.Now) is what actually runs.
+func (s *Service) SetClock(now func() time.Time) {
+	s.now = now
+}
+
+// SetUsernameResolver wires the public flame endpoints' (GET
+// /habits/public/{username}, GET /habits/public/{username}/flame.svg)
+// in-process replacement for the old GET /auth/internal/resolve/{username}
+// HTTP call. It is set once at startup (cmd/api/main.go, after both
+// auth.Service and habits.Service exist — auth.Service satisfies
+// UsernameResolver structurally, no import of internal/auth needed here)
+// rather than threaded through NewService, so the many call sites that
+// construct a Service purely to exercise habits/completions/promise logic
+// (this module's own cascade and archive integration tests included) don't
+// also need to wire an auth.Service they have no other use for.
+func (s *Service) SetUsernameResolver(r UsernameResolver) {
+	s.usernameResolver = r
 }
 
 // handleUserDeleted resolves its querier via db.QuerierFrom instead of
@@ -188,17 +229,14 @@ func (s *Service) UpdateHabit(ctx context.Context, userID, id string, req Update
 	return updateHabit(ctx, s.pool, habit)
 }
 
-// ArchiveHabit soft-deletes a habit (idempotent) and emits HabitArchived.
-// The lookup here — unlike every other habits operation — does not filter
-// out already-archived habits, matching DeleteHabit's query in
+// ArchiveHabit soft-deletes a habit (idempotent) and emits HabitArchived,
+// canceling any Active promise for the habit first, in the same
+// transaction — matching DeleteHabit in HabitEndpoints.cs, which cancels the
+// promise and sets ArchivedAt in one SaveChangesAsync. The habit lookup here
+// — unlike every other habits operation — does not filter out
+// already-archived habits, matching DeleteHabit's query in
 // HabitEndpoints.cs exactly (no ArchivedAt condition), which is what makes
 // archiving an already-archived habit succeed again instead of 404ing.
-//
-// INTEGRATION POINT (winzy.ai-rdc7.3.3): the C# DeleteHabit also cancels
-// any active Promise for this habit before archiving it. Promises do not
-// exist in this bead (no table, no package) — when winzy.ai-rdc7.3.3 lands
-// Flame Promises, its cancel-on-archive logic belongs right here, before
-// the archiveHabit call below.
 func (s *Service) ArchiveHabit(ctx context.Context, userID, id string) error {
 	if !isValidUUID(id) {
 		return ErrNotFound
@@ -211,8 +249,21 @@ func (s *Service) ArchiveHabit(ctx context.Context, userID, id string) error {
 		return ErrNotFound
 	}
 
-	if _, err := archiveHabit(ctx, s.pool, habit.ID); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("habits: beginning archive transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := cancelActivePromiseForArchive(ctx, tx, userID, habit.ID, s.now().UTC()); err != nil {
 		return err
+	}
+	if _, err := archiveHabit(ctx, tx, habit.ID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("habits: committing archive transaction: %w", err)
 	}
 
 	if err := events.Emit(ctx, s.registry, events.HabitArchived{UserID: userID, HabitID: habit.ID}); err != nil {

@@ -12,6 +12,7 @@ package habits_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/dbtest"
 	"github.com/Gabko14/winzy/backend/internal/events"
+	"github.com/Gabko14/winzy/backend/internal/export"
 	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
@@ -37,8 +39,24 @@ const testJWTSecret = "integration-test-secret-that-is-at-least-32-chars!!"
 // doc comment), so tests mint an access token directly via TokenService
 // rather than registering a real user through /auth/register — the habits
 // module genuinely does not care whether the id corresponds to an existing
-// auth row.
+// auth row. Tests that need a real registered user (the public flame
+// surfaces, which resolve a username via auth.Service) use
+// newTestServerWithAuth instead.
 func newTestServer(t *testing.T) (*httptest.Server, *auth.TokenService, *events.Registry) {
+	t.Helper()
+	srv, tokens, registry, _, _ := newTestServerWithAuth(t)
+	return srv, tokens, registry
+}
+
+// newTestServerWithAuth is newTestServer plus the auth.Service and
+// export.Registry wired alongside habits, mirroring cmd/api/main.go's full
+// wiring: habitsService.SetUsernameResolver(authService) is called before
+// any request is served, and both services share the one export.Registry.
+// promise_public_integration_test.go registers real users through authSvc
+// directly (not over HTTP — auth's routes aren't mounted on this test
+// server) so their usernames actually resolve; export_integration_test.go
+// uses exportReg to assert the habits section's shape.
+func newTestServerWithAuth(t *testing.T) (*httptest.Server, *auth.TokenService, *events.Registry, *auth.Service, *export.Registry) {
 	t.Helper()
 	pool := dbtest.Connect(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -49,15 +67,19 @@ func newTestServer(t *testing.T) (*httptest.Server, *auth.TokenService, *events.
 	}
 
 	registry := events.New(logger)
-	service := habits.NewService(pool, registry, logger)
+	exportReg := export.New(logger)
+	authService := auth.NewService(pool, tokens, registry, exportReg, logger)
+	service := habits.NewService(pool, registry, exportReg, logger)
+	service.SetUsernameResolver(authService)
 	handlers := habits.NewHandlers(service)
 
 	mux := http.NewServeMux()
 	habits.RegisterRoutes(mux, handlers)
 
-	// habits has no public routes in this bead — every request must carry a
-	// valid bearer token.
-	protected := auth.Middleware(tokens, map[string]bool{})(mux)
+	// Every path requires a bearer token EXCEPT the public flame surfaces —
+	// mirrors cmd/api/main.go's "GET /habits/public/*" prefix entry (see
+	// auth.Middleware's isPublicRoute doc comment for the "*" convention).
+	protected := auth.Middleware(tokens, map[string]bool{"GET /habits/public/*": true})(mux)
 
 	generalLimiter := ratelimit.New(100000, time.Minute)
 	authLimiter := ratelimit.New(100000, time.Minute)
@@ -71,7 +93,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *auth.TokenService, *events.
 
 	srv := httptest.NewServer(inner.Handler)
 	t.Cleanup(srv.Close)
-	return srv, tokens, registry
+	return srv, tokens, registry, authService, exportReg
 }
 
 // bearerFor mints a valid access token for an arbitrary user id — no
@@ -83,6 +105,20 @@ func bearerFor(t *testing.T, tokens *auth.TokenService, userID string) map[strin
 		t.Fatalf("generating access token: %v", err)
 	}
 	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+// registerUserViaService creates a real user directly through authService
+// (auth's own HTTP routes aren't mounted on this test server, so this calls
+// its business logic in-process instead) — used by tests whose habit owner
+// must be a resolvable username, i.e. the public flame surfaces
+// (promise_public_integration_test.go).
+func registerUserViaService(t *testing.T, authService *auth.Service, email, username string) auth.AuthResult {
+	t.Helper()
+	result, err := authService.Register(context.Background(), email, username, "Password123!", nil)
+	if err != nil {
+		t.Fatalf("Register(%s) returned unexpected error: %v", email, err)
+	}
+	return result
 }
 
 type testRequest struct {

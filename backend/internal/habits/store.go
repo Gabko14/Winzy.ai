@@ -352,15 +352,80 @@ func habitCompletionDates(ctx context.Context, db querier, habitID string) ([]Da
 	return result, nil
 }
 
-// deleteUserData removes every completion and habit owned by userID, in
-// that order to respect the completions -> habits FK — the UserDeleted
-// event handler's cascade, matching UserDeletedSubscriber.cs.
+// deleteUserData removes every completion, promise, and habit owned by
+// userID, in that order to respect the completions/promises -> habits FKs —
+// the UserDeleted event handler's cascade, matching UserDeletedSubscriber.cs
+// plus promises (winzy.ai-rdc7.3.3; the C# subscriber predates the Promise
+// table, but leaving a user's promises behind after their habits and
+// completions are gone would orphan them just the same).
 func deleteUserData(ctx context.Context, db querier, userID string) error {
 	if _, err := db.Exec(ctx, `DELETE FROM completions WHERE user_id = $1::uuid`, userID); err != nil {
 		return fmt.Errorf("habits: deleting user completions: %w", err)
+	}
+	if err := deletePromisesForUser(ctx, db, userID); err != nil {
+		return err
 	}
 	if _, err := db.Exec(ctx, `DELETE FROM habits WHERE user_id = $1::uuid`, userID); err != nil {
 		return fmt.Errorf("habits: deleting user habits: %w", err)
 	}
 	return nil
+}
+
+// listAllHabitsForUser returns every habit owned by userID regardless of
+// archive state, ordered by creation time — the data-export query
+// (InternalExport in InternalEndpoints.cs has no ArchivedAt filter, unlike
+// every other habits query in this file), so a user's export includes
+// habits they've since archived.
+func listAllHabitsForUser(ctx context.Context, db querier, userID string) ([]Habit, error) {
+	rows, err := db.Query(ctx, `
+		SELECT `+habitColumns+` FROM habits
+		WHERE user_id = $1::uuid
+		ORDER BY created_at`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("habits: listing all habits for export: %w", err)
+	}
+	defer rows.Close()
+
+	result := []Habit{}
+	for rows.Next() {
+		h, err := scanHabit(rows)
+		if err != nil {
+			return nil, fmt.Errorf("habits: scanning habit for export: %w", err)
+		}
+		result = append(result, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("habits: iterating habits for export: %w", err)
+	}
+	return result, nil
+}
+
+// completionsForExport returns every completion for habitID in full (unlike
+// habitCompletionDates' minimal LocalDate/Kind projection), ordered by
+// local_date — the data-export query, matching InternalExport's
+// `h.Completions.OrderBy(c => c.LocalDate)`.
+func completionsForExport(ctx context.Context, db querier, habitID string) ([]Completion, error) {
+	rows, err := db.Query(ctx, `
+		SELECT `+completionColumns+` FROM completions
+		WHERE habit_id = $1::uuid
+		ORDER BY local_date`,
+		habitID)
+	if err != nil {
+		return nil, fmt.Errorf("habits: listing completions for export: %w", err)
+	}
+	defer rows.Close()
+
+	result := []Completion{}
+	for rows.Next() {
+		c, err := scanCompletion(rows)
+		if err != nil {
+			return nil, fmt.Errorf("habits: scanning completion for export: %w", err)
+		}
+		result = append(result, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("habits: iterating completions for export: %w", err)
+	}
+	return result, nil
 }

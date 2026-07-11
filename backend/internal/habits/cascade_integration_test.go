@@ -21,6 +21,7 @@ import (
 
 	"github.com/Gabko14/winzy/backend/internal/dbtest"
 	"github.com/Gabko14/winzy/backend/internal/events"
+	"github.com/Gabko14/winzy/backend/internal/export"
 	"github.com/Gabko14/winzy/backend/internal/habits"
 )
 
@@ -41,7 +42,7 @@ func TestHandleUserDeleted_EdgeCase_NoTransactionInContextFallsBackToPool(t *tes
 	pool := dbtest.Connect(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	registry := events.New(logger)
-	svc := habits.NewService(pool, registry, logger)
+	svc := habits.NewService(pool, registry, export.New(logger), logger)
 
 	userID := "11111111-1111-1111-1111-111111111111"
 	habit, err := svc.CreateHabit(context.Background(), userID, habits.CreateHabitRequest{Name: "Read"})

@@ -1,9 +1,11 @@
 // Package habits ports habit-service's habits + completions surface
-// (winzy.ai-rdc7.3.1) and the Flame/consistency engine (winzy.ai-rdc7.3.2):
-// CRUD on habits, logging/correcting completions, weighted consistency over a
-// 60-day rolling window (consistency.go), and GET /habits/{id}/stats.
-// Promises and the public flame surfaces land with Flame Promises
-// (winzy.ai-rdc7.3.3).
+// (winzy.ai-rdc7.3.1), the Flame/consistency engine (winzy.ai-rdc7.3.2), and
+// Flame Promises + the public flame surfaces (winzy.ai-rdc7.3.3): CRUD on
+// habits, logging/correcting completions, weighted consistency over a
+// 60-day rolling window (consistency.go), GET /habits/{id}/stats, promise
+// CRUD with lazy resolution (promise_models.go/promise_store.go/
+// promise_service.go/promise_handlers.go), and the unauthenticated public
+// flame page + flame.svg badge (promise_public.go).
 package habits
 
 import (
@@ -349,8 +351,18 @@ func parseISODate(s string) (time.Time, bool) {
 // midnight time.Time — the Go equivalent of
 // DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz)).
 func todayInLocation(loc *time.Location) time.Time {
-	now := time.Now().In(loc)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return civilDateInLocation(time.Now(), loc)
+}
+
+// civilDateInLocation is todayInLocation's explicit-clock variant: it reads
+// now's calendar date in loc instead of always reading the wall clock via
+// time.Now(). Promise resolution (promise_service.go) goes through this with
+// Service.now() instead of todayInLocation so lazy resolution (winzy.ai-rdc7.3.3's
+// SCOPE ADDITION) can be driven by a fake clock in tests, without waiting for
+// real time to pass a promise's EndDate.
+func civilDateInLocation(now time.Time, loc *time.Location) time.Time {
+	local := now.In(loc)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func trimToNil(s *string) *string {
