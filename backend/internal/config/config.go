@@ -41,6 +41,16 @@ type Config struct {
 	// RateLimitGeneralPerMinute caps requests per client IP per minute to
 	// every other endpoint.
 	RateLimitGeneralPerMinute int
+	// VAPIDSubject is the Web Push VAPID JWT subject (mailto: or https: URL).
+	// Cutover mapping (rdc7.10): WebPush__Subject → VAPID_SUBJECT.
+	VAPIDSubject string
+	// VAPIDPublicKey is the base64url-encoded VAPID public key. Must be the
+	// SAME key browsers already hold subscriptions against (HARD COMPATIBILITY
+	// CONSTRAINT on winzy.ai-rdc7.6). Cutover: WebPush__PublicKey → VAPID_PUBLIC_KEY.
+	VAPIDPublicKey string
+	// VAPIDPrivateKey is the base64url-encoded VAPID private key.
+	// Cutover: WebPush__PrivateKey → VAPID_PRIVATE_KEY.
+	VAPIDPrivateKey string
 }
 
 const (
@@ -134,6 +144,14 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	cfg.RateLimitGeneralPerMinute = generalLimit
 
+	// VAPID keys are optional: all three missing → push disabled (C#
+	// PushDeliveryService parity — skip sends, KEEP tokens). Partial config
+	// is still accepted here; notifications.NewService decides whether push
+	// is enabled once it sees the resolved triple.
+	cfg.VAPIDSubject = strings.TrimSpace(getenv("VAPID_SUBJECT"))
+	cfg.VAPIDPublicKey = strings.TrimSpace(getenv("VAPID_PUBLIC_KEY"))
+	cfg.VAPIDPrivateKey = strings.TrimSpace(getenv("VAPID_PRIVATE_KEY"))
+
 	return cfg, nil
 }
 
@@ -190,6 +208,10 @@ func (c Config) LogValue() slog.Value {
 	if c.JWTSecret != "" {
 		jwtSecretStatus = "REDACTED"
 	}
+	vapidStatus := "unset"
+	if c.VAPIDPublicKey != "" || c.VAPIDPrivateKey != "" {
+		vapidStatus = "REDACTED"
+	}
 	return slog.GroupValue(
 		slog.Int("port", c.Port),
 		slog.String("database_url", redactUserinfo(c.DatabaseURL)),
@@ -201,6 +223,8 @@ func (c Config) LogValue() slog.Value {
 		slog.Bool("trusted_proxy", c.TrustedProxy),
 		slog.Int("rate_limit_auth_per_minute", c.RateLimitAuthPerMinute),
 		slog.Int("rate_limit_general_per_minute", c.RateLimitGeneralPerMinute),
+		slog.String("vapid_keys", vapidStatus),
+		slog.Bool("vapid_subject_set", c.VAPIDSubject != ""),
 	)
 }
 

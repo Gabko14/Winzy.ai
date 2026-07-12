@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Gabko14/winzy/backend/internal/activity"
 	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/challenges"
 	"github.com/Gabko14/winzy/backend/internal/config"
@@ -22,6 +23,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/health"
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
+	"github.com/Gabko14/winzy/backend/internal/notifications"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 	"github.com/Gabko14/winzy/backend/internal/social"
 )
@@ -96,26 +98,39 @@ func run() error {
 	challengesService := challenges.NewService(pool, registry, exportRegistry, authService, socialService, habitsService, logger)
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
+	notificationsService := notifications.NewService(pool, registry, exportRegistry, socialService, notifications.VAPIDConfig{
+		Subject:    cfg.VAPIDSubject,
+		PublicKey:  cfg.VAPIDPublicKey,
+		PrivateKey: cfg.VAPIDPrivateKey,
+	}, logger)
+	notificationsHandlers := notifications.NewHandlers(notificationsService)
+
+	activityService := activity.NewService(pool, registry, exportRegistry, authService, socialService, logger)
+	activityHandlers := activity.NewHandlers(activityService)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health.Handler(pool))
 	auth.RegisterRoutes(mux, authHandlers)
 	habits.RegisterRoutes(mux, habitsHandlers)
 	social.RegisterRoutes(mux, socialHandlers)
 	challenges.RegisterRoutes(mux, challengesHandlers)
+	notifications.RegisterRoutes(mux, notificationsHandlers)
+	activity.RegisterRoutes(mux, activityHandlers)
 
 	// Public-route allowlist: auth's own slice, GET /health (every service's
 	// health check must be reachable without a token — Railway, docker
 	// healthcheck, and uptime monitoring all hit it directly), habits'
-	// public flame surfaces, and social's Witness Link viewer. "GET
-	// /habits/public/*" and "GET /social/witness/*" are prefix entries (see
-	// auth.Middleware's isPublicRoute doc comment) covering routes whose
-	// final path segment (a username or a witness token) isn't enumerable as
-	// an exact route. Later module beads (notifications) add their own
-	// public routes here too.
+	// public flame surfaces, social's Witness Link viewer, and
+	// notifications' VAPID public key (browsers need it before login to
+	// subscribe). "GET /habits/public/*" and "GET /social/witness/*" are
+	// prefix entries (see auth.Middleware's isPublicRoute doc comment)
+	// covering routes whose final path segment (a username or a witness
+	// token) isn't enumerable as an exact route.
 	publicRoutes := auth.DefaultPublicRoutes()
 	publicRoutes["GET /health"] = true
 	publicRoutes["GET /habits/public/*"] = true
 	publicRoutes["GET /social/witness/*"] = true
+	publicRoutes["GET /notifications/vapid-public-key"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 
 	// BodyLimit sits between the rate limiter and the router (not in
