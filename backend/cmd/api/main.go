@@ -26,6 +26,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/notifications"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 	"github.com/Gabko14/winzy/backend/internal/social"
+	"github.com/Gabko14/winzy/backend/internal/web"
 )
 
 func main() {
@@ -146,10 +147,20 @@ func run() error {
 	authLimiter := ratelimit.New(cfg.RateLimitAuthPerMinute, time.Minute)
 	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/", cfg.TrustedProxy)(bodyLimited)
 
+	// Root handler: API prefixes always hit the JWT+rate-limited mux.
+	// When WEB_DIST is set, everything else is static/SPA with NO JWT and
+	// NO rate limit — matching the C# gateway (UseStaticFiles before
+	// UseRateLimiter; YARP RateLimiterPolicy only on reverse-proxy routes).
+	var handler http.Handler = rateLimited
+	if cfg.WebDist != "" {
+		handler = web.SplitHandler(rateLimited, web.SPAHandler(cfg.WebDist))
+		logger.Info("same-origin web serving enabled", "web_dist", cfg.WebDist)
+	}
+
 	// "/social/witness/" is redacted from request logs — its trailing path
 	// segment is the witness token itself, a bearer credential that must
 	// never reach stdout/Railway logs (see httpserver.RequestLogging's doc
 	// comment).
-	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, rateLimited, logger, "/social/witness/")
+	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, handler, logger, "/social/witness/")
 	return httpserver.Serve(ctx, srv, logger)
 }

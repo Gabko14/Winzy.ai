@@ -50,6 +50,10 @@ e2e/blob-report/
 
 frontend/coverage
 coverage.json
+frontend/dist/
+# Go API binary (never commit local go build ./cmd/api output)
+backend/api
+backend/cmd/api/api
 # br doctor per-run artifacts
 .doctor/
 # dcg installer provisions per-repo Copilot CLI hooks here (machine-local absolute path, not repo config)

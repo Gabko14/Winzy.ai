@@ -58,6 +58,19 @@ func TestLoad_HappyPath_ValidEnvIsParsed(t *testing.T) {
 	if cfg.RateLimitGeneralPerMinute != 500 {
 		t.Errorf("RateLimitGeneralPerMinute = %d, want 500", cfg.RateLimitGeneralPerMinute)
 	}
+	if cfg.WebDist != "" {
+		t.Errorf("WebDist = %q, want empty when unset", cfg.WebDist)
+	}
+}
+
+func TestLoad_EdgeCase_WebDistPassedThrough(t *testing.T) {
+	cfg, err := load(env(map[string]string{"WEB_DIST": " /app/web "}))
+	if err != nil {
+		t.Fatalf("load() returned unexpected error: %v", err)
+	}
+	if cfg.WebDist != "/app/web" {
+		t.Errorf("WebDist = %q, want /app/web", cfg.WebDist)
+	}
 }
 
 func TestLoad_EdgeCase_MissingEnvUsesLocalDevDefaults(t *testing.T) {
@@ -94,6 +107,9 @@ func TestLoad_EdgeCase_MissingEnvUsesLocalDevDefaults(t *testing.T) {
 	}
 	if cfg.RateLimitGeneralPerMinute != 300 {
 		t.Errorf("RateLimitGeneralPerMinute = %d, want default 300", cfg.RateLimitGeneralPerMinute)
+	}
+	if cfg.WebDist != "" {
+		t.Errorf("WebDist = %q, want empty (API-only) when unset", cfg.WebDist)
 	}
 }
 

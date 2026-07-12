@@ -18,6 +18,37 @@ go run ./cmd/api                       # reads config from env, applies migratio
 curl http://localhost:8080/health
 ```
 
+### Full stack on :5050 (E2E / same-origin)
+
+Port 5050 matches Playwright fixtures. Do **not** start the old `api-gateway` at the same time.
+
+**Compose (production bundle inside the image):**
+
+```bash
+# from repo root; requires JWT_SECRET in .env (see .env.example)
+docker compose --profile go up -d --build winzy-db winzy-api
+curl http://localhost:5050/health
+# SPA: http://localhost:5050/   API: http://localhost:5050/auth/...
+```
+
+`WINZY_CORS_ORIGIN` defaults to `http://localhost:8081` (Expo web dev). For same-origin Playwright against the Go-served bundle, set `WINZY_CORS_ORIGIN=http://localhost:5050`.
+
+**Local Go binary + Expo export (no image rebuild):**
+
+```bash
+docker compose up -d winzy-db
+cd frontend && npx expo export --platform web && cp -R assets dist/assets
+cd ../backend
+PORT=5050 \
+  WEB_DIST=../frontend/dist \
+  CORS_ORIGIN=http://localhost:8081 \
+  JWT_SECRET='winzy-dev-jwt-secret-minimum-32-characters-long!!' \
+  RATE_LIMIT_AUTH_PER_MINUTE=1000 \
+  go run ./cmd/api
+```
+
+Unset `WEB_DIST` for API-only mode (unit tests / contract tests unchanged).
+
 Config is read from the environment with local-dev defaults (see `internal/config/config.go`):
 
 | Var | Default |
@@ -26,8 +57,19 @@ Config is read from the environment with local-dev defaults (see `internal/confi
 | `DATABASE_URL` | `postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable` |
 | `LOG_LEVEL` | `info` (`debug`/`info`/`warn`/`error`) |
 | `CORS_ORIGIN` | `http://localhost:8081` (Expo web dev) |
+| `WEB_DIST` | unset (API-only); set to Expo `dist/` (+ `assets/`) for same-origin SPA |
 
 Invalid values (unparseable `PORT`, unparseable `DATABASE_URL`, unknown `LOG_LEVEL`, schemeless `CORS_ORIGIN`) fail fast at startup with a descriptive error.
+
+### Production image
+
+Build from the **repo root** (frontend stage needs `frontend/`):
+
+```bash
+docker build -f backend/Dockerfile.railway -t winzy-api .
+```
+
+`backend/Dockerfile` remains the API-only image (no SPA). `Dockerfile.railway` embeds the Expo export at `/app/web` and sets `WEB_DIST`.
 
 ## Test
 

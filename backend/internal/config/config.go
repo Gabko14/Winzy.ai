@@ -51,6 +51,11 @@ type Config struct {
 	// VAPIDPrivateKey is the base64url-encoded VAPID private key.
 	// Cutover: WebPush__PrivateKey → VAPID_PRIVATE_KEY.
 	VAPIDPrivateKey string
+	// WebDist is the filesystem path to the Expo web export (plus assets).
+	// Empty/unset keeps the process API-only — unit tests and local API
+	// dev stay unchanged. When set, cmd/api serves the SPA same-origin
+	// beside the API (winzy.ai-rdc7.8.2).
+	WebDist string
 }
 
 const (
@@ -152,6 +157,8 @@ func load(getenv func(string) string) (Config, error) {
 	cfg.VAPIDPublicKey = strings.TrimSpace(getenv("VAPID_PUBLIC_KEY"))
 	cfg.VAPIDPrivateKey = strings.TrimSpace(getenv("VAPID_PRIVATE_KEY"))
 
+	cfg.WebDist = strings.TrimSpace(getenv("WEB_DIST"))
+
 	return cfg, nil
 }
 
@@ -225,6 +232,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Int("rate_limit_general_per_minute", c.RateLimitGeneralPerMinute),
 		slog.String("vapid_keys", vapidStatus),
 		slog.Bool("vapid_subject_set", c.VAPIDSubject != ""),
+		slog.String("web_dist", c.WebDist),
 	)
 }
 
