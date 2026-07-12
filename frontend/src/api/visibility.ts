@@ -1,28 +1,17 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Types matching Social Service visibility contract ---
-// Keep in sync with: services/social-service/src/Program.cs
+// Keep in sync with: backend/internal/social/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type HabitVisibility = "private" | "friends" | "public";
-
-export type VisibilityEntry = {
-  habitId: string;
-  visibility: HabitVisibility;
-};
-
-export type BatchVisibilityResponse = {
-  defaultVisibility: HabitVisibility;
-  habits: VisibilityEntry[];
-};
-
-export type VisibilityUpdateResponse = {
-  habitId: string;
-  visibility: HabitVisibility;
-};
-
-export type PreferencesResponse = {
-  defaultHabitVisibility: HabitVisibility;
-};
+export type HabitVisibility = Schemas["HabitVisibility"];
+export type VisibilityEntry = Schemas["VisibilityEntry"];
+export type BatchVisibilityResponse = Schemas["BatchVisibilityResponse"];
+export type VisibilityUpdateResponse = Schemas["VisibilityUpdateResponse"];
+export type PreferencesResponse = Schemas["PreferencesResponse"];
 
 // --- API functions ---
 

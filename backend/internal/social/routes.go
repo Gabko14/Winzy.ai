@@ -18,7 +18,13 @@ import "net/http"
 // path can match both patterns — unlike habits' habitOrPublicGET case
 // (RegisterRoutes' doc comment there), there is no genuine ambiguity here
 // requiring a merged manual-dispatch handler.
-func RegisterRoutes(mux *http.ServeMux, h *Handlers) {
+// routeMux is satisfied by *http.ServeMux and by the recording registrar
+// used in cmd/api's OpenAPI contract test.
+type routeMux interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
+func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("POST /social/friends/request", h.SendFriendRequest)
 	mux.HandleFunc("PUT /social/friends/request/{id}/accept", h.AcceptFriendRequest)
 	mux.HandleFunc("PUT /social/friends/request/{id}/decline", h.DeclineFriendRequest)

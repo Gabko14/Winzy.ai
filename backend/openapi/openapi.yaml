@@ -1,0 +1,2202 @@
+openapi: 3.1.0
+info:
+  title: Winzy API
+  version: 1.0.0
+  description: >
+    Hand-written contract for the single Go API service. Source of truth for
+    wire shapes is backend/internal/*/ models and handlers — not the retired
+    C# microservices. Drift is enforced by backend/cmd/api contract tests.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: health
+  - name: auth
+  - name: habits
+  - name: social
+  - name: challenges
+  - name: notifications
+  - name: activity
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/AuthValidationError"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          description: Invalid or expired refresh token
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "204":
+          description: Logged out
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /auth/profile:
+    get:
+      tags: [auth]
+      operationId: getProfile
+      responses:
+        "200":
+          description: Current profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    put:
+      tags: [auth]
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Validation or malformed body
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorBody"
+                  - $ref: "#/components/schemas/ValidationErrorBody"
+
+  /auth/password:
+    put:
+      tags: [auth]
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          $ref: "#/components/responses/AuthValidationError"
+
+  /auth/account:
+    delete:
+      tags: [auth]
+      operationId: deleteAccount
+      responses:
+        "204":
+          description: Account deleted
+
+  /auth/export:
+    get:
+      tags: [auth]
+      operationId: exportMyData
+      responses:
+        "200":
+          description: GDPR export bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBundle"
+        "429":
+          $ref: "#/components/responses/Error"
+
+  /auth/users/search:
+    get:
+      tags: [auth]
+      operationId: searchUsers
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSearchResult"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /habits:
+    get:
+      tags: [habits]
+      operationId: listHabits
+      responses:
+        "200":
+          description: Active habits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Habit"
+    post:
+      tags: [habits]
+      operationId: createHabit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHabitRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /habits/completions:
+    get:
+      tags: [habits]
+      operationId: completionsByDate
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Completions for date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionsByDateResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /habits/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HabitId"
+    get:
+      tags: [habits]
+      operationId: getHabit
+      responses:
+        "200":
+          description: Habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "404":
+          description: Not found
+    put:
+      tags: [habits]
+      operationId: updateHabit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHabitRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+    delete:
+      tags: [habits]
+      operationId: archiveHabit
+      responses:
+        "204":
+          description: Archived
+        "404":
+          description: Not found
+
+  /habits/{id}/complete:
+    post:
+      tags: [habits]
+      operationId: completeHabit
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteHabitRequest"
+      responses:
+        "200":
+          description: Completion logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabitCompletion"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /habits/{id}/completions/{date}:
+    parameters:
+      - $ref: "#/components/parameters/HabitId"
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+    put:
+      tags: [habits]
+      operationId: updateCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCompletionRequest"
+      responses:
+        "200":
+          description: Updated completion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateCompletionResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+    delete:
+      tags: [habits]
+      operationId: deleteCompletion
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /habits/{id}/stats:
+    get:
+      tags: [habits]
+      operationId: getHabitStats
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+        - $ref: "#/components/parameters/XTimezone"
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabitStats"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+
+  /habits/{id}/promise:
+    parameters:
+      - $ref: "#/components/parameters/HabitId"
+    get:
+      tags: [habits]
+      operationId: getPromise
+      parameters:
+        - $ref: "#/components/parameters/XTimezone"
+        - name: history
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Active promise (+ optional history)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromiseResponse"
+        "404":
+          description: Not found
+    post:
+      tags: [habits]
+      operationId: createPromise
+      parameters:
+        - $ref: "#/components/parameters/XTimezone"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePromiseRequest"
+      responses:
+        "201":
+          description: Created promise
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlamePromise"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+        "409":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [habits]
+      operationId: cancelPromise
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: Not found
+
+  /habits/{id}/promise/visibility:
+    patch:
+      tags: [habits]
+      operationId: togglePromiseVisibility
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TogglePromiseVisibilityRequest"
+      responses:
+        "200":
+          description: Updated visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TogglePromiseVisibilityResponse"
+        "404":
+          description: Not found
+
+  /habits/public/{username}:
+    get:
+      tags: [habits]
+      operationId: publicFlameProfile
+      security: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public flame profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicFlameProfile"
+        "404":
+          description: Not found
+
+  /habits/public/{username}/flame.svg:
+    get:
+      tags: [habits]
+      operationId: flameBadge
+      security: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SVG flame badge
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "404":
+          description: Not found
+
+  /social/friends/request:
+    post:
+      tags: [social]
+      operationId: sendFriendRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendFriendRequest"
+      responses:
+        "201":
+          description: Request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /social/friends/request/{id}/accept:
+    put:
+      tags: [social]
+      operationId: acceptFriendRequest
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestResult"
+        "404":
+          description: Not found
+
+  /social/friends/request/{id}/decline:
+    put:
+      tags: [social]
+      operationId: declineFriendRequest
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "204":
+          description: Declined
+        "404":
+          description: Not found
+
+  /social/friends/{friendId}:
+    delete:
+      tags: [social]
+      operationId: removeFriend
+      parameters:
+        - $ref: "#/components/parameters/FriendId"
+      responses:
+        "204":
+          description: Removed
+        "404":
+          description: Not found
+
+  /social/friends:
+    get:
+      tags: [social]
+      operationId: listFriends
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        "200":
+          description: Friends page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendsPage"
+
+  /social/friends/requests:
+    get:
+      tags: [social]
+      operationId: listFriendRequests
+      responses:
+        "200":
+          description: Incoming and outgoing requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestsResponse"
+
+  /social/friends/requests/count:
+    get:
+      tags: [social]
+      operationId: pendingFriendRequestCount
+      responses:
+        "200":
+          description: Pending incoming count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
+
+  /social/friends/{friendId}/profile:
+    get:
+      tags: [social]
+      operationId: getFriendProfile
+      parameters:
+        - $ref: "#/components/parameters/FriendId"
+      responses:
+        "200":
+          description: Friend profile with visible habits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendProfileResponse"
+        "404":
+          description: Not found
+
+  /social/visibility/{habitId}:
+    put:
+      tags: [social]
+      operationId: setHabitVisibility
+      parameters:
+        - name: habitId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetVisibilityRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisibilityUpdateResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+
+  /social/visibility:
+    get:
+      tags: [social]
+      operationId: getBatchVisibility
+      responses:
+        "200":
+          description: Batch visibility
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchVisibilityResponse"
+
+  /social/preferences:
+    get:
+      tags: [social]
+      operationId: getPreferences
+      responses:
+        "200":
+          description: Social preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponse"
+    put:
+      tags: [social]
+      operationId: updatePreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePreferencesRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /social/witness-links:
+    get:
+      tags: [social]
+      operationId: listWitnessLinks
+      responses:
+        "200":
+          description: Owner's witness links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WitnessLinksResponse"
+    post:
+      tags: [social]
+      operationId: createWitnessLink
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWitnessLinkRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WitnessLink"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /social/witness-links/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    put:
+      tags: [social]
+      operationId: updateWitnessLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWitnessLinkRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WitnessLink"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+    delete:
+      tags: [social]
+      operationId: revokeWitnessLink
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          description: Not found
+
+  /social/witness-links/{id}/rotate:
+    post:
+      tags: [social]
+      operationId: rotateWitnessLink
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Rotated token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WitnessLink"
+        "404":
+          description: Not found
+
+  /social/witness/{token}:
+    get:
+      tags: [social]
+      operationId: viewWitnessLink
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public witness view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WitnessViewResponse"
+        "404":
+          description: Not found
+
+  /challenges:
+    get:
+      tags: [challenges]
+      operationId: listChallenges
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ChallengeStatus"
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Challenges page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengesPage"
+    post:
+      tags: [challenges]
+      operationId: createChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChallengeRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Challenge"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /challenges/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [challenges]
+      operationId: getChallenge
+      responses:
+        "200":
+          description: Challenge detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengeDetail"
+        "404":
+          description: Not found
+    delete:
+      tags: [challenges]
+      operationId: cancelChallenge
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: Not found
+
+  /challenges/{id}/claim:
+    put:
+      tags: [challenges]
+      operationId: claimChallenge
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Challenge"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+
+  /notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        "200":
+          description: Notifications page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPage"
+
+  /notifications/{id}/read:
+    put:
+      tags: [notifications]
+      operationId: markNotificationRead
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationItem"
+        "404":
+          description: Not found
+
+  /notifications/read-all:
+    put:
+      tags: [notifications]
+      operationId: markAllNotificationsRead
+      responses:
+        "200":
+          description: Marked all read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkAllReadResponse"
+
+  /notifications/unread-count:
+    get:
+      tags: [notifications]
+      operationId: unreadNotificationCount
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+
+  /notifications/settings:
+    put:
+      tags: [notifications]
+      operationId: updateNotificationSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNotificationSettingsRequest"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+
+  /notifications/devices:
+    post:
+      tags: [notifications]
+      operationId: registerDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeviceRequest"
+      responses:
+        "204":
+          description: Registered
+        "400":
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [notifications]
+      operationId: unregisterDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnregisterDeviceRequest"
+      responses:
+        "204":
+          description: Unregistered
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /notifications/vapid-public-key:
+    get:
+      tags: [notifications]
+      operationId: getVapidPublicKey
+      security: []
+      responses:
+        "200":
+          description: VAPID public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VapidKeyResponse"
+
+  /activity/feed:
+    get:
+      tags: [activity]
+      operationId: getActivityFeed
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        "200":
+          description: Activity feed page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedPage"
+        "400":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    HabitId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FriendId:
+      name: friendId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RequestId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XTimezone:
+      name: X-Timezone
+      in: header
+      required: true
+      schema:
+        type: string
+      description: IANA timezone id required by owner-facing habit stats/promise endpoints
+
+  responses:
+    Error:
+      description: Plain error body
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    AuthValidationError:
+      description: Auth validation errors (HTTP 400, not 422)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorBody"
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    ValidationErrorBody:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    HealthResponse:
+      type: object
+      required: [status, db]
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        db:
+          type: string
+          enum: [up, down]
+
+    UserProfile:
+      type: object
+      required: [id, email, username, displayName, avatarUrl, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: ["string", "null"]
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        displayName:
+          type: ["string", "null"]
+
+    LoginRequest:
+      type: object
+      required: [emailOrUsername, password]
+      properties:
+        emailOrUsername:
+          type: string
+        password:
+          type: string
+
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: ["string", "null"]
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+
+    UserSearchResult:
+      type: object
+      required: [id, username, displayName, avatarUrl]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+
+    ExportBundle:
+      type: object
+      required: [exportedAt, services]
+      properties:
+        exportedAt:
+          type: string
+          format: date-time
+        services:
+          type: array
+          items:
+            type: object
+            required: [service, data]
+            properties:
+              service:
+                type: string
+              data:
+                type: object
+                additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: string
+
+    FrequencyType:
+      type: string
+      enum: [daily, weekly, custom]
+
+    CompletionKind:
+      type: string
+      enum: [full, minimum]
+
+    FlameLevel:
+      type: string
+      enum: [none, ember, steady, strong, blazing]
+
+    Habit:
+      type: object
+      required:
+        [id, name, icon, color, frequency, customDays, minimumDescription, createdAt, archivedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: ["array", "null"]
+          items:
+            type: integer
+        minimumDescription:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    CreateHabitRequest:
+      type: object
+      required: [name, frequency]
+      properties:
+        name:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: array
+          items:
+            type: integer
+        minimumDescription:
+          type: string
+
+    UpdateHabitRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: array
+          items:
+            type: integer
+        minimumDescription:
+          type: string
+        clearMinimumDescription:
+          type: boolean
+
+    CompleteHabitRequest:
+      type: object
+      required: [timezone]
+      properties:
+        date:
+          type: string
+          format: date
+        timezone:
+          type: string
+        completionKind:
+          type: integer
+          description: "1=full, 2=minimum (numeric wire enum on requests)"
+
+    UpdateCompletionRequest:
+      type: object
+      required: [completionKind]
+      properties:
+        completionKind:
+          type: integer
+          description: "1=full, 2=minimum"
+
+    HabitCompletion:
+      type: object
+      required: [id, habitId, localDate, completedAt, completionKind, consistency]
+      properties:
+        id:
+          type: string
+          format: uuid
+        habitId:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          format: date
+        completedAt:
+          type: string
+          format: date-time
+        completionKind:
+          $ref: "#/components/schemas/CompletionKind"
+        consistency:
+          type: number
+
+    UpdateCompletionResponse:
+      type: object
+      required: [id, habitId, localDate, completedAt, completionKind]
+      properties:
+        id:
+          type: string
+          format: uuid
+        habitId:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          format: date
+        completedAt:
+          type: string
+          format: date-time
+        completionKind:
+          $ref: "#/components/schemas/CompletionKind"
+
+    CompletionDateEntry:
+      type: object
+      required: [date, completionKind]
+      properties:
+        date:
+          type: string
+          format: date
+        completionKind:
+          $ref: "#/components/schemas/CompletionKind"
+
+    HabitStats:
+      type: object
+      required:
+        [
+          habitId,
+          consistency,
+          flameLevel,
+          totalCompletions,
+          completionsInWindow,
+          completedToday,
+          completedTodayKind,
+          windowDays,
+          windowStart,
+          today,
+          completedDates,
+        ]
+      properties:
+        habitId:
+          type: string
+          format: uuid
+        consistency:
+          type: number
+        flameLevel:
+          $ref: "#/components/schemas/FlameLevel"
+        totalCompletions:
+          type: integer
+        completionsInWindow:
+          type: integer
+        completedToday:
+          type: boolean
+        completedTodayKind:
+          type: ["string", "null"]
+          enum: [full, minimum, null]
+        windowDays:
+          type: integer
+        windowStart:
+          type: string
+          format: date
+        today:
+          type: string
+          format: date
+        completedDates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletionDateEntry"
+
+    CompletionsByDateResponse:
+      type: object
+      required: [date, habits]
+      properties:
+        date:
+          type: string
+          format: date
+        habits:
+          type: array
+          items:
+            type: object
+            required: [id, name, icon, color, minimumDescription, completed, completionKind]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              icon:
+                type: ["string", "null"]
+              color:
+                type: ["string", "null"]
+              minimumDescription:
+                type: ["string", "null"]
+              completed:
+                type: boolean
+              completionKind:
+                type: ["string", "null"]
+
+    PromiseStatus:
+      type: string
+      enum: [active, kept, endedbelow, cancelled]
+
+    FlamePromise:
+      type: object
+      required:
+        [
+          id,
+          habitId,
+          targetConsistency,
+          endDate,
+          privateNote,
+          status,
+          onTrack,
+          currentConsistency,
+          isPublicOnFlame,
+          statement,
+          createdAt,
+          resolvedAt,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        habitId:
+          type: string
+          format: uuid
+        targetConsistency:
+          type: number
+        endDate:
+          type: string
+          format: date
+        privateNote:
+          type: ["string", "null"]
+        status:
+          $ref: "#/components/schemas/PromiseStatus"
+        onTrack:
+          type: ["boolean", "null"]
+        currentConsistency:
+          type: ["number", "null"]
+        isPublicOnFlame:
+          type: boolean
+        statement:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    PublicPromise:
+      type: object
+      required: [targetConsistency, endDate, statement, onTrack]
+      properties:
+        targetConsistency:
+          type: number
+        endDate:
+          type: string
+          format: date
+        statement:
+          type: string
+        onTrack:
+          type: ["boolean", "null"]
+
+    PromiseResponse:
+      type: object
+      required: [active, history]
+      properties:
+        active:
+          oneOf:
+            - $ref: "#/components/schemas/FlamePromise"
+            - type: "null"
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlamePromise"
+
+    CreatePromiseRequest:
+      type: object
+      required: [targetConsistency, endDate]
+      properties:
+        targetConsistency:
+          type: number
+        endDate:
+          type: string
+          format: date
+        privateNote:
+          type: string
+        isPublicOnFlame:
+          type: boolean
+
+    TogglePromiseVisibilityRequest:
+      type: object
+      required: [isPublicOnFlame]
+      properties:
+        isPublicOnFlame:
+          type: boolean
+
+    TogglePromiseVisibilityResponse:
+      type: object
+      required: [isPublicOnFlame]
+      properties:
+        isPublicOnFlame:
+          type: boolean
+
+    PublicFlameProfile:
+      type: object
+      required: [username, habits, degraded]
+      properties:
+        username:
+          type: string
+        habits:
+          type: array
+          items:
+            type: object
+            required: [id, name, icon, color, consistency, flameLevel, promise]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              icon:
+                type: ["string", "null"]
+              color:
+                type: ["string", "null"]
+              consistency:
+                type: number
+              flameLevel:
+                $ref: "#/components/schemas/FlameLevel"
+              promise:
+                oneOf:
+                  - $ref: "#/components/schemas/PublicPromise"
+                  - type: "null"
+        degraded:
+          type: boolean
+
+    HabitVisibility:
+      type: string
+      enum: [private, friends, public]
+
+    Friend:
+      type: object
+      required: [friendId, since, flameLevel, consistency, habitsUnavailable]
+      properties:
+        friendId:
+          type: string
+          format: uuid
+        since:
+          type: string
+          format: date-time
+        username:
+          type: ["string", "null"]
+        displayName:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        flameLevel:
+          $ref: "#/components/schemas/FlameLevel"
+        consistency:
+          type: number
+        habitsUnavailable:
+          type: boolean
+
+    FriendsPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Friend"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    IncomingRequest:
+      type: object
+      required: [id, fromUserId, direction, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromUserId:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [incoming]
+        createdAt:
+          type: string
+          format: date-time
+        fromUsername:
+          type: ["string", "null"]
+        fromDisplayName:
+          type: ["string", "null"]
+
+    OutgoingRequest:
+      type: object
+      required: [id, toUserId, direction, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        toUserId:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [outgoing]
+        createdAt:
+          type: string
+          format: date-time
+        toUsername:
+          type: ["string", "null"]
+        toDisplayName:
+          type: ["string", "null"]
+
+    FriendRequestsResponse:
+      type: object
+      required: [incoming, outgoing]
+      properties:
+        incoming:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncomingRequest"
+        outgoing:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutgoingRequest"
+
+    FriendRequestResult:
+      type: object
+      required: [id, userId, friendId, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        friendId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SendFriendRequest:
+      type: object
+      required: [friendId]
+      properties:
+        friendId:
+          type: string
+          format: uuid
+
+    FriendHabit:
+      type: object
+      required: [id, name, icon, color, consistency, flameLevel]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        consistency:
+          type: number
+        flameLevel:
+          $ref: "#/components/schemas/FlameLevel"
+
+    FriendProfileResponse:
+      type: object
+      required: [friendId, habits, habitsUnavailable]
+      properties:
+        friendId:
+          type: string
+          format: uuid
+        habits:
+          type: array
+          items:
+            $ref: "#/components/schemas/FriendHabit"
+        habitsUnavailable:
+          type: boolean
+
+    CountResponse:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+
+    VisibilityEntry:
+      type: object
+      required: [habitId, visibility]
+      properties:
+        habitId:
+          type: string
+          format: uuid
+        visibility:
+          $ref: "#/components/schemas/HabitVisibility"
+
+    BatchVisibilityResponse:
+      type: object
+      required: [defaultVisibility, habits]
+      properties:
+        defaultVisibility:
+          $ref: "#/components/schemas/HabitVisibility"
+        habits:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisibilityEntry"
+
+    VisibilityUpdateResponse:
+      type: object
+      required: [habitId, visibility]
+      properties:
+        habitId:
+          type: string
+          format: uuid
+        visibility:
+          $ref: "#/components/schemas/HabitVisibility"
+
+    SetVisibilityRequest:
+      type: object
+      required: [visibility]
+      properties:
+        visibility:
+          $ref: "#/components/schemas/HabitVisibility"
+
+    PreferencesResponse:
+      type: object
+      required: [defaultHabitVisibility]
+      properties:
+        defaultHabitVisibility:
+          $ref: "#/components/schemas/HabitVisibility"
+
+    UpdatePreferencesRequest:
+      type: object
+      required: [defaultHabitVisibility]
+      properties:
+        defaultHabitVisibility:
+          $ref: "#/components/schemas/HabitVisibility"
+
+    WitnessLink:
+      type: object
+      required: [id, token, label, habitIds, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        label:
+          type: ["string", "null"]
+        habitIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    WitnessLinksResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WitnessLink"
+
+    CreateWitnessLinkRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        habitIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateWitnessLinkRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        habitIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    WitnessHabit:
+      type: object
+      required: [id, name, icon, color, consistency, flameLevel, promise]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        consistency:
+          type: number
+        flameLevel:
+          $ref: "#/components/schemas/FlameLevel"
+        promise:
+          oneOf:
+            - $ref: "#/components/schemas/PublicPromise"
+            - type: "null"
+
+    WitnessViewResponse:
+      type: object
+      required: [ownerUsername, ownerDisplayName, habits, habitsUnavailable]
+      properties:
+        ownerUsername:
+          type: ["string", "null"]
+        ownerDisplayName:
+          type: ["string", "null"]
+        habits:
+          type: array
+          items:
+            $ref: "#/components/schemas/WitnessHabit"
+        habitsUnavailable:
+          type: boolean
+
+    MilestoneType:
+      type: string
+      enum:
+        - consistencyTarget
+        - daysInPeriod
+        - totalCompletions
+        - customDateRange
+        - improvementMilestone
+
+    ChallengeStatus:
+      type: string
+      enum: [active, completed, claimed, cancelled, expired]
+
+    Challenge:
+      type: object
+      required:
+        [
+          id,
+          habitId,
+          creatorId,
+          recipientId,
+          milestoneType,
+          targetValue,
+          periodDays,
+          rewardDescription,
+          status,
+          createdAt,
+          endsAt,
+          completedAt,
+          claimedAt,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        habitId:
+          type: string
+          format: uuid
+        creatorId:
+          type: string
+          format: uuid
+        recipientId:
+          type: string
+          format: uuid
+        milestoneType:
+          $ref: "#/components/schemas/MilestoneType"
+        targetValue:
+          type: number
+        periodDays:
+          type: integer
+        rewardDescription:
+          type: string
+        status:
+          $ref: "#/components/schemas/ChallengeStatus"
+        createdAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        claimedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    ChallengeDetail:
+      allOf:
+        - $ref: "#/components/schemas/Challenge"
+        - type: object
+          required:
+            [progress, completionCount, baselineConsistency, customStartDate, customEndDate, creatorDisplayName]
+          properties:
+            progress:
+              type: number
+            completionCount:
+              type: integer
+            baselineConsistency:
+              type: ["number", "null"]
+            customStartDate:
+              type: ["string", "null"]
+              format: date-time
+            customEndDate:
+              type: ["string", "null"]
+              format: date-time
+            creatorDisplayName:
+              type: ["string", "null"]
+
+    ChallengesPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengeDetail"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    CreateChallengeRequest:
+      type: object
+      required:
+        [habitId, recipientId, milestoneType, targetValue, periodDays, rewardDescription]
+      properties:
+        habitId:
+          type: string
+          format: uuid
+        recipientId:
+          type: string
+          format: uuid
+        milestoneType:
+          $ref: "#/components/schemas/MilestoneType"
+        targetValue:
+          type: number
+        periodDays:
+          type: integer
+        rewardDescription:
+          type: string
+        customStartDate:
+          type: string
+          format: date-time
+        customEndDate:
+          type: string
+          format: date-time
+
+    NotificationType:
+      type: string
+      enum:
+        - habitcompleted
+        - friendrequestsent
+        - friendrequestaccepted
+        - challengecreated
+        - challengecompleted
+
+    NotificationItem:
+      type: object
+      required: [id, type, data, readAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/NotificationType"
+        data:
+          type: object
+          additionalProperties: true
+        readAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationsPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationItem"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    UnreadCountResponse:
+      type: object
+      required: [unreadCount]
+      properties:
+        unreadCount:
+          type: integer
+
+    MarkAllReadResponse:
+      type: object
+      required: [markedAsRead]
+      properties:
+        markedAsRead:
+          type: integer
+
+    NotificationSettings:
+      type: object
+      required: [habitReminders, friendActivity, challengeUpdates]
+      properties:
+        habitReminders:
+          type: boolean
+        friendActivity:
+          type: boolean
+        challengeUpdates:
+          type: boolean
+
+    UpdateNotificationSettingsRequest:
+      type: object
+      properties:
+        habitReminders:
+          type: boolean
+        friendActivity:
+          type: boolean
+        challengeUpdates:
+          type: boolean
+
+    RegisterDeviceRequest:
+      type: object
+      required: [platform, token]
+      properties:
+        platform:
+          type: string
+          enum: [web_push, expo_push]
+        token:
+          type: string
+        deviceId:
+          type: string
+
+    UnregisterDeviceRequest:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId:
+          type: string
+
+    VapidKeyResponse:
+      type: object
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: string
+
+    FeedEventType:
+      type: string
+      enum:
+        - habit.completed
+        - habit.created
+        - friend.request.accepted
+        - challenge.created
+        - challenge.completed
+        - user.registered
+
+    FeedEntry:
+      type: object
+      required: [id, actorId, actorUsername, actorDisplayName, eventType, data, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actorId:
+          type: string
+          format: uuid
+        actorUsername:
+          type: ["string", "null"]
+        actorDisplayName:
+          type: ["string", "null"]
+        eventType:
+          $ref: "#/components/schemas/FeedEventType"
+        data:
+          type: ["object", "null"]
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    FeedPage:
+      type: object
+      required: [items, nextCursor, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedEntry"
+        nextCursor:
+          type: ["string", "null"]
+        hasMore:
+          type: boolean

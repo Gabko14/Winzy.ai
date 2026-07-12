@@ -1,54 +1,19 @@
 import { api, apiRequest } from "./client";
-import type { PublicPromise } from "./promises";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Types matching backend contract ---
-// Keep in sync with: services/social-service/src/Program.cs (witness-link endpoints)
+// Keep in sync with: backend/internal/social/models.go (witness-link endpoints)
+// Spec: backend/openapi/openapi.yaml
 
-export type WitnessLink = {
-  id: string;
-  token: string;
-  label: string | null;
-  habitIds: string[];
-  createdAt: string;
-};
-
-export type WitnessLinksResponse = {
-  items: WitnessLink[];
-};
-
-export type CreateWitnessLinkRequest = {
-  label?: string;
-  habitIds?: string[];
-};
-
-export type UpdateWitnessLinkRequest = {
-  label?: string;
-  habitIds?: string[];
-};
-
-export type WitnessHabitPromise = {
-  targetConsistency: number;
-  endDate: string;
-  statement: string;
-  onTrack: boolean | null;
-};
-
-export type WitnessHabit = {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  consistency: number;
-  flameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
-  promise: PublicPromise | null;
-};
-
-export type WitnessViewResponse = {
-  ownerUsername: string | null;
-  ownerDisplayName: string | null;
-  habits: WitnessHabit[];
-  habitsUnavailable: boolean;
-};
+export type WitnessLink = Schemas["WitnessLink"];
+export type WitnessLinksResponse = Schemas["WitnessLinksResponse"];
+export type CreateWitnessLinkRequest = Schemas["CreateWitnessLinkRequest"];
+export type UpdateWitnessLinkRequest = Schemas["UpdateWitnessLinkRequest"];
+export type WitnessHabitPromise = Schemas["PublicPromise"];
+export type WitnessHabit = Schemas["WitnessHabit"];
+export type WitnessViewResponse = Schemas["WitnessViewResponse"];
 
 // --- API functions ---
 

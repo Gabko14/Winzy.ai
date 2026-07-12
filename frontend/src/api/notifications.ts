@@ -1,36 +1,17 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Types matching backend contract ---
+// Keep in sync with: backend/internal/notifications/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type NotificationType =
-  | "habitcompleted"
-  | "friendrequestsent"
-  | "friendrequestaccepted"
-  | "challengecreated"
-  | "challengecompleted";
-
-export type NotificationItem = {
-  id: string;
-  type: NotificationType;
-  data: Record<string, unknown>;
-  readAt: string | null;
-  createdAt: string;
-};
-
-export type NotificationsPage = {
-  items: NotificationItem[];
-  page: number;
-  pageSize: number;
-  total: number;
-};
-
-export type UnreadCountResponse = {
-  unreadCount: number;
-};
-
-export type MarkAllReadResponse = {
-  markedAsRead: number;
-};
+export type NotificationType = Schemas["NotificationType"];
+export type NotificationItem = Schemas["NotificationItem"];
+export type NotificationsPage = Schemas["NotificationsPage"];
+export type UnreadCountResponse = Schemas["UnreadCountResponse"];
+export type MarkAllReadResponse = Schemas["MarkAllReadResponse"];
 
 // --- API functions ---
 

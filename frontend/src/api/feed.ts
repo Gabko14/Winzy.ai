@@ -1,33 +1,16 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Feed types ---
-// Keep in sync with: services/activity-service/src/Program.cs (GET /activity/feed)
+// Keep in sync with: backend/internal/activity/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type FeedEventType =
-  | "habit.completed"
-  | "habit.created"
-  | "friend.request.accepted"
-  | "challenge.created"
-  | "challenge.completed"
-  | "user.registered";
-
+export type FeedEventType = Schemas["FeedEventType"];
 export type FeedEntryData = Record<string, unknown>;
-
-export type FeedEntry = {
-  id: string;
-  actorId: string;
-  actorUsername: string | null;
-  actorDisplayName: string | null;
-  eventType: FeedEventType;
-  data: FeedEntryData | null;
-  createdAt: string;
-};
-
-export type FeedPage = {
-  items: FeedEntry[];
-  nextCursor: string | null;
-  hasMore: boolean;
-};
+export type FeedEntry = Schemas["FeedEntry"];
+export type FeedPage = Schemas["FeedPage"];
 
 // --- Feed API functions ---
 

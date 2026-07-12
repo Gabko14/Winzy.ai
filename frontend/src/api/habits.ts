@@ -1,42 +1,17 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Types matching backend contract ---
-// Keep in sync with: services/habit-service/src/Entities/Habit.cs
+// Keep in sync with: backend/internal/habits/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type FrequencyType = "daily" | "weekly" | "custom";
-
-export type CompletionKind = "full" | "minimum";
-
-export type Habit = {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  frequency: FrequencyType;
-  customDays: number[] | null;
-  minimumDescription: string | null;
-  createdAt: string;
-  archivedAt: string | null;
-};
-
-export type CreateHabitRequest = {
-  name: string;
-  icon?: string;
-  color?: string;
-  frequency: FrequencyType;
-  customDays?: number[];
-  minimumDescription?: string;
-};
-
-export type UpdateHabitRequest = {
-  name?: string;
-  icon?: string;
-  color?: string;
-  frequency?: FrequencyType;
-  customDays?: number[];
-  minimumDescription?: string;
-  clearMinimumDescription?: boolean;
-};
+export type FrequencyType = Schemas["FrequencyType"];
+export type CompletionKind = Schemas["CompletionKind"];
+export type Habit = Schemas["Habit"];
+export type CreateHabitRequest = Schemas["CreateHabitRequest"];
+export type UpdateHabitRequest = Schemas["UpdateHabitRequest"];
 
 /** Backend enum values for CompletionKind */
 export const COMPLETION_KIND = { full: 1, minimum: 2 } as const;
@@ -64,43 +39,14 @@ export function archiveHabit(id: string): Promise<void> {
 }
 
 // --- Stats & completions (habit detail screen) ---
-// Keep in sync with: services/habit-service/src/Program.cs (stats + complete endpoints)
+// Keep in sync with: backend/internal/habits/handlers.go (stats + complete)
+// Spec: backend/openapi/openapi.yaml
 
-export type FlameLevel = "none" | "ember" | "steady" | "strong" | "blazing";
-
-export type CompletionDateEntry = {
-  date: string;
-  completionKind: CompletionKind;
-};
-
-export type HabitStats = {
-  habitId: string;
-  consistency: number;
-  flameLevel: FlameLevel;
-  totalCompletions: number;
-  completionsInWindow: number;
-  completedToday: boolean;
-  completedTodayKind: CompletionKind | null;
-  windowDays: number;
-  windowStart: string;
-  today: string;
-  completedDates: CompletionDateEntry[];
-};
-
-export type HabitCompletion = {
-  id: string;
-  habitId: string;
-  localDate: string;
-  completedAt: string;
-  completionKind: CompletionKind;
-  consistency: number;
-};
-
-export type CompleteHabitRequest = {
-  date?: string;
-  timezone: string;
-  completionKind?: number; // 1=full, 2=minimum (backend enum)
-};
+export type FlameLevel = Schemas["FlameLevel"];
+export type CompletionDateEntry = Schemas["CompletionDateEntry"];
+export type HabitStats = Schemas["HabitStats"];
+export type HabitCompletion = Schemas["HabitCompletion"];
+export type CompleteHabitRequest = Schemas["CompleteHabitRequest"];
 
 export function fetchHabitStats(id: string, timezone: string): Promise<HabitStats> {
   return api.get<HabitStats>(`/habits/${id}/stats`, {

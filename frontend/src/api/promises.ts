@@ -1,44 +1,17 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Promise types ---
-// Keep in sync with: services/habit-service/src/Entities/Promise.cs + Program.cs (MapPromiseToResponse)
+// Keep in sync with: backend/internal/habits/promise_models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type PromiseStatus = "active" | "kept" | "endedbelow" | "cancelled";
-
-export type FlamePromise = {
-  id: string;
-  habitId: string;
-  targetConsistency: number;
-  endDate: string;
-  privateNote: string | null;
-  status: PromiseStatus;
-  onTrack: boolean | null;
-  currentConsistency: number | null;
-  isPublicOnFlame: boolean;
-  statement: string;
-  createdAt: string;
-  resolvedAt: string | null;
-};
-
-/** Promise data visible on public/witness surfaces (no privateNote, no internal fields). */
-export type PublicPromise = {
-  targetConsistency: number;
-  endDate: string;
-  statement: string;
-  onTrack: boolean | null;
-};
-
-export type PromiseResponse = {
-  active: FlamePromise | null;
-  history: FlamePromise[];
-};
-
-export type CreatePromiseRequest = {
-  targetConsistency: number;
-  endDate: string;
-  privateNote?: string;
-  isPublicOnFlame?: boolean;
-};
+export type PromiseStatus = Schemas["PromiseStatus"];
+export type FlamePromise = Schemas["FlamePromise"];
+export type PublicPromise = Schemas["PublicPromise"];
+export type PromiseResponse = Schemas["PromiseResponse"];
+export type CreatePromiseRequest = Schemas["CreatePromiseRequest"];
 
 // --- API functions ---
 
@@ -58,8 +31,6 @@ export function createPromise(
   request: CreatePromiseRequest,
   timezone: string,
 ): Promise<FlamePromise> {
-  // The create endpoint returns the promise directly (not wrapped in active/history)
-  // but the response shape matches FlamePromise
   return api.post<FlamePromise>(`/habits/${habitId}/promise`, request, {
     headers: { "X-Timezone": timezone },
   });

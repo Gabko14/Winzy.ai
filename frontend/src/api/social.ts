@@ -1,90 +1,46 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Friends types ---
-// Keep in sync with: services/social-service/src/Program.cs (GET /social/friends, etc.)
+// Keep in sync with: backend/internal/social/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type Friend = {
-  friendId: string;
-  since: string;
-  // Optional profile fields — populated when backend enrichment is available (winzy.ai-3vq)
-  username?: string;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-  // Flame/consistency fields — enriched from habit-service via /social/friends (winzy.ai-3r2.5)
-  flameLevel?: "none" | "ember" | "steady" | "strong" | "blazing";
+// Enrichment fields stay optional at the facade boundary so existing call sites
+// and test fixtures (Partial<Friend> factories) remain assignable.
+export type Friend = Omit<
+  Schemas["Friend"],
+  "flameLevel" | "consistency" | "habitsUnavailable"
+> & {
+  flameLevel?: Schemas["FlameLevel"];
   consistency?: number;
-  /** True when habit-service was unreachable during enrichment. */
   habitsUnavailable?: boolean;
 };
 
-export type FriendsPage = {
+export type FriendsPage = Omit<Schemas["FriendsPage"], "items"> & {
   items: Friend[];
-  page: number;
-  pageSize: number;
-  total: number;
 };
 
-export type IncomingRequest = {
-  id: string;
-  fromUserId: string;
-  direction: "incoming";
-  createdAt: string;
-  // Optional profile fields — populated when backend enrichment is available (winzy.ai-3vq)
-  fromUsername?: string;
-  fromDisplayName?: string | null;
-};
-
-export type OutgoingRequest = {
-  id: string;
-  toUserId: string;
-  direction: "outgoing";
-  createdAt: string;
-  // Optional profile fields — populated when backend enrichment is available (winzy.ai-3vq)
-  toUsername?: string;
-  toDisplayName?: string | null;
-};
-
-export type FriendRequestsResponse = {
-  incoming: IncomingRequest[];
-  outgoing: OutgoingRequest[];
-};
-
-export type FriendRequestResult = {
-  id: string;
-  userId: string;
-  friendId: string;
-  status: string;
-  createdAt: string;
-};
+export type IncomingRequest = Schemas["IncomingRequest"];
+export type OutgoingRequest = Schemas["OutgoingRequest"];
+export type FriendRequestsResponse = Schemas["FriendRequestsResponse"];
+export type FriendRequestResult = Schemas["FriendRequestResult"];
 
 // --- Friend profile types ---
-// Keep in sync with: services/social-service/src/Program.cs (GET /social/friends/{id}/profile)
+// Keep in sync with: backend/internal/social/models.go (friend profile)
+// Spec: backend/openapi/openapi.yaml
 
-export type FriendHabit = {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  consistency: number;
-  flameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
-};
-
-export type FriendProfileResponse = {
-  friendId: string;
-  habits: FriendHabit[];
-  /** True when habit-service was unreachable and habits data may be incomplete. */
+export type FriendHabit = Schemas["FriendHabit"];
+export type FriendProfileResponse = Omit<Schemas["FriendProfileResponse"], "habitsUnavailable"> & {
   habitsUnavailable?: boolean;
 };
 
 // --- User search types ---
-// Keep in sync with: services/auth-service/src/Endpoints/AuthEndpoints.cs (SearchUsers)
+// Keep in sync with: backend/internal/auth/models.go (UserSearchResult)
+// Spec: backend/openapi/openapi.yaml
 
-export type UserSearchResult = {
-  id: string;
-  username: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-};
+export type UserSearchResult = Schemas["UserSearchResult"];
 
 // --- Friends API functions ---
 

@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - 'backend/openapi/**'
       - '.github/workflows/ci-frontend.yml'
   pull_request:
     branches: [main]
     paths:
       - 'frontend/**'
+      - 'backend/openapi/**'
       - '.github/workflows/ci-frontend.yml'
 
 concurrency:
@@ -33,6 +35,12 @@ jobs:
 
       - name: Install dependencies
         run: cd frontend && npm ci
+
+      - name: OpenAPI types drift check
+        run: |
+          cd frontend
+          npm run generate:api-types
+          git diff --exit-code -- src/api/generated/
 
       - name: Lint
         run: cd frontend && npm run lint

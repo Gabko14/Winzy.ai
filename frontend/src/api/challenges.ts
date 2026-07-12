@@ -1,50 +1,18 @@
 import { api } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Challenge types ---
-// Keep in sync with: services/challenge-service/src/Program.cs (MapToResponse / MapToDetailResponse)
+// Keep in sync with: backend/internal/challenges/models.go
+// Spec: backend/openapi/openapi.yaml
 
-export type MilestoneType =
-  | "consistencyTarget"
-  | "daysInPeriod"
-  | "totalCompletions"
-  | "customDateRange"
-  | "improvementMilestone";
-
-export type ChallengeStatus = "active" | "completed" | "claimed" | "cancelled" | "expired";
-
-export type Challenge = {
-  id: string;
-  habitId: string;
-  creatorId: string;
-  recipientId: string;
-  milestoneType: MilestoneType;
-  targetValue: number;
-  periodDays: number;
-  rewardDescription: string;
-  status: ChallengeStatus;
-  createdAt: string;
-  endsAt: string;
-  completedAt: string | null;
-  claimedAt: string | null;
-};
-
-export type ChallengeDetail = Challenge & {
-  /** Progress toward the milestone as a 0.0–1.0 fraction (backend: ProgressCalculator.CalculateProgress). */
-  progress: number;
-  completionCount: number;
-  baselineConsistency: number | null;
-  customStartDate: string | null;
-  customEndDate: string | null;
-  /** Creator's display name, enriched by challenge-service via auth batch profiles. */
-  creatorDisplayName: string | null;
-};
-
-export type ChallengesPage = {
-  items: ChallengeDetail[];
-  page: number;
-  pageSize: number;
-  total: number;
-};
+export type MilestoneType = Schemas["MilestoneType"];
+export type ChallengeStatus = Schemas["ChallengeStatus"];
+export type Challenge = Schemas["Challenge"];
+export type ChallengeDetail = Schemas["ChallengeDetail"];
+export type ChallengesPage = Schemas["ChallengesPage"];
+export type CreateChallengeRequest = Schemas["CreateChallengeRequest"];
 
 // --- API functions ---
 
@@ -67,24 +35,9 @@ export function fetchChallengeDetail(id: string): Promise<ChallengeDetail> {
   return api.get<ChallengeDetail>(`/challenges/${id}`);
 }
 
-// --- Create challenge ---
-
-export type CreateChallengeRequest = {
-  habitId: string;
-  recipientId: string;
-  milestoneType: MilestoneType;
-  targetValue: number;
-  periodDays: number;
-  rewardDescription: string;
-  customStartDate?: string;
-  customEndDate?: string;
-};
-
 export function createChallenge(request: CreateChallengeRequest): Promise<Challenge> {
   return api.post<Challenge>("/challenges", request);
 }
-
-// --- Claim challenge ---
 
 export function claimChallenge(id: string): Promise<Challenge> {
   return api.put<Challenge>(`/challenges/${id}/claim`);

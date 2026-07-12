@@ -7,7 +7,13 @@ import "net/http"
 // export) are deliberately NOT mounted here — see Service.ResolveUsername,
 // Service.BatchProfiles, and the export.Registry "auth" section, which
 // replace them with direct in-process calls.
-func RegisterRoutes(mux *http.ServeMux, h *Handlers) {
+// routeMux is satisfied by *http.ServeMux and by the recording registrar
+// used in cmd/api's OpenAPI contract test.
+type routeMux interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
+func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("POST /auth/register", h.Register)
 	mux.HandleFunc("POST /auth/login", h.Login)
 	mux.HandleFunc("POST /auth/refresh", h.Refresh)

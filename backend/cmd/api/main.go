@@ -109,13 +109,15 @@ func run() error {
 	activityHandlers := activity.NewHandlers(activityService)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", health.Handler(pool))
-	auth.RegisterRoutes(mux, authHandlers)
-	habits.RegisterRoutes(mux, habitsHandlers)
-	social.RegisterRoutes(mux, socialHandlers)
-	challenges.RegisterRoutes(mux, challengesHandlers)
-	notifications.RegisterRoutes(mux, notificationsHandlers)
-	activity.RegisterRoutes(mux, activityHandlers)
+	registerAPIRoutes(mux, apiHandlers{
+		health:        health.Handler(pool),
+		auth:          authHandlers,
+		habits:        habitsHandlers,
+		social:        socialHandlers,
+		challenges:    challengesHandlers,
+		notifications: notificationsHandlers,
+		activity:      activityHandlers,
+	})
 
 	// Public-route allowlist: auth's own slice, GET /health (every service's
 	// health check must be reachable without a token — Railway, docker

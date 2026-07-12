@@ -1,20 +1,15 @@
 import { api, apiRequest } from "./client";
+import type { components } from "./generated/schema";
+
+type Schemas = components["schemas"];
 
 // --- Types ---
+// Keep in sync with: backend/internal/notifications/handlers.go
+// Spec: backend/openapi/openapi.yaml
 
-export type RegisterDeviceRequest = {
-  platform: "web_push" | "expo_push";
-  token: string;
-  deviceId?: string;
-};
-
-export type UnregisterDeviceRequest = {
-  deviceId: string;
-};
-
-export type VapidKeyResponse = {
-  publicKey: string;
-};
+export type RegisterDeviceRequest = Schemas["RegisterDeviceRequest"];
+export type UnregisterDeviceRequest = Schemas["UnregisterDeviceRequest"];
+export type VapidKeyResponse = Schemas["VapidKeyResponse"];
 
 // --- API functions ---
 

@@ -1,29 +1,17 @@
 /**
- * API types matching the backend contract.
+ * API types matching the Go auth module contract.
  *
- * Keep in sync with:
- *   services/auth-service/src/Models/AuthModels.cs
+ * Keep in sync with: backend/internal/auth/models.go
+ * Spec: backend/openapi/openapi.yaml
  */
 
-export type UserProfile = {
-  id: string;
-  email: string;
-  username: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  createdAt: string;
-};
+import type { components } from "./generated/schema";
 
-export type AuthResponse = {
-  accessToken: string;
-  refreshToken: string | null;
-  user: UserProfile;
-};
+type Schemas = components["schemas"];
 
-export type UpdateProfileRequest = {
-  displayName?: string | null;
-  avatarUrl?: string | null;
-};
+export type UserProfile = Schemas["UserProfile"];
+export type AuthResponse = Schemas["AuthResponse"];
+export type UpdateProfileRequest = Schemas["UpdateProfileRequest"];
 
 export type ValidationProblem = {
   type: string;
