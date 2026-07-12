@@ -1,16 +1,17 @@
 // Command parity is the one-command entry point for the dual-stack parity
-// harness (winzy.ai-rdc7.12). Phase 1 targets only the live old .NET stack:
+// harness (winzy.ai-rdc7.12). Phase 1 captured goldens from the live old
+// .NET stack. Phase 2 points check at the Go stack and diffs against those
+// goldens, with a reviewed allowlist for intentional divergences:
 //
-//	parity capture --base-url http://localhost:5050
+//	parity capture --base-url http://localhost:5050 --stack old
 //		Runs every scenario against the given stack and stores canonicalized
 //		responses under goldens/ as the golden master.
 //
-//	parity check --base-url http://localhost:5050
-//		Runs every scenario fresh against the given stack and diffs
-//		canonicalized responses against the stored goldens. This is the same
-//		command that will later point at the Go stack's base URL to prove
-//		dual-stack parity (phase 2) — nothing about scenario code changes,
-//		only --base-url and --stack.
+//	parity check --base-url http://localhost:5051 --stack go
+//		Runs every scenario fresh against the Go stack and diffs
+//		canonicalized responses against the stored goldens. Approved
+//		response-surface allowlist entries suppress known intentional diffs;
+//		anything else fails the run.
 //
 // Both subcommands print an auditable report (scenario names + request
 // counts + pass/fail) and write failure artifacts under artifacts/.
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"os"
 
+	"winzy.ai/parity/internal/allowlist"
 	"winzy.ai/parity/internal/runner"
 	"winzy.ai/parity/internal/scenarios"
 )
@@ -52,9 +54,11 @@ func usage() {
       Run every scenario against URL and store canonicalized responses as
       the golden master.
 
-  check --base-url URL [--stack NAME] [--goldens DIR] [--artifacts DIR]
+  check --base-url URL [--stack NAME] [--goldens DIR] [--artifacts DIR] [--allowlist FILE]
       Run every scenario against URL and diff against the stored golden
-      master. Exit code is non-zero if any scenario fails.`)
+      master. Exit code is non-zero if any scenario has unexplained diffs.
+      --allowlist defaults to allowlist.json (approved response-surface
+      entries only; seeded candidates never auto-pass).`)
 }
 
 func run(mode runner.Mode, args []string) {
@@ -63,8 +67,21 @@ func run(mode runner.Mode, args []string) {
 	stack := fs.String("stack", "old", "free-text label for the stack under test, e.g. old|go")
 	goldensDir := fs.String("goldens", "goldens", "directory holding golden captures")
 	artifactsDir := fs.String("artifacts", "artifacts", "directory to write failure artifacts into")
+	allowlistPath := fs.String("allowlist", "allowlist.json", "reviewed intentional-diff allowlist (check mode; empty disables)")
 	only := fs.String("only", "", "comma-separated substring filter on scenario names (empty = run all)")
 	_ = fs.Parse(args)
+
+	var al *allowlist.List
+	if mode == runner.ModeCheck && *allowlistPath != "" {
+		loaded, err := allowlist.Load(*allowlistPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "parity: allowlist: %v\n", err)
+			os.Exit(1)
+		}
+		al = loaded
+		fmt.Fprintf(os.Stdout, "allowlist: loaded %s (%d seeded, %d approved)\n",
+			loaded.Path(), len(loaded.Seeded()), len(loaded.Approved()))
+	}
 
 	all := scenarios.All()
 	list := all
@@ -78,6 +95,7 @@ func run(mode runner.Mode, args []string) {
 		Stack:       *stack,
 		GoldenDir:   *goldensDir,
 		ArtifactDir: *artifactsDir,
+		Allowlist:   al,
 		Log:         os.Stdout,
 	}
 

@@ -13,7 +13,7 @@
         "promise": {
           "endDate": "2026-08-08",
           "onTrack": false,
-          "statement": "Keeping above 50% through August 8",
+          "statement": "{{seed:promise:statement}}",
           "targetConsistency": 50
         }
       }

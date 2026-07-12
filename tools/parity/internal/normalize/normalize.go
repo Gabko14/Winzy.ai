@@ -35,7 +35,16 @@ import (
 var (
 	uuidRe      = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	timestampRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)
-	jwtRe       = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
+	// Civil yyyy-MM-dd dates are scenario-relative ("today", "today-5") and
+	// must not fail a Go-vs-golden check solely because the golden was
+	// captured on a different calendar day. Masked by first-seen order
+	// within one document, same as UUIDs (see MaskCivilDates).
+	civilDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	// JWT: three base64url segments that are each long enough to be real
+	// header/payload/sig material. Without a per-segment minimum,
+	// dotted event types like "friend.request.accepted" were falsely
+	// masked as {{token}} (phase-2 finding / PM deviation #4).
+	jwtRe = regexp.MustCompile(`^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$`)
 	// Refresh tokens are 64 random bytes base64-encoded (no padding chars
 	// stripped in practice); witness tokens are base64url(32 bytes). Both
 	// land comfortably over 40 chars of base64/base64url alphabet with no
@@ -132,6 +141,135 @@ func (s *scope) walkString(str string) string {
 		return placeholderToken
 	default:
 		return str
+	}
+}
+
+// MaskCivilDates walks an already-canonicalized value and replaces every
+// yyyy-MM-dd string with a stable {{date:N}} placeholder assigned by
+// first-seen order within this document (keys sorted, arrays by index).
+// Apply to BOTH golden and actual before Diff so a golden captured on day
+// D and a check run on day D+N compare equal when the relative dating is
+// the same.
+func MaskCivilDates(v any) any {
+	s := &scope{seen: make(map[string]string)}
+	return s.maskDates(v)
+}
+
+func (s *scope) maskDates(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			out[k] = s.maskDates(t[k])
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = s.maskDates(e)
+		}
+		return out
+	case string:
+		if civilDateRe.MatchString(t) {
+			if ph, ok := s.seen[t]; ok {
+				return ph
+			}
+			s.nextID++
+			ph := fmt.Sprintf("{{date:%d}}", s.nextID)
+			s.seen[t] = ph
+			return ph
+		}
+		return t
+	default:
+		return v
+	}
+}
+
+// StableSortFeedItems walks a canonicalized value and, for every object
+// that has an "items" array of feed-entry-shaped objects, reorders that
+// array by (createdAt, eventType, actorId, id). After timestamp masking
+// createdAt is usually identical across items, so the secondary keys make
+// tied-timestamp friend.accept pairs compare in a deterministic order on
+// both golden and actual (phase-2 F6a — not an allowlist).
+func StableSortFeedItems(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, child := range t {
+			if k == "items" {
+				if arr, ok := child.([]any); ok && feedItems(arr) {
+					out[k] = sortFeedItems(arr)
+					continue
+				}
+			}
+			out[k] = StableSortFeedItems(child)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = StableSortFeedItems(e)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func feedItems(arr []any) bool {
+	if len(arr) == 0 {
+		return false
+	}
+	for _, e := range arr {
+		m, ok := e.(map[string]any)
+		if !ok {
+			return false
+		}
+		if _, hasEvent := m["eventType"]; !hasEvent {
+			if _, hasCreated := m["createdAt"]; !hasCreated {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func sortFeedItems(arr []any) []any {
+	out := make([]any, len(arr))
+	copy(out, arr)
+	sort.SliceStable(out, func(i, j int) bool {
+		return feedSortKey(out[i]) < feedSortKey(out[j])
+	})
+	return out
+}
+
+func feedSortKey(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s",
+		stringify(m["createdAt"]),
+		stringify(m["eventType"]),
+		stringify(m["actorId"]),
+		stringify(m["id"]),
+	)
+}
+
+func stringify(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	default:
+		return fmt.Sprint(t)
 	}
 }
 

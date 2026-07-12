@@ -12,7 +12,7 @@
           "userId1": "{{seed:user:visowner:id}}",
           "userId2": "{{seed:user:visfriend:id}}"
         },
-        "eventType": "{{token}}",
+        "eventType": "friend.request.accepted",
         "id": "{{uuid:1}}"
       },
       {
@@ -24,7 +24,7 @@
           "userId1": "{{seed:user:visowner:id}}",
           "userId2": "{{seed:user:visfriend:id}}"
         },
-        "eventType": "{{token}}",
+        "eventType": "friend.request.accepted",
         "id": "{{uuid:2}}"
       },
       {

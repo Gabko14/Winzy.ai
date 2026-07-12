@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"winzy.ai/parity/internal/allowlist"
 	"winzy.ai/parity/internal/httpclient"
 	"winzy.ai/parity/internal/idmap"
 	"winzy.ai/parity/internal/normalize"
@@ -60,24 +61,27 @@ type Suite struct {
 	Stack       string // free-text label for logs/artifacts, e.g. "old" or "go"
 	GoldenDir   string
 	ArtifactDir string
+	Allowlist   *allowlist.List // optional; only approved response-surface entries suppress diffs
 	Log         io.Writer
 }
 
 type scenarioResult struct {
-	Name         string
-	Pass         bool
-	RequestCount int
-	Failures     []string
-	Duration     time.Duration
+	Name             string
+	Pass             bool
+	RequestCount     int
+	Failures         []string
+	AllowlistedDiffs int
+	Duration         time.Duration
 }
 
 // Report is the final pass/fail summary, printed and also returned so
 // callers (e.g. the CLI's exit-code logic) can act on it.
 type Report struct {
-	Mode          Mode
-	Stack         string
-	Results       []scenarioResult
-	TotalRequests int
+	Mode                  Mode
+	Stack                 string
+	Results               []scenarioResult
+	TotalRequests         int
+	TotalAllowlistedDiffs int
 }
 
 func (r Report) AllPassed() bool {
@@ -102,6 +106,7 @@ func (s *Suite) Run(scenarios []Scenario) (Report, error) {
 			scenario:    sc.Name,
 			goldenDir:   filepath.Join(s.GoldenDir, sanitize(sc.Name)),
 			artifactDir: filepath.Join(s.ArtifactDir, sanitize(sc.Name)),
+			allowlist:   s.Allowlist,
 			IDs:         ids,
 			log:         logger,
 		}
@@ -135,11 +140,12 @@ func (s *Suite) Run(scenarios []Scenario) (Report, error) {
 		dur := time.Since(start)
 
 		res := scenarioResult{
-			Name:         sc.Name,
-			Pass:         runErr == nil && len(ctx.failures) == 0,
-			RequestCount: ctx.requestCount,
-			Failures:     ctx.failures,
-			Duration:     dur,
+			Name:             sc.Name,
+			Pass:             runErr == nil && len(ctx.failures) == 0,
+			RequestCount:     ctx.requestCount,
+			Failures:         ctx.failures,
+			AllowlistedDiffs: ctx.allowlistedDiffs,
+			Duration:         dur,
 		}
 		if runErr != nil {
 			res.Pass = false
@@ -147,12 +153,14 @@ func (s *Suite) Run(scenarios []Scenario) (Report, error) {
 		}
 		report.Results = append(report.Results, res)
 		report.TotalRequests += ctx.requestCount
+		report.TotalAllowlistedDiffs += ctx.allowlistedDiffs
 
 		status := "PASS"
 		if !res.Pass {
 			status = "FAIL"
 		}
-		logger(fmt.Sprintf("=== scenario end   name=%q status=%s requests=%d duration=%s", sc.Name, status, ctx.requestCount, dur))
+		logger(fmt.Sprintf("=== scenario end   name=%q status=%s requests=%d allowlisted_diffs=%d duration=%s",
+			sc.Name, status, ctx.requestCount, ctx.allowlistedDiffs, dur))
 	}
 
 	printReport(logger, report)
@@ -170,12 +178,14 @@ func printReport(logger func(string), r Report) {
 		} else {
 			passCount++
 		}
-		logger(fmt.Sprintf("  [%s] %-40s requests=%-4d duration=%s", status, res.Name, res.RequestCount, res.Duration.Round(time.Millisecond)))
+		logger(fmt.Sprintf("  [%s] %-40s requests=%-4d allowlisted_diffs=%-3d duration=%s",
+			status, res.Name, res.RequestCount, res.AllowlistedDiffs, res.Duration.Round(time.Millisecond)))
 		for _, f := range res.Failures {
 			logger(fmt.Sprintf("        - %s", f))
 		}
 	}
-	logger(fmt.Sprintf("--- %d/%d scenarios passed, %d total requests ---", passCount, len(r.Results), r.TotalRequests))
+	logger(fmt.Sprintf("--- %d/%d scenarios passed, %d total requests, %d allowlisted diffs ---",
+		passCount, len(r.Results), r.TotalRequests, r.TotalAllowlistedDiffs))
 }
 
 func log(w io.Writer) func(string) {
@@ -205,11 +215,13 @@ type Context struct {
 	scenario    string
 	goldenDir   string
 	artifactDir string
+	allowlist   *allowlist.List
 	log         func(string)
 
-	stepIdx      int
-	requestCount int
-	failures     []string
+	stepIdx          int
+	requestCount     int
+	allowlistedDiffs int
+	failures         []string
 }
 
 // goldenEnvelope is the on-disk shape of one captured step.
@@ -280,10 +292,27 @@ func (c *Context) Call(client *httpclient.Client, step string, req httpclient.Re
 		if existing.Status != result.StatusCode {
 			diffs = append(diffs, fmt.Sprintf("status: golden=%d actual=%d", existing.Status, result.StatusCode))
 		}
-		diffs = append(diffs, normalize.Diff("$", existing.Body, canonical)...)
-		if len(diffs) > 0 {
-			c.writeArtifact(step, req, result, nil, existing.Body, diffs)
-			c.fail(fmt.Sprintf("step %02d (%s): %d diff(s) vs golden", c.stepIdx, step, len(diffs)))
+		// Civil dates in goldens are capture-day literals; mask both sides
+		// so relative "today"/"today±N" scenarios don't fail solely because
+		// the check ran on a later calendar day than the golden capture.
+		// Feed items with tied createdAt get a stable secondary sort so
+		// friend.accept actor-order flips don't fail the diff (F6a).
+		goldenBody := normalize.StableSortFeedItems(normalize.MaskCivilDates(existing.Body))
+		actualBody := normalize.StableSortFeedItems(normalize.MaskCivilDates(canonical))
+		diffs = append(diffs, normalize.Diff("$", goldenBody, actualBody)...)
+		filtered := allowlist.Result{Unexplained: diffs}
+		if c.allowlist != nil {
+			filtered = c.allowlist.Filter(c.scenario, diffs)
+		}
+		for _, m := range filtered.Allowlisted {
+			c.allowlistedDiffs++
+			c.log(fmt.Sprintf("    ALLOWLISTED scenario=%q step=%q id=%s source=%s diff=%s",
+				c.scenario, step, m.Entry.ID, m.Entry.SourceBead, m.Diff))
+		}
+		if len(filtered.Unexplained) > 0 {
+			c.writeArtifact(step, req, result, nil, existing.Body, filtered.Unexplained)
+			c.fail(fmt.Sprintf("step %02d (%s): %d unexplained diff(s) vs golden (%d allowlisted)",
+				c.stepIdx, step, len(filtered.Unexplained), len(filtered.Allowlisted)))
 			return result, fmt.Errorf("step %q: diverges from golden", step)
 		}
 	}

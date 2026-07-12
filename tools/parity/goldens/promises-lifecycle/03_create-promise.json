@@ -10,7 +10,7 @@
     "onTrack": null,
     "privateNote": "Only I should ever see this note",
     "resolvedAt": null,
-    "statement": "Keeping above 50% through August 8",
+    "statement": "{{seed:promise:statement}}",
     "status": "active",
     "targetConsistency": 50
   }

@@ -1261,6 +1261,26 @@ components:
       type: string
       enum: [full, minimum]
 
+    # Request-side dual forms matching System.Text.Json JsonStringEnumConverter
+    # (JsonNamingPolicy.CamelCase): integers OR camelCase enum/day names.
+    # Response schemas keep the pinned shapes (customDays int[], completionKind
+    # lowercase string enum) — do not reuse these for responses.
+    CustomDayInput:
+      oneOf:
+        - type: integer
+          minimum: 0
+          maximum: 6
+          description: "DayOfWeek ordinal: sunday=0 .. saturday=6"
+        - type: string
+          enum: [sunday, monday, tuesday, wednesday, thursday, friday, saturday]
+
+    CompletionKindInput:
+      oneOf:
+        - type: integer
+          description: "1=full, 2=minimum (numeric wire enum on requests)"
+        - type: string
+          enum: [full, minimum]
+
     FlameLevel:
       type: string
       enum: [none, ember, steady, strong, blazing]
@@ -1309,7 +1329,7 @@ components:
         customDays:
           type: array
           items:
-            type: integer
+            $ref: "#/components/schemas/CustomDayInput"
         minimumDescription:
           type: string
 
@@ -1327,7 +1347,7 @@ components:
         customDays:
           type: array
           items:
-            type: integer
+            $ref: "#/components/schemas/CustomDayInput"
         minimumDescription:
           type: string
         clearMinimumDescription:
@@ -1343,16 +1363,14 @@ components:
         timezone:
           type: string
         completionKind:
-          type: integer
-          description: "1=full, 2=minimum (numeric wire enum on requests)"
+          $ref: "#/components/schemas/CompletionKindInput"
 
     UpdateCompletionRequest:
       type: object
       required: [completionKind]
       properties:
         completionKind:
-          type: integer
-          description: "1=full, 2=minimum"
+          $ref: "#/components/schemas/CompletionKindInput"
 
     HabitCompletion:
       type: object

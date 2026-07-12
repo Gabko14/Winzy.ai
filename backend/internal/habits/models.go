@@ -100,11 +100,12 @@ func (f *Frequency) UnmarshalJSON(data []byte) error {
 // CompletionKind mirrors Winzy.Contracts.CompletionKind (None=0, Full=1,
 // Minimum=2). The wire contract is deliberately asymmetric, matching the
 // untouched frontend and the old JsonStringEnumConverter's behavior:
-// requests carry the raw numeric enum value (frontend/src/api/habits.ts's
-// CompleteHabitRequest.completionKind and updateCompletion's parameter are
-// both typed `number`), responses render the lowercase name (habit-service's
-// endpoint handlers build response DTOs with
-// `completionKind.ToString().ToLowerInvariant()`).
+// requests accept BOTH the raw numeric enum value and camelCase string
+// names (see UnmarshalJSON); responses render the lowercase name
+// (habit-service's endpoint handlers build response DTOs with
+// `completionKind.ToString().ToLowerInvariant()`). The frontend today
+// sends numbers (frontend/src/api/habits.ts), but parity scenarios and the
+// C# surface also accept "full"/"minimum".
 type CompletionKind int
 
 const (
@@ -160,6 +161,102 @@ func (k CompletionKind) validForLogging() bool {
 	return k == CompletionFull || k == CompletionMinimum
 }
 
+// UnmarshalJSON accepts both the numeric wire form (1=full, 2=minimum) and
+// the camelCase string names JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
+// writes — "full"/"minimum"/"none", case-insensitively. Any integer is
+// accepted at decode time (matching System.Text.Json's enum converter);
+// validForLogging rejects non-loggable values afterward. Unknown string
+// names fail here so handlers surface "Invalid JSON in request body".
+func (k *CompletionKind) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("habits: invalid completionKind null")
+	}
+	var n int
+	if err := json.Unmarshal(data, &n); err == nil {
+		*k = CompletionKind(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("habits: invalid completionKind")
+	}
+	switch strings.ToLower(s) {
+	case "full":
+		*k = CompletionFull
+	case "minimum":
+		*k = CompletionMinimum
+	case "none":
+		*k = CompletionNone
+	default:
+		return fmt.Errorf("habits: invalid completionKind %q", s)
+	}
+	return nil
+}
+
+// customDayWire is one element of a request-side customDays array. It
+// accepts either a DayOfWeek ordinal (Sunday=0..Saturday=6) or the
+// camelCase English day name JsonStringEnumConverter produces — matching
+// CreateHabitRequest/UpdateHabitRequest's List<DayOfWeek> decode on the C#
+// stack. Response DTOs stay []int and are untouched.
+type customDayWire int
+
+func (d *customDayWire) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("habits: invalid customDays element null")
+	}
+	var n int
+	if err := json.Unmarshal(data, &n); err == nil {
+		*d = customDayWire(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("habits: invalid customDays element")
+	}
+	parsed, ok := parseDayOfWeekName(s)
+	if !ok {
+		return fmt.Errorf("habits: invalid customDays element %q", s)
+	}
+	*d = customDayWire(parsed)
+	return nil
+}
+
+// parseDayOfWeekName maps camelCase (or any-case) English day names to the
+// .NET DayOfWeek / Go time.Weekday numbering: Sunday=0 .. Saturday=6.
+// JsonStringEnumConverter(JsonNamingPolicy.CamelCase) matches names
+// case-insensitively, so "Monday" and "monday" both succeed.
+func parseDayOfWeekName(s string) (int, bool) {
+	switch strings.ToLower(s) {
+	case "sunday":
+		return 0, true
+	case "monday":
+		return 1, true
+	case "tuesday":
+		return 2, true
+	case "wednesday":
+		return 3, true
+	case "thursday":
+		return 4, true
+	case "friday":
+		return 5, true
+	case "saturday":
+		return 6, true
+	default:
+		return 0, false
+	}
+}
+
+func customDaysFromWire(days []customDayWire) []int {
+	if days == nil {
+		return nil
+	}
+	out := make([]int, len(days))
+	for i, d := range days {
+		out[i] = int(d)
+	}
+	return out
+}
+
 // Habit mirrors the habits table. IDs are the Postgres uuid column's
 // canonical text form (see internal/auth/store.go's doc comment for why
 // this codebase carries ids as plain strings).
@@ -207,6 +304,29 @@ type CreateHabitRequest struct {
 	MinimumDescription *string    `json:"minimumDescription"`
 }
 
+// UnmarshalJSON decodes customDays elements as int ordinals or day-name
+// strings (see customDayWire). Other fields use their normal JSON tags.
+func (r *CreateHabitRequest) UnmarshalJSON(data []byte) error {
+	aux := struct {
+		Name               string          `json:"name"`
+		Icon               *string         `json:"icon"`
+		Color              *string         `json:"color"`
+		Frequency          *Frequency      `json:"frequency"`
+		CustomDays         []customDayWire `json:"customDays"`
+		MinimumDescription *string         `json:"minimumDescription"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Name = aux.Name
+	r.Icon = aux.Icon
+	r.Color = aux.Color
+	r.Frequency = aux.Frequency
+	r.CustomDays = customDaysFromWire(aux.CustomDays)
+	r.MinimumDescription = aux.MinimumDescription
+	return nil
+}
+
 type UpdateHabitRequest struct {
 	Name                    *string    `json:"name"`
 	Icon                    *string    `json:"icon"`
@@ -215,6 +335,31 @@ type UpdateHabitRequest struct {
 	CustomDays              []int      `json:"customDays"`
 	MinimumDescription      *string    `json:"minimumDescription"`
 	ClearMinimumDescription *bool      `json:"clearMinimumDescription"`
+}
+
+// UnmarshalJSON is CreateHabitRequest.UnmarshalJSON's update-side twin —
+// same customDays dual-form decode, plus clearMinimumDescription.
+func (r *UpdateHabitRequest) UnmarshalJSON(data []byte) error {
+	aux := struct {
+		Name                    *string         `json:"name"`
+		Icon                    *string         `json:"icon"`
+		Color                   *string         `json:"color"`
+		Frequency               *Frequency      `json:"frequency"`
+		CustomDays              []customDayWire `json:"customDays"`
+		MinimumDescription      *string         `json:"minimumDescription"`
+		ClearMinimumDescription *bool           `json:"clearMinimumDescription"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Name = aux.Name
+	r.Icon = aux.Icon
+	r.Color = aux.Color
+	r.Frequency = aux.Frequency
+	r.CustomDays = customDaysFromWire(aux.CustomDays)
+	r.MinimumDescription = aux.MinimumDescription
+	r.ClearMinimumDescription = aux.ClearMinimumDescription
+	return nil
 }
 
 type CompleteHabitRequest struct {

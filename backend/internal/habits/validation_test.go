@@ -1,6 +1,7 @@
 package habits
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -136,6 +137,163 @@ func TestCompletionKind_ValidForLogging_HappyPathAndErrorCase(t *testing.T) {
 	if CompletionNone.validForLogging() {
 		t.Error("CompletionNone.validForLogging() = true, want false (None is well-formed but not loggable)")
 	}
+}
+
+func TestCompletionKind_UnmarshalJSON_AcceptsIntAndStringForms(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		wire    string
+		want    CompletionKind
+		wantErr bool
+	}{
+		{name: "int_full", wire: `1`, want: CompletionFull},
+		{name: "int_minimum", wire: `2`, want: CompletionMinimum},
+		{name: "int_none_accepted_at_decode", wire: `0`, want: CompletionNone},
+		{name: "int_out_of_range_accepted_at_decode", wire: `99`, want: CompletionKind(99)},
+		{name: "string_full", wire: `"full"`, want: CompletionFull},
+		{name: "string_minimum", wire: `"minimum"`, want: CompletionMinimum},
+		{name: "string_none", wire: `"none"`, want: CompletionNone},
+		{name: "string_Full_Pascal", wire: `"Full"`, want: CompletionFull},
+		{name: "string_MINIMUM_upper", wire: `"MINIMUM"`, want: CompletionMinimum},
+		{name: "string_unknown", wire: `"partial"`, wantErr: true},
+		{name: "null", wire: `null`, wantErr: true},
+		{name: "bool", wire: `true`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var k CompletionKind
+			err := k.UnmarshalJSON([]byte(tc.wire))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("UnmarshalJSON(%s) error = nil, want error", tc.wire)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error = %v, want nil", tc.wire, err)
+			}
+			if k != tc.want {
+				t.Errorf("UnmarshalJSON(%s) = %v, want %v", tc.wire, k, tc.want)
+			}
+		})
+	}
+}
+
+func TestCreateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		wire    string
+		want    []int
+		wantErr bool
+	}{
+		{
+			name: "ints_mon_wed_fri",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":[1,3,5]}`,
+			want: []int{1, 3, 5},
+		},
+		{
+			name: "day_names_mon_wed_fri",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":["monday","wednesday","friday"]}`,
+			want: []int{1, 3, 5},
+		},
+		{
+			name: "mixed_int_and_name",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":[1,"wednesday",5]}`,
+			want: []int{1, 3, 5},
+		},
+		{
+			name: "pascal_day_names",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":["Monday","Wednesday","Friday"]}`,
+			want: []int{1, 3, 5},
+		},
+		{
+			name: "sunday_saturday_boundary",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":["sunday","saturday"]}`,
+			want: []int{0, 6},
+		},
+		{
+			name: "omitted_customDays",
+			wire: `{"name":"Read","frequency":"daily"}`,
+			want: nil,
+		},
+		{
+			name: "empty_array",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":[]}`,
+			want: []int{},
+		},
+		{
+			name:    "unknown_day_name",
+			wire:    `{"name":"Gym","frequency":"weekly","customDays":["moonday"]}`,
+			wantErr: true,
+		},
+		{
+			name:    "null_element",
+			wire:    `{"name":"Gym","frequency":"weekly","customDays":[1,null]}`,
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var req CreateHabitRequest
+			err := json.Unmarshal([]byte(tc.wire), &req)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("Unmarshal error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unmarshal error = %v, want nil", err)
+			}
+			if !intSlicesEqual(req.CustomDays, tc.want) {
+				t.Errorf("CustomDays = %#v, want %#v", req.CustomDays, tc.want)
+			}
+		})
+	}
+}
+
+func TestUpdateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
+	wire := `{"frequency":"weekly","customDays":["monday","friday"]}`
+	var req UpdateHabitRequest
+	if err := json.Unmarshal([]byte(wire), &req); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	if !intSlicesEqual(req.CustomDays, []int{1, 5}) {
+		t.Errorf("CustomDays = %#v, want [1 5]", req.CustomDays)
+	}
+}
+
+func TestUpdateCompletionRequest_UnmarshalJSON_CompletionKindString(t *testing.T) {
+	var req UpdateCompletionRequest
+	if err := json.Unmarshal([]byte(`{"completionKind":"minimum"}`), &req); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	if req.CompletionKind != CompletionMinimum {
+		t.Errorf("CompletionKind = %v, want %v", req.CompletionKind, CompletionMinimum)
+	}
+}
+
+func TestCompleteHabitRequest_UnmarshalJSON_CompletionKindString(t *testing.T) {
+	var req CompleteHabitRequest
+	if err := json.Unmarshal([]byte(`{"timezone":"UTC","completionKind":"full"}`), &req); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	if req.CompletionKind == nil || *req.CompletionKind != CompletionFull {
+		t.Errorf("CompletionKind = %v, want full", req.CompletionKind)
+	}
+}
+
+func intSlicesEqual(a, b []int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil || len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestCompletionKind_String_RendersLowercaseWireForm(t *testing.T) {

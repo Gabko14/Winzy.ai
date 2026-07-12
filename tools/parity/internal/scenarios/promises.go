@@ -2,6 +2,7 @@ package scenarios
 
 import (
 	"fmt"
+	"time"
 
 	"winzy.ai/parity/internal/httpclient"
 	"winzy.ai/parity/internal/runner"
@@ -32,6 +33,13 @@ var promisesLifecycle = runner.Scenario{
 		}
 
 		endDate := dateOffset(todayIn("UTC"), 30)
+		// Server synthesizes statement text embedding the human month/day.
+		// Register the full statement so Canonicalize replaces it; endDate
+		// itself is handled by MaskCivilDates (yyyy-MM-dd) on both sides.
+		if t, err := time.Parse("2006-01-02", endDate); err == nil {
+			ctx.IDs.Register("promise:statement",
+				fmt.Sprintf("Keeping above 50%% through %s", t.Format("January 2")))
+		}
 
 		_, err = ctx.Call(ctx.Native, "create-promise", httpclient.Request{
 			Method: "POST",

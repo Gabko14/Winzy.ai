@@ -827,6 +827,8 @@ export type components = {
         FrequencyType: "daily" | "weekly" | "custom";
         /** @enum {string} */
         CompletionKind: "full" | "minimum";
+        CustomDayInput: number | ("sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday");
+        CompletionKindInput: number | ("full" | "minimum");
         /** @enum {string} */
         FlameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
         Habit: {
@@ -848,7 +850,7 @@ export type components = {
             icon?: string;
             color?: string;
             frequency: components["schemas"]["FrequencyType"];
-            customDays?: number[];
+            customDays?: components["schemas"]["CustomDayInput"][];
             minimumDescription?: string;
         };
         UpdateHabitRequest: {
@@ -856,7 +858,7 @@ export type components = {
             icon?: string;
             color?: string;
             frequency?: components["schemas"]["FrequencyType"];
-            customDays?: number[];
+            customDays?: components["schemas"]["CustomDayInput"][];
             minimumDescription?: string;
             clearMinimumDescription?: boolean;
         };
@@ -864,12 +866,10 @@ export type components = {
             /** Format: date */
             date?: string;
             timezone: string;
-            /** @description 1=full, 2=minimum (numeric wire enum on requests) */
-            completionKind?: number;
+            completionKind?: components["schemas"]["CompletionKindInput"];
         };
         UpdateCompletionRequest: {
-            /** @description 1=full, 2=minimum */
-            completionKind: number;
+            completionKind: components["schemas"]["CompletionKindInput"];
         };
         HabitCompletion: {
             /** Format: uuid */
