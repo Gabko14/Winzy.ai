@@ -21,11 +21,13 @@
 // additionally runs `go test -tags=integration -race -v -p 1 ./...` with
 // TEST_DATABASE_URL pointed at a live Postgres.
 //
-// IMPORTANT: multi-package integration runs MUST pass -p 1. All packages
-// share the one live database and Connect truncates every table per test,
-// so go test's default concurrent package execution lets one package wipe
-// another's rows mid-test (intermittent spurious 404s; found in
-// winzy.ai-rdc7.3.1). Single-package runs don't need it.
+// IMPORTANT: Connect holds a Postgres session advisory lock for the duration
+// of each test on a dedicated connection (released in Cleanup). That
+// serializes integration suites across packages AND processes/agents sharing
+// winzy-db, so one test's Truncate cannot wipe another's rows mid-flight
+// (intermittent spurious 404s; winzy.ai-rdc7.3.1 / winzy.ai-rdc7.14). The
+// lock auto-releases if the process dies. Multi-package runs should still
+// pass -p 1 so suites do not pile up waiting on the lock.
 package dbtest
 
 import (
@@ -34,10 +36,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Gabko14/winzy/backend/internal/db"
 )
+
+// integrationAdvisoryLockKey is the fixed session advisory lock all
+// dbtest.Connect callers share so concurrent suites on the same database
+// cannot truncate each other mid-test.
+const integrationAdvisoryLockKey int64 = 0x57696e7a79444254 // "WinzyDBT"
 
 // RowExists is a raw-SQL existence check independent of any module's own
 // store/service code, so cascade tests verify actual database state rather
@@ -59,8 +67,9 @@ func RowExists(t *testing.T, pool *pgxpool.Pool, table, id string) bool {
 // Connect returns a pool connected to TEST_DATABASE_URL with migrations
 // applied and every table truncated before the test runs. It skips the test
 // (rather than failing) when TEST_DATABASE_URL is unset, so `go test ./...`
-// without a database available still passes. The pool and a final truncate
-// are registered via t.Cleanup.
+// without a database available still passes. A session advisory lock is
+// held on a dedicated connection for the whole test (see package doc); the
+// pool, lock, and connection are released via t.Cleanup.
 func Connect(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
@@ -83,8 +92,26 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("dbtest: pinging TEST_DATABASE_URL: %v", err)
 	}
 
+	lockConn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		pool.Close()
+		t.Fatalf("dbtest: opening advisory-lock connection: %v", err)
+	}
+	if _, err := lockConn.Exec(ctx, `SELECT pg_advisory_lock($1)`, integrationAdvisoryLockKey); err != nil {
+		_ = lockConn.Close(ctx)
+		pool.Close()
+		t.Fatalf("dbtest: acquiring integration advisory lock: %v", err)
+	}
+
 	Truncate(t, pool)
-	t.Cleanup(pool.Close)
+
+	t.Cleanup(func() {
+		if _, err := lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, integrationAdvisoryLockKey); err != nil {
+			t.Errorf("dbtest: releasing integration advisory lock: %v", err)
+		}
+		_ = lockConn.Close(context.Background())
+		pool.Close()
+	})
 
 	return pool
 }
