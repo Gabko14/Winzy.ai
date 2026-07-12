@@ -336,7 +336,41 @@ func habitCompletionDates(ctx context.Context, db querier, habitID string) ([]Da
 		return nil, fmt.Errorf("habits: listing completion dates: %w", err)
 	}
 	defer rows.Close()
+	return collectDatedCompletions(rows)
+}
 
+// findActiveHabitByID looks up a non-archived habit by id regardless of
+// owner — the in-process replacement for InternalGetConsistency's
+// `db.Habits.FirstOrDefaultAsync(h => h.Id == habitId && h.ArchivedAt == null)`
+// that challenges' CustomDateRange milestone consumes.
+func findActiveHabitByID(ctx context.Context, db querier, id string) (Habit, bool, error) {
+	if !isValidUUID(id) {
+		return Habit{}, false, nil
+	}
+	row := db.QueryRow(ctx, `
+		SELECT `+habitColumns+` FROM habits
+		WHERE id = $1::uuid AND archived_at IS NULL`,
+		id)
+	return scanOptionalHabit(row)
+}
+
+// habitCompletionDatesInRange returns completions for habitID whose
+// local_date falls in [from, to] inclusive — matching InternalGetConsistency's
+// filtered Completions query.
+func habitCompletionDatesInRange(ctx context.Context, db querier, habitID string, from, to time.Time) ([]DatedCompletion, error) {
+	rows, err := db.Query(ctx, `
+		SELECT local_date, completion_kind FROM completions
+		WHERE habit_id = $1::uuid AND local_date >= $2::date AND local_date <= $3::date
+		ORDER BY local_date`,
+		habitID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("habits: listing completion dates in range: %w", err)
+	}
+	defer rows.Close()
+	return collectDatedCompletions(rows)
+}
+
+func collectDatedCompletions(rows pgx.Rows) ([]DatedCompletion, error) {
 	result := []DatedCompletion{}
 	for rows.Next() {
 		var localDate time.Time

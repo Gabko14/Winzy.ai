@@ -586,6 +586,31 @@ func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone stri
 	}, nil
 }
 
+// ConsistencyForDateRange is the in-process replacement for the old
+// GET /habits/internal/{habitId}/consistency?from&to&tz endpoint
+// (InternalEndpoints.cs's InternalGetConsistency). Challenges'
+// CustomDateRange milestones call this; an empty/invalid timezone falls
+// back to UTC, matching the C# catch(TimeZoneNotFoundException) path.
+// ok=false means the habit was missing/archived (C# 404 → subscriber skip).
+func (s *Service) ConsistencyForDateRange(ctx context.Context, habitID string, from, to time.Time, timezone string) (float64, bool, error) {
+	q := db.QuerierFrom(ctx, s.pool)
+	habit, found, err := findActiveHabitByID(ctx, q, habitID)
+	if err != nil {
+		return 0, false, err
+	}
+	if !found {
+		return 0, false, nil
+	}
+	fromDay := time.Date(from.UTC().Year(), from.UTC().Month(), from.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	toDay := time.Date(to.UTC().Year(), to.UTC().Month(), to.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	dates, err := habitCompletionDatesInRange(ctx, q, habitID, fromDay, toDay)
+	if err != nil {
+		return 0, false, err
+	}
+	loc := resolveTimezoneLenient(timezone)
+	return ConsistencyForRange(habit, dates, fromDay, toDay, loc), true, nil
+}
+
 // resolveTimezone parses tz as an IANA timezone identifier, matching
 // CompletionEndpoints.cs's TimeZoneInfo.FindSystemTimeZoneById error
 // handling (empty or unrecognized -> 400).

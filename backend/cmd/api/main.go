@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Gabko14/winzy/backend/internal/auth"
+	"github.com/Gabko14/winzy/backend/internal/challenges"
 	"github.com/Gabko14/winzy/backend/internal/config"
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
@@ -92,11 +93,15 @@ func run() error {
 	habitsService.SetVisibilityFilter(socialService)
 	socialHandlers := social.NewHandlers(socialService)
 
+	challengesService := challenges.NewService(pool, registry, exportRegistry, authService, socialService, habitsService, logger)
+	challengesHandlers := challenges.NewHandlers(challengesService)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health.Handler(pool))
 	auth.RegisterRoutes(mux, authHandlers)
 	habits.RegisterRoutes(mux, habitsHandlers)
 	social.RegisterRoutes(mux, socialHandlers)
+	challenges.RegisterRoutes(mux, challengesHandlers)
 
 	// Public-route allowlist: auth's own slice, GET /health (every service's
 	// health check must be reachable without a token — Railway, docker
