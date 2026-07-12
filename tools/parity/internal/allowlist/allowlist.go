@@ -37,6 +37,9 @@ type Entry struct {
 	SourceBead      string `json:"source_bead"`
 	ResponseSurface bool   `json:"response_surface"`
 	Status          string `json:"status"`
+	// WhenStatus, if non-zero, restricts the entry to steps whose HTTP
+	// status equals this value (e.g. 429 for F7). Zero means any status.
+	WhenStatus int `json:"when_status,omitempty"`
 }
 
 // File is the on-disk allowlist.json shape.
@@ -123,7 +126,8 @@ type Matched struct {
 
 // Filter splits diffs for scenario into unexplained vs allowlisted.
 // Only approved + response_surface entries can move a diff into Allowlisted.
-func (l *List) Filter(scenario string, diffs []string) Result {
+// httpStatus is the actual response status for the step (0 if unknown).
+func (l *List) Filter(scenario string, diffs []string, httpStatus int) Result {
 	res := Result{Unexplained: make([]string, 0, len(diffs))}
 	if l == nil || len(l.entries) == 0 {
 		res.Unexplained = append(res.Unexplained, diffs...)
@@ -131,7 +135,7 @@ func (l *List) Filter(scenario string, diffs []string) Result {
 	}
 	for _, d := range diffs {
 		path := diffPath(d)
-		if e, ok := l.match(scenario, path); ok {
+		if e, ok := l.match(scenario, path, httpStatus); ok {
 			res.Allowlisted = append(res.Allowlisted, Matched{Diff: d, Entry: e})
 			continue
 		}
@@ -140,12 +144,15 @@ func (l *List) Filter(scenario string, diffs []string) Result {
 	return res
 }
 
-func (l *List) match(scenario, path string) (Entry, bool) {
+func (l *List) match(scenario, path string, httpStatus int) (Entry, bool) {
 	for _, e := range l.entries {
 		if e.Status != StatusApproved || !e.ResponseSurface {
 			continue
 		}
 		if e.Scenario != "*" && e.Scenario != scenario {
+			continue
+		}
+		if e.WhenStatus != 0 && e.WhenStatus != httpStatus {
 			continue
 		}
 		if e.Field == "*" {

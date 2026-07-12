@@ -302,7 +302,7 @@ func (c *Context) Call(client *httpclient.Client, step string, req httpclient.Re
 		diffs = append(diffs, normalize.Diff("$", goldenBody, actualBody)...)
 		filtered := allowlist.Result{Unexplained: diffs}
 		if c.allowlist != nil {
-			filtered = c.allowlist.Filter(c.scenario, diffs)
+			filtered = c.allowlist.Filter(c.scenario, diffs, result.StatusCode)
 		}
 		for _, m := range filtered.Allowlisted {
 			c.allowlistedDiffs++

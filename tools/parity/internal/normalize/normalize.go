@@ -245,6 +245,22 @@ func sortFeedItems(arr []any) []any {
 	sort.SliceStable(out, func(i, j int) bool {
 		return feedSortKey(out[i]) < feedSortKey(out[j])
 	})
+	// Re-label item ids by post-sort position. UUID ordinals were assigned
+	// during Canonicalize in discovery order; after a secondary sort those
+	// labels no longer align across golden vs actual even when the items
+	// themselves match (F6a residual on visibility feed).
+	for i, e := range out {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		cp := make(map[string]any, len(m))
+		for k, v := range m {
+			cp[k] = v
+		}
+		cp["id"] = fmt.Sprintf("{{feed-item:%d}}", i+1)
+		out[i] = cp
+	}
 	return out
 }
 
@@ -253,11 +269,12 @@ func feedSortKey(v any) string {
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("%s\x00%s\x00%s\x00%s",
+	// Deliberately omit id — UUID ordinals are discovery-order artifacts and
+	// must not influence the tie-break (they are re-labeled after sort).
+	return fmt.Sprintf("%s\x00%s\x00%s",
 		stringify(m["createdAt"]),
 		stringify(m["eventType"]),
 		stringify(m["actorId"]),
-		stringify(m["id"]),
 	)
 }
 

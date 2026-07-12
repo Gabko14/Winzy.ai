@@ -81,18 +81,18 @@
     },
     {
       "id": "validation-envelope-keys",
-      "scenario": "*",
+      "scenario": "auth-validation-and-conflict",
       "field": "$.type",
       "old_shape": "ASP.NET ValidationProblem includes type/title/status beside errors",
       "new_shape": "Go returns {\"errors\":{...}} only",
-      "justification": "ASP.NET ProblemDetails envelope; frontend mapHttpError reads only .errors (PM-verified). Approved 2026-07-12 (F1).",
+      "justification": "ASP.NET ProblemDetails envelope; frontend mapHttpError reads only .errors (PM-verified). Approved 2026-07-12 (F1). Scoped to validation scenarios so 429 ProblemDetails are not silently swallowed.",
       "source_bead": "winzy.ai-rdc7.12",
       "response_surface": true,
       "status": "approved"
     },
     {
       "id": "validation-envelope-keys-title",
-      "scenario": "*",
+      "scenario": "auth-validation-and-conflict",
       "field": "$.title",
       "old_shape": "ASP.NET ValidationProblem includes title",
       "new_shape": "Go omits title",
@@ -103,11 +103,44 @@
     },
     {
       "id": "validation-envelope-keys-status",
-      "scenario": "*",
+      "scenario": "auth-validation-and-conflict",
       "field": "$.status",
       "old_shape": "ASP.NET ValidationProblem includes body status:400",
       "new_shape": "Go omits body status (HTTP status still 400)",
       "justification": "Same as validation-envelope-keys (F1 companion path).",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved"
+    },
+    {
+      "id": "validation-envelope-keys-password",
+      "scenario": "auth-password-change",
+      "field": "$.type",
+      "old_shape": "ASP.NET ValidationProblem includes type/title/status beside errors",
+      "new_shape": "Go returns {\"errors\":{...}} only",
+      "justification": "F1 companion for auth-password-change.",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved"
+    },
+    {
+      "id": "validation-envelope-keys-password-title",
+      "scenario": "auth-password-change",
+      "field": "$.title",
+      "old_shape": "ASP.NET ValidationProblem includes title",
+      "new_shape": "Go omits title",
+      "justification": "F1 companion for auth-password-change.",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved"
+    },
+    {
+      "id": "validation-envelope-keys-password-status",
+      "scenario": "auth-password-change",
+      "field": "$.status",
+      "old_shape": "ASP.NET ValidationProblem includes body status:400",
+      "new_shape": "Go omits body status",
+      "justification": "F1 companion for auth-password-change.",
       "source_bead": "winzy.ai-rdc7.12",
       "response_surface": true,
       "status": "approved"
@@ -155,6 +188,54 @@
       "source_bead": "winzy.ai-rdc7.7",
       "response_surface": true,
       "status": "approved"
+    },
+    {
+      "id": "429-error-body",
+      "scenario": "*",
+      "field": "$.error",
+      "old_shape": "ASP.NET 429 ProblemDetails without error key",
+      "new_shape": "{\"error\":\"Too many requests.\"}",
+      "justification": "Same class as F1/F2 — ProblemDetails vs Go {error}. Frontend maps 429 to a hardcoded message keyed on status only (client.ts mapHttpError:121-123); retry path never parses the body. Approved 2026-07-12 (F7). Scoped via when_status=429 to all rate-limited endpoints.",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved",
+      "when_status": 429
+    },
+    {
+      "id": "429-error-body-type",
+      "scenario": "*",
+      "field": "$.type",
+      "old_shape": "ASP.NET 429 ProblemDetails type URI",
+      "new_shape": "omitted",
+      "justification": "F7 companion path (when_status=429).",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved",
+      "when_status": 429
+    },
+    {
+      "id": "429-error-body-title",
+      "scenario": "*",
+      "field": "$.title",
+      "old_shape": "ASP.NET 429 ProblemDetails title",
+      "new_shape": "omitted",
+      "justification": "F7 companion path (when_status=429).",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved",
+      "when_status": 429
+    },
+    {
+      "id": "429-error-body-status",
+      "scenario": "*",
+      "field": "$.status",
+      "old_shape": "ASP.NET 429 ProblemDetails body status:429",
+      "new_shape": "omitted (HTTP status still 429)",
+      "justification": "F7 companion path (when_status=429).",
+      "source_bead": "winzy.ai-rdc7.12",
+      "response_surface": true,
+      "status": "approved",
+      "when_status": 429
     }
   ]
 }
