@@ -3,12 +3,14 @@ package httpserver
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -286,6 +288,146 @@ func TestRecovery_HappyPath_SetsRequestIDResponseHeader(t *testing.T) {
 
 	if id := rec.Header().Get("X-Request-Id"); !uuidV4Pattern.MatchString(id) {
 		t.Errorf("X-Request-Id header = %q, want a UUIDv4", id)
+	}
+}
+
+func TestRecovery_ErrorCase_PanicStillEmitsCompleteRequestLog(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+	handler := Chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("boom")
+	}), RequestID(), RequestLogging(logger), Recovery(logger))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/panic", nil))
+	lines := decodeLogLines(t, &buf)
+	if len(lines) != 2 {
+		t.Fatalf("got %d log lines, want panic + request: %v", len(lines), lines)
+	}
+	var requestLine map[string]any
+	for _, line := range lines {
+		if line["msg"] == "request" {
+			requestLine = line
+		}
+	}
+	if requestLine == nil {
+		t.Fatal("complete request log line missing")
+	}
+	if status, _ := requestLine["status"].(float64); status != http.StatusInternalServerError {
+		t.Errorf("request log status = %v, want 500", requestLine["status"])
+	}
+	if _, ok := requestLine["duration_ms"]; !ok {
+		t.Error("request log duration_ms missing")
+	}
+}
+
+func TestRecovery_EdgeCase_PanicAfterWriteKeepsCommittedStatus(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+	handler := Chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("partial"))
+		panic("late")
+	}), RequestID(), RequestLogging(logger), Recovery(logger))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/panic", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("committed status = %d, want 200", rec.Code)
+	}
+	if rec.Body.String() != `partial{"error":"internal server error"}` {
+		t.Errorf("body = %q, want documented appended recovery body", rec.Body.String())
+	}
+	for _, line := range decodeLogLines(t, &buf) {
+		if line["msg"] == "request" {
+			if status, _ := line["status"].(float64); status != http.StatusOK {
+				t.Errorf("request log status = %v, want committed 200", line["status"])
+			}
+		}
+	}
+}
+
+func TestBodyLimit_HappyPath_ExactLimitReachesHandler(t *testing.T) {
+	called := false
+	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(strings.Repeat("a", int(maxRequestBodyBytes))))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if !called || rec.Code != http.StatusNoContent {
+		t.Errorf("called/status = %v/%d, want true/204", called, rec.Code)
+	}
+}
+
+func TestBodyLimit_ErrorCase_OversizedBodyReturnsEmpty413(t *testing.T) {
+	called := false
+	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(strings.Repeat("a", int(maxRequestBodyBytes+1))))
+	req.ContentLength = -1 // exercise the bounded-read path, not just the header shortcut
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if called || rec.Code != http.StatusRequestEntityTooLarge || rec.Body.Len() != 0 {
+		t.Errorf("called/status/body = %v/%d/%q, want false/413/empty", called, rec.Code, rec.Body.String())
+	}
+}
+
+// erroringBody is an io.ReadCloser that fails if actually read, used to
+// prove BodyLimit does not eagerly buffer bodyless methods: if it did, the
+// read would surface this error as a 400.
+type erroringBody struct{}
+
+func (erroringBody) Read([]byte) (int, error) {
+	return 0, errors.New("body must not be read for this method")
+}
+func (erroringBody) Close() error { return nil }
+
+// TestBodyLimit_HappyPath_NonBodyCarryingMethodIsNotEagerlyBuffered closes
+// FIX A (winzy.ai-n5fv review round 1): GET/DELETE/HEAD/OPTIONS never carry
+// a JSON body in this API, so BodyLimit must only lazily wrap them in
+// http.MaxBytesReader instead of eagerly reading up to 1 MiB per request.
+func TestBodyLimit_HappyPath_NonBodyCarryingMethodIsNotEagerlyBuffered(t *testing.T) {
+	called := false
+	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Body = erroringBody{}
+	req.ContentLength = -1
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if !called || rec.Code != http.StatusOK {
+		t.Errorf("called/status = %v/%d, want true/200 (GET body must not be eagerly read)", called, rec.Code)
+	}
+}
+
+// TestBodyLimit_ErrorCase_OversizedBodyKeepsCORSHeadersWhenInsideCORS closes
+// the other half of FIX A: BodyLimit must run inside CORS (see
+// cmd/api/main.go's wiring — CORS wraps the rate limiter which wraps
+// BodyLimit) so a 413 still carries CORS headers for the Expo-dev origin.
+func TestBodyLimit_ErrorCase_OversizedBodyKeepsCORSHeadersWhenInsideCORS(t *testing.T) {
+	handler := CORS("http://localhost:8081")(BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not be reached for an oversized body")
+	})))
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(strings.Repeat("a", int(maxRequestBodyBytes+1))))
+	req.ContentLength = -1 // exercise the bounded-read path, not just the header shortcut
+	req.Header.Set("Origin", "http://localhost:8081")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:8081" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want it preserved on a 413", got)
+	}
+}
+
+func TestNew_HappyPath_ConfiguresServerTimeouts(t *testing.T) {
+	srv := New(8080, "http://localhost:8081", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), testLogger(&bytes.Buffer{}))
+	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 30*time.Second || srv.WriteTimeout != 60*time.Second || srv.IdleTimeout != 120*time.Second {
+		t.Errorf("timeouts = header %v read %v write %v idle %v", srv.ReadHeaderTimeout, srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout)
 	}
 }
 

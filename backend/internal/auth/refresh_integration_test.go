@@ -122,3 +122,40 @@ func TestRefresh_ErrorCase_NoTokenReturnsUnauthorized(t *testing.T) {
 		t.Errorf("status = %d, want 401", resp.StatusCode)
 	}
 }
+
+func TestRefresh_EdgeCase_LiteralNullBodyIsOptionalButHasNoToken(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", rawBody: rawBody("null")})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestRefresh_EdgeCase_MissingBodyIsOptionalButHasNoToken(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh"})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken closes FIX C
+// (winzy.ai-n5fv review round 1): a zero-byte CHUNKED body has
+// r.ContentLength == -1, not 0, so decodeOptionalJSON must not use
+// ContentLength to decide emptiness — otherwise this 400s as malformed
+// instead of hitting the nullable-body path and 401ing for lack of a token.
+func TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", chunkedEmptyBody: true})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestRefresh_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", rawBody: rawBody(`{} trailing`)})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}

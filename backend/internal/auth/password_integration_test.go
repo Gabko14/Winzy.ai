@@ -143,3 +143,29 @@ func TestChangePassword_ErrorCase_TooShortNewPasswordReturnsValidationError(t *t
 		t.Errorf("status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestChangePassword_ErrorCase_LiteralNullUsesValidationShape(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "pwnull@example.com", "pwnulluser", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPut, path: "/auth/password", headers: bearer(reg.AccessToken), rawBody: rawBody("null"),
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := decodeBody[map[string]map[string][]string](t, resp)
+	if len(body["errors"]["newPassword"]) == 0 {
+		t.Errorf("body = %v, want newPassword validation error", body)
+	}
+}
+
+func TestChangePassword_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "pwtrail@example.com", "pwtrailuser", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPut, path: "/auth/password", headers: bearer(reg.AccessToken), rawBody: rawBody(`{} trailing`),
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}

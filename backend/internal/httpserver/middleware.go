@@ -5,6 +5,9 @@
 package httpserver
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,6 +19,8 @@ import (
 // Middleware wraps an http.Handler with additional behavior.
 type Middleware func(http.Handler) http.Handler
 
+const maxRequestBodyBytes int64 = 1 << 20
+
 // Chain applies middlewares in the order given: the first middleware is
 // outermost (sees the request first, the response last).
 func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
@@ -25,12 +30,25 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 	return h
 }
 
-// Recovery assigns each request a request ID (stored in context and echoed
-// as the X-Request-Id response header) and recovers panics in the handler
-// chain, logging them at error level with that request ID before returning a
-// generic 500. It must be the outermost middleware so no other middleware's
-// panic escapes unlogged, and so every later log line has a request ID to
-// attach to. sensitivePathPrefixes is the same list RequestLogging takes
+// RequestID installs the request ID before logging and recovery so both
+// middlewares observe the same value even when a handler panics.
+func RequestID() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := reqid.New()
+			w.Header().Set("X-Request-Id", id)
+			next.ServeHTTP(w, r.WithContext(reqid.WithContext(r.Context(), id)))
+		})
+	}
+}
+
+// Recovery recovers panics in the handler chain, logging them at error level
+// with the request ID before returning a generic 500. RequestLogging wraps
+// Recovery in the production stack so the recovered response still emits a
+// complete request line. If bytes were already committed, net/http cannot
+// replace the status/body: the committed status remains and the generic
+// error JSON is appended. sensitivePathPrefixes is the same list
+// RequestLogging takes
 // (see its doc comment and redactPath) — a panic mid-request on a sensitive
 // route (e.g. GET /social/witness/{token}) must not leak the token into the
 // panic log line either; a crash is exactly the moment someone is reading
@@ -38,9 +56,12 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 func Recovery(logger *slog.Logger, sensitivePathPrefixes ...string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			id := reqid.New()
-			ctx := reqid.WithContext(r.Context(), id)
-			w.Header().Set("X-Request-Id", id)
+			id := reqid.FromContext(r.Context())
+			if id == "" {
+				id = reqid.New()
+				r = r.WithContext(reqid.WithContext(r.Context(), id))
+				w.Header().Set("X-Request-Id", id)
+			}
 
 			defer func() {
 				if rec := recover(); rec != nil {
@@ -56,7 +77,7 @@ func Recovery(logger *slog.Logger, sensitivePathPrefixes ...string) Middleware {
 				}
 			}()
 
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -66,12 +87,24 @@ func Recovery(logger *slog.Logger, sensitivePathPrefixes ...string) Middleware {
 // observe it.
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (s *statusRecorder) WriteHeader(status int) {
+	if s.wroteHeader {
+		return
+	}
+	s.wroteHeader = true
 	s.status = status
 	s.ResponseWriter.WriteHeader(status)
+}
+
+func (s *statusRecorder) Write(p []byte) (int, error) {
+	if !s.wroteHeader {
+		s.WriteHeader(http.StatusOK)
+	}
+	return s.ResponseWriter.Write(p)
 }
 
 // redactPath returns path unchanged unless it starts with one of
@@ -88,6 +121,60 @@ func redactPath(path string, sensitivePrefixes []string) string {
 		}
 	}
 	return path
+}
+
+// bodyCarryingMethod reports whether method is one of the three the API
+// ever expects a JSON body on. Every other method (GET, DELETE, HEAD,
+// OPTIONS) gets only a lazy http.MaxBytesReader wrap: bounding the read if
+// a handler ever consults the body, without eagerly buffering up to 1 MiB
+// for requests that never carry one.
+func bodyCarryingMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+		return true
+	default:
+		return false
+	}
+}
+
+// BodyLimit caps every request body at 1 MiB. Oversized requests receive
+// C# Kestrel's 413 contract with an empty body. POST/PUT/PATCH bodies are
+// read eagerly into a re-readable buffer (handlers decode from r.Body
+// directly); every other method only gets a lazy MaxBytesReader wrap, so a
+// flood of bodyless GETs never forces allocation before routing. Must run
+// after rate limiting and inside CORS (see cmd/api/main.go's wiring) so a
+// 413 still carries CORS headers and an oversized-body attack is rate
+// limited before any bytes are read.
+func BodyLimit() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ContentLength > maxRequestBodyBytes {
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
+			if r.Body == nil || r.Body == http.NoBody {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if !bodyCarryingMethod(r.Method) {
+				r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+				next.ServeHTTP(w, r)
+				return
+			}
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
+			if err != nil {
+				var maxErr *http.MaxBytesError
+				if errors.As(err, &maxErr) {
+					w.WriteHeader(http.StatusRequestEntityTooLarge)
+					return
+				}
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // RequestLogging logs one structured line per request: request_id, method,

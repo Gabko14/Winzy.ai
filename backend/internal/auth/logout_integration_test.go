@@ -64,6 +64,43 @@ func TestLogout_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 	}
 }
 
+func TestLogout_EdgeCase_LiteralNullBodyIsOptional(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "logoutnull@example.com", "logoutnull", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/auth/logout", headers: bearer(reg.AccessToken), rawBody: rawBody("null"),
+	})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", resp.StatusCode)
+	}
+}
+
+// TestLogout_EdgeCase_ChunkedEmptyBodyIsOptional closes FIX C (winzy.ai-n5fv
+// review round 1): see the identical note on
+// TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken — a zero-byte
+// chunked logout body must still 204, not 400.
+func TestLogout_EdgeCase_ChunkedEmptyBodyIsOptional(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "logoutchunked@example.com", "logoutchunked", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/auth/logout", headers: bearer(reg.AccessToken), chunkedEmptyBody: true,
+	})
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("status = %d, want 204", resp.StatusCode)
+	}
+}
+
+func TestLogout_ErrorCase_MalformedBodyIsNotIgnored(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "logoutbad@example.com", "logoutbad", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/auth/logout", headers: bearer(reg.AccessToken), rawBody: rawBody(`{} trailing`),
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func mergeHeaders(maps ...map[string]string) map[string]string {
 	merged := map[string]string{}
 	for _, m := range maps {

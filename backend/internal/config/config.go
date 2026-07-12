@@ -33,6 +33,8 @@ type Config struct {
 	JWTAccessTokenMinutes int
 	// JWTRefreshTokenDays is the refresh token lifetime in days.
 	JWTRefreshTokenDays int
+	// TrustedProxy enables Railway's X-Real-IP client address contract.
+	TrustedProxy bool
 	// RateLimitAuthPerMinute caps requests per client IP per minute to
 	// /auth/* endpoints.
 	RateLimitAuthPerMinute int
@@ -48,8 +50,11 @@ const (
 	defaultCORSOrigin                = "http://localhost:8081"
 	defaultJWTAccessTokenMinutes     = "15"
 	defaultJWTRefreshTokenDays       = "7"
+	defaultTrustedProxy              = "false"
 	defaultRateLimitAuthPerMinute    = "10"
 	defaultRateLimitGeneralPerMinute = "300"
+	maxJWTAccessTokenMinutes         = 24 * 60
+	maxJWTRefreshTokenDays           = 3650
 )
 
 // Load reads PORT, DATABASE_URL, LOG_LEVEL and CORS_ORIGIN from the
@@ -99,17 +104,23 @@ func load(getenv func(string) string) (Config, error) {
 	// is the single source of truth for validating it, so Load only reads it.
 	cfg.JWTSecret = getenv("JWT_SECRET")
 
-	accessMinutes, err := parsePositiveInt("JWT_ACCESS_TOKEN_MINUTES", valueOrDefault(getenv("JWT_ACCESS_TOKEN_MINUTES"), defaultJWTAccessTokenMinutes))
+	accessMinutes, err := parseBoundedPositiveInt("JWT_ACCESS_TOKEN_MINUTES", valueOrDefault(getenv("JWT_ACCESS_TOKEN_MINUTES"), defaultJWTAccessTokenMinutes), maxJWTAccessTokenMinutes)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.JWTAccessTokenMinutes = accessMinutes
 
-	refreshDays, err := parsePositiveInt("JWT_REFRESH_TOKEN_DAYS", valueOrDefault(getenv("JWT_REFRESH_TOKEN_DAYS"), defaultJWTRefreshTokenDays))
+	refreshDays, err := parseBoundedPositiveInt("JWT_REFRESH_TOKEN_DAYS", valueOrDefault(getenv("JWT_REFRESH_TOKEN_DAYS"), defaultJWTRefreshTokenDays), maxJWTRefreshTokenDays)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.JWTRefreshTokenDays = refreshDays
+
+	trustedProxy, err := strconv.ParseBool(valueOrDefault(getenv("TRUSTED_PROXY"), defaultTrustedProxy))
+	if err != nil {
+		return Config{}, fmt.Errorf("config: TRUSTED_PROXY %q is not a valid boolean: %w", getenv("TRUSTED_PROXY"), err)
+	}
+	cfg.TrustedProxy = trustedProxy
 
 	authLimit, err := parsePositiveInt("RATE_LIMIT_AUTH_PER_MINUTE", valueOrDefault(getenv("RATE_LIMIT_AUTH_PER_MINUTE"), defaultRateLimitAuthPerMinute))
 	if err != nil {
@@ -135,6 +146,17 @@ func parsePositiveInt(envVar, value string) (int, error) {
 	}
 	if n < 1 {
 		return 0, fmt.Errorf("config: %s %d must be at least 1", envVar, n)
+	}
+	return n, nil
+}
+
+func parseBoundedPositiveInt(envVar, value string, max int) (int, error) {
+	n, err := parsePositiveInt(envVar, value)
+	if err != nil {
+		return 0, err
+	}
+	if n > max {
+		return 0, fmt.Errorf("config: %s %d must not exceed %d", envVar, n, max)
 	}
 	return n, nil
 }
@@ -176,6 +198,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("jwt_secret", jwtSecretStatus),
 		slog.Int("jwt_access_token_minutes", c.JWTAccessTokenMinutes),
 		slog.Int("jwt_refresh_token_days", c.JWTRefreshTokenDays),
+		slog.Bool("trusted_proxy", c.TrustedProxy),
 		slog.Int("rate_limit_auth_per_minute", c.RateLimitAuthPerMinute),
 		slog.Int("rate_limit_general_per_minute", c.RateLimitGeneralPerMinute),
 	)

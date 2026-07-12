@@ -80,10 +80,11 @@ func newTestServerWithAuth(t *testing.T) (*httptest.Server, *auth.TokenService, 
 	// mirrors cmd/api/main.go's "GET /habits/public/*" prefix entry (see
 	// auth.Middleware's isPublicRoute doc comment for the "*" convention).
 	protected := auth.Middleware(tokens, map[string]bool{"GET /habits/public/*": true})(mux)
+	bodyLimited := httpserver.BodyLimit()(protected)
 
 	generalLimiter := ratelimit.New(100000, time.Minute)
 	authLimiter := ratelimit.New(100000, time.Minute)
-	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/")(protected)
+	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/", false)(bodyLimited)
 
 	// Wrapped through httpserver.New (not a bare httptest.NewServer) so the
 	// test exercises the same middleware stack cmd/api/main.go assembles —

@@ -12,6 +12,7 @@ import (
 )
 
 const testSecret = "test-secret-key-that-is-at-least-32-characters-long!!"
+const testUserID = "11111111-1111-1111-1111-111111111111"
 
 func TestNewTokenService_HappyPath_AcceptsValidSecret(t *testing.T) {
 	if _, err := auth.NewTokenService(testSecret, 15, 7); err != nil {
@@ -84,7 +85,7 @@ func TestGenerateAccessToken_HappyPath_ContainsExpectedClaims(t *testing.T) {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 
-	token, err := svc.GenerateAccessToken("user-123", "test@example.com")
+	token, err := svc.GenerateAccessToken(testUserID, "test@example.com")
 	if err != nil {
 		t.Fatalf("GenerateAccessToken() returned unexpected error: %v", err)
 	}
@@ -98,8 +99,8 @@ func TestGenerateAccessToken_HappyPath_ContainsExpectedClaims(t *testing.T) {
 	}
 	claims := parsed.Claims.(jwt.MapClaims)
 
-	if claims["sub"] != "user-123" {
-		t.Errorf("sub claim = %v, want user-123", claims["sub"])
+	if claims["sub"] != testUserID {
+		t.Errorf("sub claim = %v, want %s", claims["sub"], testUserID)
 	}
 	if claims["email"] != "test@example.com" {
 		t.Errorf("email claim = %v, want test@example.com", claims["email"])
@@ -121,7 +122,7 @@ func TestGenerateAccessToken_HappyPath_ExpiresAtConfiguredLifetime(t *testing.T)
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 
-	token, err := svc.GenerateAccessToken("user-123", "test@example.com")
+	token, err := svc.GenerateAccessToken(testUserID, "test@example.com")
 	if err != nil {
 		t.Fatalf("GenerateAccessToken() returned unexpected error: %v", err)
 	}
@@ -199,7 +200,7 @@ func TestValidateAccessToken_HappyPath_ReturnsUserIDForValidToken(t *testing.T) 
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 
-	token, err := svc.GenerateAccessToken("user-123", "test@example.com")
+	token, err := svc.GenerateAccessToken(testUserID, "test@example.com")
 	if err != nil {
 		t.Fatalf("GenerateAccessToken() returned unexpected error: %v", err)
 	}
@@ -208,8 +209,8 @@ func TestValidateAccessToken_HappyPath_ReturnsUserIDForValidToken(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ValidateAccessToken() returned unexpected error: %v", err)
 	}
-	if userID != "user-123" {
-		t.Errorf("ValidateAccessToken() = %q, want user-123", userID)
+	if userID != testUserID {
+		t.Errorf("ValidateAccessToken() = %q, want %s", userID, testUserID)
 	}
 }
 
@@ -230,7 +231,7 @@ func TestValidateAccessToken_ErrorCase_RejectsExpiredToken(t *testing.T) {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 
-	token, err := svc.GenerateAccessToken("user-123", "test@example.com")
+	token, err := svc.GenerateAccessToken(testUserID, "test@example.com")
 	if err != nil {
 		t.Fatalf("GenerateAccessToken() returned unexpected error: %v", err)
 	}
@@ -252,7 +253,7 @@ func TestValidateAccessToken_ErrorCase_RejectsTokenSignedWithDifferentSecret(t *
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 
-	token, err := svc1.GenerateAccessToken("user-123", "test@example.com")
+	token, err := svc1.GenerateAccessToken(testUserID, "test@example.com")
 	if err != nil {
 		t.Fatalf("GenerateAccessToken() returned unexpected error: %v", err)
 	}
@@ -270,5 +271,60 @@ func TestValidateAccessToken_ErrorCase_RejectsEmptyToken(t *testing.T) {
 
 	if _, err := svc.ValidateAccessToken(""); err == nil {
 		t.Error("ValidateAccessToken() should reject an empty token")
+	}
+}
+
+func TestValidateAccessToken_ErrorCase_RejectsHS512(t *testing.T) {
+	svc, err := auth.NewTokenService(testSecret, 15, 7)
+	if err != nil {
+		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+		"sub": testUserID,
+		"exp": time.Now().Add(time.Minute).Unix(),
+	})
+	signed, err := token.SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatalf("signing HS512 fixture: %v", err)
+	}
+	if _, err := svc.ValidateAccessToken(signed); err == nil {
+		t.Error("ValidateAccessToken() should reject HS512 even with the correct key")
+	}
+}
+
+func TestValidateAccessToken_ErrorCase_RejectsMissingExpiration(t *testing.T) {
+	svc, err := auth.NewTokenService(testSecret, 15, 7)
+	if err != nil {
+		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": testUserID})
+	signed, err := token.SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatalf("signing no-exp fixture: %v", err)
+	}
+	if _, err := svc.ValidateAccessToken(signed); err == nil {
+		t.Error("ValidateAccessToken() should reject a token without exp")
+	}
+}
+
+func TestValidateAccessToken_ErrorCase_RejectsMissingOrMalformedSubject(t *testing.T) {
+	svc, err := auth.NewTokenService(testSecret, 15, 7)
+	if err != nil {
+		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
+	}
+	for _, subject := range []string{"", "not-a-uuid"} {
+		t.Run(subject, func(t *testing.T) {
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"sub": subject,
+				"exp": time.Now().Add(time.Minute).Unix(),
+			})
+			signed, err := token.SignedString([]byte(testSecret))
+			if err != nil {
+				t.Fatalf("signing malformed-sub fixture: %v", err)
+			}
+			if _, err := svc.ValidateAccessToken(signed); err == nil {
+				t.Errorf("ValidateAccessToken() should reject sub %q", subject)
+			}
+		})
 	}
 }

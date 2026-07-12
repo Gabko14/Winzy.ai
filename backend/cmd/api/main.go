@@ -113,9 +113,16 @@ func run() error {
 	publicRoutes["GET /social/witness/*"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 
+	// BodyLimit sits between the rate limiter and the router (not in
+	// httpserver.New's fixed chain — see its doc comment): rate limiting
+	// must see the request before any body is read, so a flood of
+	// oversized bodies is rejected by the limiter, not by allocating up to
+	// 1 MiB per request first.
+	bodyLimited := httpserver.BodyLimit()(protected)
+
 	generalLimiter := ratelimit.New(cfg.RateLimitGeneralPerMinute, time.Minute)
 	authLimiter := ratelimit.New(cfg.RateLimitAuthPerMinute, time.Minute)
-	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/")(protected)
+	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/", cfg.TrustedProxy)(bodyLimited)
 
 	// "/social/witness/" is redacted from request logs — its trailing path
 	// segment is the witness token itself, a bearer credential that must

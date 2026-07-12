@@ -90,12 +90,24 @@ func (l *Limiter) scavengeLocked(now time.Time) {
 	}
 }
 
-// ClientIP returns the request's client IP, stripped of its port. It reads
-// only RemoteAddr — no X-Forwarded-For / proxy-header trust — which is
-// correct behind a plain TCP connection; the epic ground truth flags
-// Railway's reverse-proxy nuance as "revisited at cutover" (winzy.ai-rdc7.9
-// / .10), at which point this will need a trusted-proxy header instead.
-func ClientIP(r *http.Request) string {
+// ClientIP returns the request's client IP. Railway documents X-Real-IP as
+// the original client address; it is trusted only when explicitly enabled,
+// so a direct client cannot spoof a header into another limiter bucket. The
+// LAST occurrence of the header wins: if the proxy appends its own
+// X-Real-IP after a client-supplied one (rather than replacing it), taking
+// the first value would let an attacker rotate that first value and escape
+// their bucket — the exact bypass trustedProxy is meant to close. Taking
+// the last is safe either way: if the proxy replaces the header outright,
+// there is only one value to take.
+func ClientIP(r *http.Request, trustedProxy bool) string {
+	if trustedProxy {
+		values := r.Header.Values("X-Real-IP")
+		if len(values) > 0 {
+			if realIP := strings.TrimSpace(values[len(values)-1]); net.ParseIP(realIP) != nil {
+				return realIP
+			}
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -114,14 +126,14 @@ func writeTooManyRequests(w http.ResponseWriter) {
 // keyed by client IP) to everything else — replicating the gateway's
 // per-route-group rate limiting policies as a single middleware, since the
 // two policies never both apply to the same request.
-func PrefixMiddleware(generalLimiter, authLimiter *Limiter, authPrefix string) func(http.Handler) http.Handler {
+func PrefixMiddleware(generalLimiter, authLimiter *Limiter, authPrefix string, trustedProxy bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			limiter := generalLimiter
 			if strings.HasPrefix(r.URL.Path, authPrefix) {
 				limiter = authLimiter
 			}
-			if !limiter.Allow(ClientIP(r)) {
+			if !limiter.Allow(ClientIP(r, trustedProxy)) {
 				writeTooManyRequests(w)
 				return
 			}

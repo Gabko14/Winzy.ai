@@ -5,6 +5,7 @@ package auth_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -99,6 +100,22 @@ func TestRegister_HappyPath_WebClientOmitsRefreshTokenFromBody(t *testing.T) {
 	}
 }
 
+func TestRegister_EdgeCase_EmptySecFetchSiteHeaderStillMeansWebClient(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{
+		method:  http.MethodPost,
+		path:    "/auth/register",
+		body:    auth.RegisterRequest{Email: "emptyfetch@example.com", Username: "emptyfetch", Password: "Password123!"},
+		headers: map[string]string{"Sec-Fetch-Site": ""},
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	if body := decodeBody[auth.AuthResponse](t, resp); body.RefreshToken != nil {
+		t.Error("present empty Sec-Fetch-Site must keep refreshToken cookie-only")
+	}
+}
+
 func TestRegister_EdgeCase_NormalizesEmailAndUsername(t *testing.T) {
 	srv := newTestServer(t)
 
@@ -135,6 +152,56 @@ func TestRegister_EdgeCase_WithoutDisplayNameIsNull(t *testing.T) {
 	body := decodeBody[auth.AuthResponse](t, resp)
 	if body.User.DisplayName != nil {
 		t.Errorf("User.DisplayName = %v, want nil", body.User.DisplayName)
+	}
+}
+
+func TestRegister_EdgeCase_BlankDisplayNameIsTrimmedToEmptyString(t *testing.T) {
+	srv := newTestServer(t)
+	blank := "   "
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost,
+		path:   "/auth/register",
+		body:   auth.RegisterRequest{Email: "blankname@example.com", Username: "blankname", Password: "Password123!", DisplayName: &blank},
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	body := decodeBody[auth.AuthResponse](t, resp)
+	if body.User.DisplayName == nil || *body.User.DisplayName != "" {
+		t.Errorf("DisplayName = %v, want pointer to empty string", body.User.DisplayName)
+	}
+}
+
+func TestRegister_ErrorCase_NullBodyUsesValidationShape(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: rawBody("null")})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := decodeBody[map[string]map[string][]string](t, resp)
+	if len(body["errors"]["email"]) == 0 || len(body["errors"]["username"]) == 0 || len(body["errors"]["password"]) == 0 {
+		t.Errorf("body = %v, want auth validation errors for all required fields", body)
+	}
+}
+
+func TestRegister_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	srv := newTestServer(t)
+	body := `{"email":"trail@example.com","username":"trailuser","password":"Password123!"} garbage`
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: &body})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestRegister_ErrorCase_OversizedBodyReturnsEmpty413(t *testing.T) {
+	srv := newTestServer(t)
+	body := strings.Repeat("a", (1<<20)+1)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: &body})
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", resp.StatusCode)
+	}
+	if resp.ContentLength > 0 {
+		t.Errorf("Content-Length = %d, want empty 413 body", resp.ContentLength)
 	}
 }
 

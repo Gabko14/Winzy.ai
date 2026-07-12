@@ -173,3 +173,15 @@ func TestLogin_ErrorCase_MissingFieldsReturnsBadRequest(t *testing.T) {
 		t.Errorf(`error = %q, want "Email/username and password are required."`, body["error"])
 	}
 }
+
+func TestLogin_ErrorCase_LiteralNullUsesMissingCredentialsShape(t *testing.T) {
+	srv := newTestServer(t)
+	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/login", rawBody: rawBody("null")})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := decodeBody[map[string]string](t, resp)
+	if body["error"] != "Email/username and password are required." {
+		t.Errorf("error = %q, want missing-credentials message", body["error"])
+	}
+}

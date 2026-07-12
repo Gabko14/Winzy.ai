@@ -13,21 +13,30 @@ import (
 // finish once the context is cancelled, before forcing the listener closed.
 const shutdownTimeout = 10 * time.Second
 
-// New wraps handler in the fixed middleware stack (recovery, request
-// logging, CORS) and returns an *http.Server bound to port.
+// New wraps handler in the fixed middleware stack and returns an
+// *http.Server bound to port. BodyLimit is deliberately NOT part of this
+// fixed stack: it must run after rate limiting (so a flood of oversized
+// bodies is rejected by the limiter before any bytes are read) and inside
+// CORS (so a 413 still carries CORS headers) — callers compose it into
+// handler themselves, between the rate limiter and the router (see
+// cmd/api/main.go).
 // sensitiveLogPathPrefixes is passed straight through to BOTH Recovery and
 // RequestLogging — see their doc comments; cmd/api/main.go supplies
 // "/social/witness/" here.
 func New(port int, corsOrigin string, handler http.Handler, logger *slog.Logger, sensitiveLogPathPrefixes ...string) *http.Server {
 	wrapped := Chain(handler,
-		Recovery(logger, sensitiveLogPathPrefixes...),
+		RequestID(),
 		RequestLogging(logger, sensitiveLogPathPrefixes...),
+		Recovery(logger, sensitiveLogPathPrefixes...),
 		CORS(corsOrigin),
 	)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           wrapped,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
 

@@ -80,10 +80,11 @@ func newTestStack(t *testing.T) testStack {
 		"GET /social/witness/*": true,
 	}
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
+	bodyLimited := httpserver.BodyLimit()(protected)
 
 	generalLimiter := ratelimit.New(100000, time.Minute)
 	authLimiter := ratelimit.New(100000, time.Minute)
-	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/")(protected)
+	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/", false)(bodyLimited)
 
 	inner := httpserver.New(0, "http://localhost:8081", rateLimited, logger)
 	srv := httptest.NewServer(inner.Handler)

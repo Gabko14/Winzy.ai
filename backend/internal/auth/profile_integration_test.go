@@ -171,3 +171,29 @@ func TestUpdateProfile_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 		t.Errorf("status = %d, want 401", resp.StatusCode)
 	}
 }
+
+func TestUpdateProfile_ErrorCase_LiteralNullBodyIsRequired(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "profilenull@example.com", "profilenull", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPut, path: "/auth/profile", headers: bearer(reg.AccessToken), rawBody: rawBody("null"),
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	body := decodeBody[map[string]string](t, resp)
+	if body["error"] != "Request body is required." {
+		t.Errorf("error = %q, want Request body is required.", body["error"])
+	}
+}
+
+func TestUpdateProfile_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	srv := newTestServer(t)
+	reg := registerUser(t, srv, "profiletrail@example.com", "profiletrail", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPut, path: "/auth/profile", headers: bearer(reg.AccessToken), rawBody: rawBody(`{} {}`),
+	})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}

@@ -83,6 +83,36 @@ func TestSearchUsers_EdgeCase_ShortQueryReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestSearchUsers_EdgeCase_LengthCheckHappensBeforeTrimming(t *testing.T) {
+	srv := newTestServer(t)
+	searcher := registerUser(t, srv, "spacesearcher@example.com", "spacesearcher", "Password123!", nil)
+	registerUser(t, srv, "singlea@example.com", "singleamatch", "Password123!", nil)
+
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodGet, path: "/auth/users/search?q=+a+", headers: bearer(searcher.AccessToken),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if results := decodeBody[[]auth.UserSearchResult](t, resp); len(results) == 0 {
+		t.Error(`query " a " must pass the pre-trim length check and search for "a"`)
+	}
+}
+
+func TestSearchUsers_EdgeCase_OneUTF16CodeUnitStillReturnsEmpty(t *testing.T) {
+	srv := newTestServer(t)
+	searcher := registerUser(t, srv, "unicodesearcher@example.com", "unicodesearcher", "Password123!", nil)
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodGet, path: "/auth/users/search?q=%C3%A9", headers: bearer(searcher.AccessToken),
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if results := decodeBody[[]auth.UserSearchResult](t, resp); len(results) != 0 {
+		t.Errorf("results = %+v, want empty for one UTF-16 code unit", results)
+	}
+}
+
 func TestSearchUsers_EdgeCase_NoQueryReturnsEmpty(t *testing.T) {
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher4@example.com", "searcher4", "Password123!", nil)

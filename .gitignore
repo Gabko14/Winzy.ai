@@ -54,3 +54,10 @@ coverage.json
 .doctor/
 # dcg installer provisions per-repo Copilot CLI hooks here (machine-local absolute path, not repo config)
 .github/hooks/
+cursor.mcp.json
+factory.mcp.json
+gemini.mcp.json
+.vscode/mcp.json
+opencode.json
+windsurf.mcp.json
+codex.mcp.json

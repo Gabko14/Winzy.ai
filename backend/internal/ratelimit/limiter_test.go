@@ -94,7 +94,7 @@ func TestClientIP_HappyPath_StripsPort(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "203.0.113.5:54321"
 
-	if got := ratelimit.ClientIP(r); got != "203.0.113.5" {
+	if got := ratelimit.ClientIP(r, false); got != "203.0.113.5" {
 		t.Errorf("ClientIP() = %q, want 203.0.113.5", got)
 	}
 }
@@ -103,15 +103,65 @@ func TestClientIP_EdgeCase_MalformedRemoteAddrReturnedVerbatim(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "not-a-valid-remote-addr"
 
-	if got := ratelimit.ClientIP(r); got != "not-a-valid-remote-addr" {
+	if got := ratelimit.ClientIP(r, false); got != "not-a-valid-remote-addr" {
 		t.Errorf("ClientIP() = %q, want the raw RemoteAddr as a fallback", got)
+	}
+}
+
+func TestClientIP_HappyPath_TrustedProxyUsesRailwayRealIP(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Set("X-Real-IP", "203.0.113.9")
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.9" {
+		t.Errorf("ClientIP() = %q, want Railway X-Real-IP", got)
+	}
+}
+
+func TestClientIP_ErrorCase_UntrustedProxyIgnoresSpoofedHeaders(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.5:1234"
+	r.Header.Set("X-Real-IP", "198.51.100.9")
+	r.Header.Set("X-Forwarded-For", "192.0.2.10")
+	if got := ratelimit.ClientIP(r, false); got != "203.0.113.5" {
+		t.Errorf("ClientIP() = %q, want RemoteAddr with proxy trust disabled", got)
+	}
+}
+
+func TestClientIP_EdgeCase_TrustedProxyFallsBackWhenHeaderMissing(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.5:1234"
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.5" {
+		t.Errorf("ClientIP() = %q, want RemoteAddr fallback", got)
+	}
+}
+
+func TestClientIP_ErrorCase_TrustedProxyRejectsMalformedRealIP(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.5:1234"
+	r.Header.Set("X-Real-IP", "attacker-controlled-bucket")
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.5" {
+		t.Errorf("ClientIP() = %q, want RemoteAddr fallback for malformed X-Real-IP", got)
+	}
+}
+
+// TestClientIP_HappyPath_TrustedProxyUsesLastRealIPValue closes FIX B
+// (winzy.ai-n5fv review round 1): if the client sends its own X-Real-IP and
+// the proxy APPENDS its own rather than replacing it, an attacker rotating
+// the first value must not escape their bucket — the last value must win.
+func TestClientIP_HappyPath_TrustedProxyUsesLastRealIPValue(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Add("X-Real-IP", "198.51.100.9") // attacker-supplied, arrives first
+	r.Header.Add("X-Real-IP", "203.0.113.9")  // proxy-appended, must win
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.9" {
+		t.Errorf("ClientIP() = %q, want the last X-Real-IP value 203.0.113.9", got)
 	}
 }
 
 func TestPrefixMiddleware_HappyPath_AuthPrefixUsesAuthLimiter(t *testing.T) {
 	general := ratelimit.New(100, time.Minute)
 	auth := ratelimit.New(1, time.Minute)
-	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/", false)
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -137,7 +187,7 @@ func TestPrefixMiddleware_HappyPath_AuthPrefixUsesAuthLimiter(t *testing.T) {
 func TestPrefixMiddleware_EdgeCase_NonAuthPathUnaffectedByAuthLimiter(t *testing.T) {
 	general := ratelimit.New(100, time.Minute)
 	auth := ratelimit.New(1, time.Minute)
-	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/", false)
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -162,7 +212,7 @@ func TestPrefixMiddleware_EdgeCase_NonAuthPathUnaffectedByAuthLimiter(t *testing
 func TestPrefixMiddleware_ErrorCase_GeneralLimiterExhaustedDeniesNonAuthPath(t *testing.T) {
 	general := ratelimit.New(1, time.Minute)
 	auth := ratelimit.New(100, time.Minute)
-	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/")
+	mw := ratelimit.PrefixMiddleware(general, auth, "/auth/", false)
 
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -178,5 +228,24 @@ func TestPrefixMiddleware_ErrorCase_GeneralLimiterExhaustedDeniesNonAuthPath(t *
 	handler.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
 		t.Errorf("second /habits request status = %d, want 429", rec2.Code)
+	}
+}
+
+func TestPrefixMiddleware_HappyPath_TrustedProxySeparatesClientBuckets(t *testing.T) {
+	general := ratelimit.New(100, time.Minute)
+	auth := ratelimit.New(1, time.Minute)
+	handler := ratelimit.PrefixMiddleware(general, auth, "/auth/", true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, ip := range []string{"203.0.113.1", "203.0.113.2"} {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+		req.RemoteAddr = "10.0.0.2:1234"
+		req.Header.Set("X-Real-IP", ip)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("client %s status = %d, want independent 200", ip, rec.Code)
+		}
 	}
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -118,16 +119,25 @@ func (s *TokenService) GenerateRefreshToken() (string, error) {
 func (s *TokenService) ValidateAccessToken(token string) (string, error) {
 	claims := &accessClaims{}
 	parsed, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("auth: unexpected signing method %v", t.Header["alg"])
-		}
 		return s.secret, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithExpirationRequired())
 	if err != nil {
 		return "", fmt.Errorf("auth: invalid access token: %w", err)
 	}
 	if !parsed.Valid {
 		return "", fmt.Errorf("auth: invalid access token")
 	}
+	if !isUUID(claims.Subject) {
+		return "", fmt.Errorf("auth: invalid access token: sub claim is not a UUID")
+	}
 	return claims.Subject, nil
+}
+
+func isUUID(value string) bool {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return false
+	}
+	compact := value[:8] + value[9:13] + value[14:18] + value[19:23] + value[24:]
+	_, err := hex.DecodeString(compact)
+	return err == nil
 }

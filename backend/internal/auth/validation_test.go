@@ -78,6 +78,24 @@ func TestValidateRegistration_ErrorCase_TooLongPasswordRejected(t *testing.T) {
 	}
 }
 
+func TestValidateRegistration_EdgeCase_PasswordUsesUTF16CodeUnits(t *testing.T) {
+	if errs := validateRegistration("user@example.com", "validuser", "123456😀"); errs != nil {
+		t.Errorf("8 UTF-16-code-unit password = %v, want accepted", errs)
+	}
+	password := strings.Repeat("a", 127) + "😀"
+	errs := validateRegistration("user@example.com", "validuser", password)
+	if errs == nil || errs["password"] == nil {
+		t.Errorf("129 UTF-16-code-unit password = %v, want rejected", errs)
+	}
+}
+
+func TestValidateRegistration_ErrorCase_WhitespaceOnlyPasswordRejected(t *testing.T) {
+	errs := validateRegistration("user@example.com", "validuser", "        ")
+	if errs == nil || errs["password"] == nil {
+		t.Errorf("whitespace-only password = %v, want rejected", errs)
+	}
+}
+
 func TestValidateRegistration_ErrorCase_MultipleFieldsCanFailAtOnce(t *testing.T) {
 	errs := validateRegistration("not-an-email", "x", "short")
 	if errs == nil {
@@ -105,5 +123,12 @@ func TestValidateChangePassword_ErrorCase_TooLongPasswordRejected(t *testing.T) 
 	errs := validateChangePassword(strings.Repeat("a", 129))
 	if errs == nil || errs["newPassword"] == nil {
 		t.Errorf("validateChangePassword() = %v, want a newPassword error", errs)
+	}
+}
+
+func TestValidateChangePassword_ErrorCase_WhitespaceOnlyPasswordRejected(t *testing.T) {
+	errs := validateChangePassword("        ")
+	if errs == nil || errs["newPassword"] == nil {
+		t.Errorf("whitespace-only new password = %v, want rejected", errs)
 	}
 }

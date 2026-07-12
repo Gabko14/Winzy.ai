@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -30,7 +31,8 @@ func NewHandlers(service *Service) *Handlers {
 // browser) falls back to the native behavior, matching the old comment
 // "no header = native = token in body".
 func isWebClient(r *http.Request) bool {
-	return r.Header.Get("Sec-Fetch-Site") != ""
+	_, present := r.Header[http.CanonicalHeaderKey("Sec-Fetch-Site")]
+	return present
 }
 
 func setRefreshCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
@@ -80,30 +82,63 @@ func buildAuthResponse(r *http.Request, result AuthResult) AuthResponse {
 	return resp
 }
 
-// decodeJSON decodes r.Body into T, treating an empty body as the zero
-// value rather than an error — request DTOs in this module are either
-// genuinely optional (RefreshRequestBody) or have every field validated
-// separately anyway, so falling through to that validation on an empty
-// body produces a clearer error than a generic "malformed body" message.
-func decodeJSON[T any](r *http.Request) (T, error) {
-	var v T
+type decodeOutcome int
+
+const (
+	decodeOK decodeOutcome = iota
+	decodeNull
+	decodeMalformed
+)
+
+// decodeJSON matches the habits/social three-way convention: literal null
+// is distinct from malformed, missing, empty, or trailing-content bodies.
+func decodeJSON[T any](r *http.Request) (T, decodeOutcome) {
+	var zero T
 	if r.Body == nil {
-		return v, nil
+		return zero, decodeMalformed
 	}
 	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(&v); err != nil {
-		if errors.Is(err, io.EOF) {
-			return v, nil
-		}
-		return v, err
+	var ptr *T
+	if err := dec.Decode(&ptr); err != nil {
+		return zero, decodeMalformed
 	}
-	return v, nil
+	if _, err := dec.Token(); err != io.EOF {
+		return zero, decodeMalformed
+	}
+	if ptr == nil {
+		return zero, decodeNull
+	}
+	return *ptr, decodeOK
+}
+
+// decodeOptionalJSON preserves ASP.NET's nullable-body binding for
+// RefreshRequest?: a missing/empty body is the zero value, while present
+// malformed or trailing JSON still reports decodeMalformed. Emptiness is
+// decided from the actual body bytes, not r.ContentLength: BodyLimit
+// buffers POST bodies before this runs, so ContentLength is stale for a
+// chunked request (-1 even when the body turns out to be zero bytes) —
+// trusting it would 400 an empty chunked refresh/logout instead of hitting
+// the nullable-body path.
+func decodeOptionalJSON[T any](r *http.Request) (T, decodeOutcome) {
+	var zero T
+	if r.Body == nil || r.Body == http.NoBody {
+		return zero, decodeOK
+	}
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return zero, decodeMalformed
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return zero, decodeOK
+	}
+	r.Body = io.NopCloser(bytes.NewReader(data))
+	return decodeJSON[T](r)
 }
 
 // Register handles POST /auth/register.
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[RegisterRequest](r)
-	if err != nil {
+	req, outcome := decodeJSON[RegisterRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Malformed request body.")
 		return
 	}
@@ -121,8 +156,8 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 
 // Login handles POST /auth/login.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[LoginRequest](r)
-	if err != nil {
+	req, outcome := decodeJSON[LoginRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Malformed request body.")
 		return
 	}
@@ -140,8 +175,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 // Refresh handles POST /auth/refresh: cookie first, then request body (for
 // native clients), matching AuthEndpoints.cs's Refresh exactly.
 func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeJSON[RefreshRequestBody](r)
-	if err != nil {
+	req, outcome := decodeOptionalJSON[RefreshRequestBody](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Malformed request body.")
 		return
 	}
@@ -163,7 +198,11 @@ func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 
-	req, _ := decodeJSON[RefreshRequestBody](r)
+	req, outcome := decodeOptionalJSON[RefreshRequestBody](r)
+	if outcome == decodeMalformed {
+		writeError(w, http.StatusBadRequest, "Malformed request body.")
+		return
+	}
 	tokenValue := refreshTokenFromRequest(r, req.RefreshToken)
 
 	if err := h.service.Logout(r.Context(), userID, tokenValue); err != nil {
@@ -192,9 +231,13 @@ func (h *Handlers) GetProfile(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 
-	req, err := decodeJSON[UpdateProfileRequest](r)
-	if err != nil {
+	req, outcome := decodeJSON[UpdateProfileRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Malformed request body.")
+		return
+	}
+	if outcome == decodeNull {
+		writeError(w, http.StatusBadRequest, "Request body is required.")
 		return
 	}
 
@@ -211,8 +254,8 @@ func (h *Handlers) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 
-	req, err := decodeJSON[ChangePasswordRequest](r)
-	if err != nil {
+	req, outcome := decodeJSON[ChangePasswordRequest](r)
+	if outcome == decodeMalformed {
 		writeError(w, http.StatusBadRequest, "Malformed request body.")
 		return
 	}

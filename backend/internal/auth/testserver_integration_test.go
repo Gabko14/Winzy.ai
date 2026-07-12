@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,10 +64,11 @@ func newTestServerWithRegistries(t *testing.T, authPerMinute, generalPerMinute i
 	auth.RegisterRoutes(mux, handlers)
 
 	protected := auth.Middleware(tokens, auth.DefaultPublicRoutes())(mux)
+	bodyLimited := httpserver.BodyLimit()(protected)
 
 	generalLimiter := ratelimit.New(generalPerMinute, time.Minute)
 	authLimiter := ratelimit.New(authPerMinute, time.Minute)
-	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/")(protected)
+	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/", false)(bodyLimited)
 
 	// Wrapped through httpserver.New (not a bare httptest.NewServer(rateLimited))
 	// so the test exercises the exact same middleware stack cmd/api/main.go
@@ -85,26 +87,42 @@ type testRequest struct {
 	method  string
 	path    string
 	body    any
+	rawBody *string
 	headers map[string]string
+	// chunkedEmptyBody forces the request to arrive as a zero-byte CHUNKED
+	// body (Content-Length: -1 at the server, not the 0 a nil/empty body
+	// reports) — the exact shape FIX C (winzy.ai-n5fv review round 1)
+	// requires decodeOptionalJSON to treat as empty by reading body bytes,
+	// not by trusting r.ContentLength.
+	chunkedEmptyBody bool
 }
 
 func doRequest(t *testing.T, srv *httptest.Server, req testRequest) *http.Response {
 	t.Helper()
 
 	var bodyReader io.Reader
-	if req.body != nil {
+	if req.rawBody != nil {
+		bodyReader = strings.NewReader(*req.rawBody)
+	} else if req.body != nil {
 		b, err := json.Marshal(req.body)
 		if err != nil {
 			t.Fatalf("marshaling request body: %v", err)
 		}
 		bodyReader = bytes.NewReader(b)
+	} else if req.chunkedEmptyBody {
+		bodyReader = strings.NewReader("")
 	}
 
 	httpReq, err := http.NewRequest(req.method, srv.URL+req.path, bodyReader)
 	if err != nil {
 		t.Fatalf("building request: %v", err)
 	}
-	if req.body != nil {
+	if req.chunkedEmptyBody {
+		// ContentLength < 0 tells net/http's Transport to send this request
+		// chunked instead of with a Content-Length header.
+		httpReq.ContentLength = -1
+	}
+	if req.body != nil || req.rawBody != nil {
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 	for k, v := range req.headers {
@@ -118,6 +136,8 @@ func doRequest(t *testing.T, srv *httptest.Server, req testRequest) *http.Respon
 	t.Cleanup(func() { _ = resp.Body.Close() })
 	return resp
 }
+
+func rawBody(body string) *string { return &body }
 
 func decodeBody[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()

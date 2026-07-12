@@ -21,6 +21,7 @@ func TestLoad_HappyPath_ValidEnvIsParsed(t *testing.T) {
 		"JWT_SECRET":                    "a-real-production-secret-that-is-long-enough",
 		"JWT_ACCESS_TOKEN_MINUTES":      "30",
 		"JWT_REFRESH_TOKEN_DAYS":        "14",
+		"TRUSTED_PROXY":                 "true",
 		"RATE_LIMIT_AUTH_PER_MINUTE":    "20",
 		"RATE_LIMIT_GENERAL_PER_MINUTE": "500",
 	}))
@@ -47,6 +48,9 @@ func TestLoad_HappyPath_ValidEnvIsParsed(t *testing.T) {
 	}
 	if cfg.JWTRefreshTokenDays != 14 {
 		t.Errorf("JWTRefreshTokenDays = %d, want 14", cfg.JWTRefreshTokenDays)
+	}
+	if !cfg.TrustedProxy {
+		t.Error("TrustedProxy = false, want true")
 	}
 	if cfg.RateLimitAuthPerMinute != 20 {
 		t.Errorf("RateLimitAuthPerMinute = %d, want 20", cfg.RateLimitAuthPerMinute)
@@ -81,6 +85,9 @@ func TestLoad_EdgeCase_MissingEnvUsesLocalDevDefaults(t *testing.T) {
 	}
 	if cfg.JWTRefreshTokenDays != 7 {
 		t.Errorf("JWTRefreshTokenDays = %d, want default 7", cfg.JWTRefreshTokenDays)
+	}
+	if cfg.TrustedProxy {
+		t.Error("TrustedProxy = true, want default false")
 	}
 	if cfg.RateLimitAuthPerMinute != 10 {
 		t.Errorf("RateLimitAuthPerMinute = %d, want default 10", cfg.RateLimitAuthPerMinute)
@@ -198,5 +205,37 @@ func TestLoad_ErrorCase_GarbageRateLimitGeneralPerMinuteFailsFast(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "RATE_LIMIT_GENERAL_PER_MINUTE") {
 		t.Errorf("error %q should mention RATE_LIMIT_GENERAL_PER_MINUTE", err.Error())
+	}
+}
+
+func TestLoad_ErrorCase_InvalidTrustedProxyFailsFast(t *testing.T) {
+	_, err := load(env(map[string]string{"TRUSTED_PROXY": "sometimes"}))
+	if err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXY") {
+		t.Errorf("load() error = %v, want TRUSTED_PROXY parse error", err)
+	}
+}
+
+func TestLoad_EdgeCase_MaximumTokenDurationsAccepted(t *testing.T) {
+	cfg, err := load(env(map[string]string{
+		"JWT_ACCESS_TOKEN_MINUTES": "1440",
+		"JWT_REFRESH_TOKEN_DAYS":   "3650",
+	}))
+	if err != nil {
+		t.Fatalf("load() returned unexpected error: %v", err)
+	}
+	if cfg.JWTAccessTokenMinutes != 1440 || cfg.JWTRefreshTokenDays != 3650 {
+		t.Errorf("durations = %d minutes/%d days, want 1440/3650", cfg.JWTAccessTokenMinutes, cfg.JWTRefreshTokenDays)
+	}
+}
+
+func TestLoad_ErrorCase_ExcessiveTokenDurationsFailFast(t *testing.T) {
+	for envVar, value := range map[string]string{
+		"JWT_ACCESS_TOKEN_MINUTES": "1441",
+		"JWT_REFRESH_TOKEN_DAYS":   "3651",
+	} {
+		_, err := load(env(map[string]string{envVar: value}))
+		if err == nil || !strings.Contains(err.Error(), envVar) {
+			t.Errorf("%s=%s error = %v, want named upper-bound error", envVar, value, err)
+		}
 	}
 }

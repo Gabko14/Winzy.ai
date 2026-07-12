@@ -14,6 +14,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
+	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 )
 
@@ -111,7 +112,7 @@ func (s *Service) Register(ctx context.Context, email, username, password string
 		return AuthResult{}, err
 	}
 
-	user, err := createUser(ctx, s.pool, emailLower, usernameLower, hash, trimToNil(displayName))
+	user, err := createUser(ctx, s.pool, emailLower, usernameLower, hash, trimPointer(displayName))
 	if err != nil {
 		// isUniqueViolation races land here even after the pre-checks above.
 		return AuthResult{}, err
@@ -365,10 +366,10 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 // SearchUsers returns an empty (never nil) slice for a query shorter than
 // 2 characters, matching SearchUsers's early-return in AuthEndpoints.cs.
 func (s *Service) SearchUsers(ctx context.Context, query string) ([]UserSearchResult, error) {
-	trimmed := strings.ToLower(strings.TrimSpace(query))
-	if len(trimmed) < 2 {
+	if habits.UTF16Len(query) < 2 {
 		return []UserSearchResult{}, nil
 	}
+	trimmed := strings.ToLower(strings.TrimSpace(query))
 	return searchUsers(ctx, s.pool, trimmed, 20)
 }
 
@@ -470,6 +471,14 @@ func trimToNil(s *string) *string {
 	if trimmed == "" {
 		return nil
 	}
+	return &trimmed
+}
+
+func trimPointer(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*s)
 	return &trimmed
 }
 
