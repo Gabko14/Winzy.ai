@@ -25,6 +25,23 @@ type UsernameResolver interface {
 // handlers map it to 500 like any other internal error.
 var ErrUsernameResolverUnavailable = errors.New("habits: username resolver not configured")
 
+// PublicVisibilityFilter narrows a habit-id candidate set down to the ones
+// visible to the anonymous/public viewer — satisfied structurally by
+// *social.Service (its VisibleHabitIDs method), the in-process replacement
+// for the old GET /social/internal/visible-habits/{userId}?viewer=public
+// HTTP call PublicEndpoints.cs's GetPublicFlameProfile/GetFlameBadge made.
+// Defined here instead of importing internal/social so habits depends only
+// on this narrow capability (habits must not import social — the dependency
+// runs the other way, social imports habits directly for ownership/flame
+// reads, see internal/social's crossmodule.go) — set via
+// SetVisibilityFilter, exactly like SetUsernameResolver above. The interface
+// takes the candidate habitIDs (rather than looking them up itself) because
+// only habits knows a user's full non-archived habit set; social has no
+// habit list of its own to enumerate.
+type PublicVisibilityFilter interface {
+	VisibleHabitIDs(ctx context.Context, ownerID string, habitIDs []string) (map[string]bool, error)
+}
+
 // PublicHabitEntry is one habit in GetPublicFlameProfile's response — the
 // per-habit projection in PublicEndpoints.cs.
 type PublicHabitEntry struct {
@@ -62,28 +79,23 @@ func (s *Service) resolveUsernameForPublic(ctx context.Context, username string)
 }
 
 // PublicFlameProfile builds GET /habits/public/{username}'s payload: every
-// non-archived habit for the resolved user, its consistency/flame level
-// computed with UTC as "today" (the share-surface contract — never a
-// viewer timezone, matching the old /habits/user/{userId} export and
-// flame.svg), plus any Active, non-expired, IsPublicOnFlame promise for
-// that habit.
+// non-archived habit for the resolved user that passes the visibility
+// filter, its consistency/flame level computed with UTC as "today" (the
+// share-surface contract — never a viewer timezone, matching the old
+// /habits/user/{userId} export and flame.svg), plus any Active, non-expired,
+// IsPublicOnFlame promise for that habit.
 //
-// INTEGRATION POINT (winzy.ai-rdc7.4): the C# source (GetPublicFlameProfile
-// in PublicEndpoints.cs) filters habits through the Social service's
-// per-habit visibility settings (FetchVisibility) before this projection;
-// that service doesn't exist yet in this Go stack, so this interim
-// implementation shows EVERY non-archived habit, with no filtering at all.
-// This is NOT parity with the old live system: SocialPreference's own
-// default (DefaultHabitVisibility = HabitVisibility.Private, see
-// Entities/SocialPreference.cs) means the old system showed only
-// habits a user had explicitly opted into public visibility — the common
-// case in production was showing NOTHING publicly by default, the opposite
-// of this interim "show everything" behavior. Public flame pages are
-// over-exposed relative to the old system until winzy.ai-rdc7.4 lands the
-// social module and this integration point is replaced with a real
-// in-process visibility call, restoring parity before cutover. Degraded is
-// hardcoded false for the same reason (nothing can currently degrade — there
-// is no network call here to fail).
+// The visibility filter (winzy.ai-rdc7.4's INTEGRATION POINT, now wired) is
+// s.visibilityFilter, set via SetVisibilityFilter — see that method's doc
+// comment for why this is a narrow interface rather than an import of
+// internal/social. A nil filter (SetVisibilityFilter never called — a
+// startup wiring bug) falls back to showing every non-archived habit, the
+// pre-winzy.ai-rdc7.4 interim behavior; production wiring in
+// cmd/api/main.go always sets one. Degraded stays hardcoded false: the
+// visibility filter and the promise/consistency reads below are all
+// in-process calls, so there is nothing here that can genuinely degrade the
+// way a cross-service HTTP call could in the old system — a filter error is
+// a real failure (mapped to 500 by writePublicError), not degradation.
 func (s *Service) PublicFlameProfile(ctx context.Context, username string) (PublicFlameProfileResponse, error) {
 	userID, err := s.resolveUsernameForPublic(ctx, username)
 	if err != nil {
@@ -98,6 +110,22 @@ func (s *Service) PublicFlameProfile(ctx context.Context, username string) (Publ
 	habitIDs := make([]string, len(habitsList))
 	for i, hb := range habitsList {
 		habitIDs[i] = hb.ID
+	}
+
+	if s.visibilityFilter != nil {
+		visible, err := s.visibilityFilter.VisibleHabitIDs(ctx, userID, habitIDs)
+		if err != nil {
+			return PublicFlameProfileResponse{}, fmt.Errorf("habits: filtering public habits by visibility: %w", err)
+		}
+		filtered := make([]Habit, 0, len(habitsList))
+		filteredIDs := make([]string, 0, len(habitIDs))
+		for _, hb := range habitsList {
+			if visible[hb.ID] {
+				filtered = append(filtered, hb)
+				filteredIDs = append(filteredIDs, hb.ID)
+			}
+		}
+		habitsList, habitIDs = filtered, filteredIDs
 	}
 	todayUTC := civilDateInLocation(s.now(), time.UTC)
 	promises, err := publicPromisesForHabits(ctx, s.pool, userID, habitIDs, todayUTC)
@@ -134,10 +162,11 @@ func (s *Service) PublicFlameProfile(ctx context.Context, username string) (Publ
 }
 
 // FlameBadge computes the aggregate consistency across every non-archived
-// habit for the resolved user (UTC as "today" — the same share-surface
-// contract as PublicFlameProfile, including its winzy.ai-rdc7.4 visibility
-// INTEGRATION POINT) and returns the rendered SVG badge, matching
-// GetFlameBadge in PublicEndpoints.cs.
+// habit for the resolved user that passes the visibility filter (UTC as
+// "today" — the same share-surface contract as PublicFlameProfile,
+// including its visibility filtering; see that method's doc comment) and
+// returns the rendered SVG badge, matching GetFlameBadge in
+// PublicEndpoints.cs.
 func (s *Service) FlameBadge(ctx context.Context, username string) (string, error) {
 	userID, err := s.resolveUsernameForPublic(ctx, username)
 	if err != nil {
@@ -147,6 +176,24 @@ func (s *Service) FlameBadge(ctx context.Context, username string) (string, erro
 	habitsList, err := listHabits(ctx, s.pool, userID)
 	if err != nil {
 		return "", err
+	}
+
+	if s.visibilityFilter != nil {
+		habitIDs := make([]string, len(habitsList))
+		for i, hb := range habitsList {
+			habitIDs[i] = hb.ID
+		}
+		visible, err := s.visibilityFilter.VisibleHabitIDs(ctx, userID, habitIDs)
+		if err != nil {
+			return "", fmt.Errorf("habits: filtering flame badge habits by visibility: %w", err)
+		}
+		filtered := make([]Habit, 0, len(habitsList))
+		for _, hb := range habitsList {
+			if visible[hb.ID] {
+				filtered = append(filtered, hb)
+			}
+		}
+		habitsList = filtered
 	}
 
 	var aggregate float64
@@ -163,6 +210,76 @@ func (s *Service) FlameBadge(ctx context.Context, username string) (string, erro
 	}
 
 	return renderFlameBadgeSVG(username, GetFlameLevel(aggregate, nil), aggregate), nil
+}
+
+// HabitSummary is one non-archived habit's cross-module projection — id,
+// name, icon, color, current consistency/flame level (UTC "today", the
+// share-surface contract every consumer of this method shares) and any
+// active, non-expired, IsPublicOnFlame promise. It is the in-process
+// replacement for the old GET /habits/user/{userId} internal endpoint other
+// services called over HTTP (see habit-service's InternalEndpoints.cs,
+// InternalGetUserHabits) — internal/social (friend-list/profile enrichment,
+// visibility ownership checks, the witness link viewer) is the sole caller.
+type HabitSummary struct {
+	ID          string
+	Name        string
+	Icon        *string
+	Color       *string
+	Consistency float64
+	FlameLevel  string
+	Promise     *PublicPromiseResponse
+}
+
+// HabitsForUser returns every non-archived habit owned by userID with
+// current consistency/flame level and any public promise attached — see
+// HabitSummary's doc comment. Always UTC "today" (never a caller-supplied
+// timezone), matching the old internal endpoint's share-surface contract;
+// callers that need friend-vs-public visibility filtering apply it
+// themselves against the returned IDs (this method does no filtering of its
+// own — unlike PublicFlameProfile/FlameBadge, it has no single "viewer" to
+// filter for, since social calls this once per owner and then filters
+// per-viewer).
+func (s *Service) HabitsForUser(ctx context.Context, userID string) ([]HabitSummary, error) {
+	habitsList, err := listHabits(ctx, s.pool, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	habitIDs := make([]string, len(habitsList))
+	for i, hb := range habitsList {
+		habitIDs[i] = hb.ID
+	}
+	todayUTC := civilDateInLocation(s.now(), time.UTC)
+	promises, err := publicPromisesForHabits(ctx, s.pool, userID, habitIDs, todayUTC)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]HabitSummary, len(habitsList))
+	for i, hb := range habitsList {
+		consistency, err := s.currentConsistency(ctx, hb, time.UTC)
+		if err != nil {
+			return nil, err
+		}
+		flame := GetFlameLevel(consistency, nil)
+
+		var promiseResp *PublicPromiseResponse
+		if p, ok := promises[hb.ID]; ok {
+			r := toPublicPromiseResponse(p, &consistency)
+			promiseResp = &r
+		}
+
+		out[i] = HabitSummary{
+			ID:          hb.ID,
+			Name:        hb.Name,
+			Icon:        hb.Icon,
+			Color:       hb.Color,
+			Consistency: consistency,
+			FlameLevel:  flame.String(),
+			Promise:     promiseResp,
+		}
+	}
+	return out, nil
 }
 
 // PublicFlameProfileHandler handles GET /habits/public/{username}.

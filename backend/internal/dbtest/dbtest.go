@@ -39,6 +39,23 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/db"
 )
 
+// RowExists is a raw-SQL existence check independent of any module's own
+// store/service code, so cascade tests verify actual database state rather
+// than re-trusting the same code the assertions are meant to catch bugs in.
+// table is always one of a small hardcoded set of constants at each call
+// site, not caller input — consolidated here (winzy.ai-rdc7.4) from
+// duplicate copies in internal/auth and internal/habits' own
+// cascade_integration_test.go files.
+func RowExists(t *testing.T, pool *pgxpool.Pool, table, id string) bool {
+	t.Helper()
+	var exists bool
+	query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, table)
+	if err := pool.QueryRow(context.Background(), query, id).Scan(&exists); err != nil {
+		t.Fatalf("checking %s row existence: %v", table, err)
+	}
+	return exists
+}
+
 // Connect returns a pool connected to TEST_DATABASE_URL with migrations
 // applied and every table truncated before the test runs. It skips the test
 // (rather than failing) when TEST_DATABASE_URL is unset, so `go test ./...`

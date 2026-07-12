@@ -57,6 +57,12 @@ type Service struct {
 	// (see its doc comment for why this is wired after construction rather
 	// than through NewService).
 	usernameResolver UsernameResolver
+
+	// visibilityFilter backs the public flame surfaces' per-habit visibility
+	// filtering (promise_public.go) — nil until SetVisibilityFilter is
+	// called, wired after construction for the same reason usernameResolver
+	// is (see PublicVisibilityFilter's doc comment).
+	visibilityFilter PublicVisibilityFilter
 }
 
 // NewService wires a Service, registers its UserDeleted handler with
@@ -96,6 +102,21 @@ func (s *Service) SetUsernameResolver(r UsernameResolver) {
 	s.usernameResolver = r
 }
 
+// SetVisibilityFilter wires the public flame endpoints' (GET
+// /habits/public/{username}, GET /habits/public/{username}/flame.svg)
+// in-process replacement for the old GET
+// /social/internal/visible-habits/{userId}?viewer=public HTTP call. Set once
+// at startup (cmd/api/main.go, after both habits.Service and social.Service
+// exist — social.Service satisfies PublicVisibilityFilter structurally, no
+// import of internal/social needed here) rather than threaded through
+// NewService, for the same reason SetUsernameResolver is wired this way: the
+// many call sites that construct a Service purely to exercise
+// habits/completions/promise logic don't also need a social.Service they
+// have no other use for.
+func (s *Service) SetVisibilityFilter(f PublicVisibilityFilter) {
+	s.visibilityFilter = f
+}
+
 // handleUserDeleted resolves its querier via db.QuerierFrom instead of
 // closing over s.pool directly — the contract documented on internal/events
 // — so that when auth.Service.DeleteAccount emits UserDeleted with its
@@ -114,7 +135,21 @@ func (s *Service) handleUserDeleted(ctx context.Context, event events.UserDelete
 
 // CreateHabit validates req, defaults Frequency to Daily when omitted
 // (matching .NET's populateMissingResolver filling a missing non-nullable
-// enum property with its default value), and emits HabitCreated.
+// enum property with its default value), and emits HabitCreated inside the
+// same transaction as the insert (FIX 16, winzy.ai-rdc7.4 review — the
+// rdc7.13 transactional-cascade pattern applied to a *source* event, not
+// just UserDeleted's cascade): a failing HabitCreated handler (e.g. social's
+// default-visibility-row insert) now rolls back the habit insert too and
+// returns a 500, rather than leaving a habit that permanently has no
+// visibility row — exactly the "habit existing without a visibility row
+// because a subscriber was down" failure mode the epic's BACKGROUND says
+// this monolith removes. This is data-integrity-class: HabitCreated's only
+// registered consumer materializes a row another read path depends on.
+// Social-origin events (FriendRequestSent/Accepted/Removed,
+// VisibilityChanged) deliberately do NOT follow this pattern — see
+// social.Service.SendFriendRequest and friends for the notification-class
+// split, where a failed handler logs and does not abort the request that
+// produced it.
 func (s *Service) CreateHabit(ctx context.Context, userID string, req CreateHabitRequest) (Habit, error) {
 	name, err := validateName(req.Name)
 	if err != nil {
@@ -139,13 +174,23 @@ func (s *Service) CreateHabit(ctx context.Context, userID string, req CreateHabi
 		return Habit{}, err
 	}
 
-	habit, err := createHabit(ctx, s.pool, userID, req, frequency, customDays)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Habit{}, fmt.Errorf("habits: beginning create-habit transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	habit, err := createHabit(ctx, tx, userID, req, frequency, customDays)
 	if err != nil {
 		return Habit{}, err
 	}
 
-	if err := events.Emit(ctx, s.registry, events.HabitCreated{UserID: userID, HabitID: habit.ID, Name: habit.Name}); err != nil {
-		s.logger.ErrorContext(ctx, "habit.created handler failed; habit already committed", "habit_id", habit.ID, "error", err)
+	if err := events.Emit(db.WithQuerier(ctx, tx), s.registry, events.HabitCreated{UserID: userID, HabitID: habit.ID, Name: habit.Name}); err != nil {
+		return Habit{}, fmt.Errorf("habits: habit.created handler failed: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Habit{}, fmt.Errorf("habits: committing create-habit transaction: %w", err)
 	}
 
 	return habit, nil
@@ -230,10 +275,15 @@ func (s *Service) UpdateHabit(ctx context.Context, userID, id string, req Update
 }
 
 // ArchiveHabit soft-deletes a habit (idempotent) and emits HabitArchived,
-// canceling any Active promise for the habit first, in the same
-// transaction — matching DeleteHabit in HabitEndpoints.cs, which cancels the
-// promise and sets ArchivedAt in one SaveChangesAsync. The habit lookup here
-// — unlike every other habits operation — does not filter out
+// canceling any Active promise for the habit first, ALL in the same
+// transaction (FIX 16, winzy.ai-rdc7.4 review moved the Emit inside — it
+// previously ran after commit, logged-and-swallowed) — matching DeleteHabit
+// in HabitEndpoints.cs, which cancels the promise and sets ArchivedAt in one
+// SaveChangesAsync, extended by the rdc7.13 pattern to also cover the event
+// dispatch: a failing HabitArchived handler (social's visibility-row
+// delete) now rolls back the archive too instead of leaving a stale
+// visibility_settings row pointing at an archived habit. The habit lookup
+// here — unlike every other habits operation — does not filter out
 // already-archived habits, matching DeleteHabit's query in
 // HabitEndpoints.cs exactly (no ArchivedAt condition), which is what makes
 // archiving an already-archived habit succeed again instead of 404ing.
@@ -262,12 +312,12 @@ func (s *Service) ArchiveHabit(ctx context.Context, userID, id string) error {
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("habits: committing archive transaction: %w", err)
+	if err := events.Emit(db.WithQuerier(ctx, tx), s.registry, events.HabitArchived{UserID: userID, HabitID: habit.ID}); err != nil {
+		return fmt.Errorf("habits: habit.archived handler failed: %w", err)
 	}
 
-	if err := events.Emit(ctx, s.registry, events.HabitArchived{UserID: userID, HabitID: habit.ID}); err != nil {
-		s.logger.ErrorContext(ctx, "habit.archived handler failed; archive already committed", "habit_id", habit.ID, "error", err)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("habits: committing archive transaction: %w", err)
 	}
 	return nil
 }

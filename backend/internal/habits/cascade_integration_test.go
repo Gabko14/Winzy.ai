@@ -12,31 +12,15 @@ package habits_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Gabko14/winzy/backend/internal/dbtest"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
 	"github.com/Gabko14/winzy/backend/internal/habits"
 )
-
-// rowExists is a raw-SQL existence check independent of the store code
-// under test. table is always one of a small hardcoded set of constants
-// below, not caller input.
-func rowExists(t *testing.T, pool *pgxpool.Pool, table, id string) bool {
-	t.Helper()
-	var exists bool
-	query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, table)
-	if err := pool.QueryRow(context.Background(), query, id).Scan(&exists); err != nil {
-		t.Fatalf("checking %s row existence: %v", table, err)
-	}
-	return exists
-}
 
 func TestHandleUserDeleted_EdgeCase_NoTransactionInContextFallsBackToPool(t *testing.T) {
 	pool := dbtest.Connect(t)
@@ -61,10 +45,10 @@ func TestHandleUserDeleted_EdgeCase_NoTransactionInContextFallsBackToPool(t *tes
 		t.Fatalf("Emit(UserDeleted) with no tx in ctx returned unexpected error: %v", err)
 	}
 
-	if rowExists(t, pool, "habits", habit.ID) {
+	if dbtest.RowExists(t, pool, "habits", habit.ID) {
 		t.Error("habit row survived UserDeleted with no tx in ctx; the pool fallback should still have deleted it")
 	}
-	if rowExists(t, pool, "completions", completion.ID) {
+	if dbtest.RowExists(t, pool, "completions", completion.ID) {
 		t.Error("completion row survived UserDeleted with no tx in ctx; the pool fallback should still have deleted it")
 	}
 }

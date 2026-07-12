@@ -12,7 +12,6 @@ package auth_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -76,21 +75,6 @@ func completeHabitViaService(t *testing.T, svc *habits.Service, userID, habitID 
 	return completion
 }
 
-// rowExists is a raw-SQL existence check independent of any module's
-// service layer, so these tests verify actual database state rather than
-// re-trusting the same store code the assertions are meant to catch bugs
-// in. table is always one of a small hardcoded set of constants below, not
-// caller input.
-func rowExists(t *testing.T, pool *pgxpool.Pool, table, id string) bool {
-	t.Helper()
-	var exists bool
-	query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1::uuid)`, table)
-	if err := pool.QueryRow(context.Background(), query, id).Scan(&exists); err != nil {
-		t.Fatalf("checking %s row existence: %v", table, err)
-	}
-	return exists
-}
-
 func TestDeleteAccount_ErrorCase_FailingCascadeHandlerRollsBackAccountAndHabitsTogether(t *testing.T) {
 	authSvc, habitsSvc, registry, pool := newCascadeFixture(t)
 
@@ -115,13 +99,13 @@ func TestDeleteAccount_ErrorCase_FailingCascadeHandlerRollsBackAccountAndHabitsT
 		t.Fatalf("DeleteAccount() error = %v, want it to wrap %v", err, wantErr)
 	}
 
-	if !rowExists(t, pool, "users", reg.User.ID) {
+	if !dbtest.RowExists(t, pool, "users", reg.User.ID) {
 		t.Error("user row was deleted despite a failing cascade handler; the account-delete transaction should have rolled back")
 	}
-	if !rowExists(t, pool, "habits", habit.ID) {
+	if !dbtest.RowExists(t, pool, "habits", habit.ID) {
 		t.Error("habit row was deleted despite a failing cascade handler; habits' cascade should have rolled back with the account delete")
 	}
-	if !rowExists(t, pool, "completions", completion.ID) {
+	if !dbtest.RowExists(t, pool, "completions", completion.ID) {
 		t.Error("completion row was deleted despite a failing cascade handler; habits' cascade should have rolled back with the account delete")
 	}
 }
@@ -137,13 +121,13 @@ func TestDeleteAccount_HappyPath_CommitDeletesAccountAndHabitsCascadeTogether(t 
 		t.Fatalf("DeleteAccount() returned unexpected error: %v", err)
 	}
 
-	if rowExists(t, pool, "users", reg.User.ID) {
+	if dbtest.RowExists(t, pool, "users", reg.User.ID) {
 		t.Error("user row survived a successful DeleteAccount")
 	}
-	if rowExists(t, pool, "habits", habit.ID) {
+	if dbtest.RowExists(t, pool, "habits", habit.ID) {
 		t.Error("habit row survived a successful DeleteAccount; habits' cascade should have committed along with it")
 	}
-	if rowExists(t, pool, "completions", completion.ID) {
+	if dbtest.RowExists(t, pool, "completions", completion.ID) {
 		t.Error("completion row survived a successful DeleteAccount; habits' cascade should have committed along with it")
 	}
 }

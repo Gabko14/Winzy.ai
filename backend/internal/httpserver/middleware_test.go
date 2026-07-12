@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -103,6 +104,77 @@ func TestRequestLogging_EdgeCase_IncludesUserIDWhenAuthenticated(t *testing.T) {
 	}
 }
 
+func TestRequestLogging_EdgeCase_RedactsSensitivePathPrefix(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+
+	handler := Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		Recovery(logger),
+		RequestLogging(logger, "/social/witness/"),
+	)
+
+	token := "AbCdEf0123456789AbCdEf0123456789AbCdEf01234"
+	req := httptest.NewRequest(http.MethodGet, "/social/witness/"+token, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	lines := decodeLogLines(t, &buf)
+	path, _ := lines[0]["path"].(string)
+	if strings.Contains(path, token) {
+		t.Errorf("logged path = %q, want the token redacted (it must never reach stdout/Railway logs)", path)
+	}
+	if path != "/social/witness/[redacted]" {
+		t.Errorf("logged path = %q, want \"/social/witness/[redacted]\"", path)
+	}
+}
+
+func TestRequestLogging_EdgeCase_NonSensitivePathIsUnaffected(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+
+	handler := Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		Recovery(logger),
+		RequestLogging(logger, "/social/witness/"),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/habits", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	lines := decodeLogLines(t, &buf)
+	if lines[0]["path"] != "/habits" {
+		t.Errorf("logged path = %v, want /habits unaffected by an unrelated sensitive prefix", lines[0]["path"])
+	}
+}
+
+func TestRequestLogging_EdgeCase_NoSensitivePrefixesLeavesPathUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+
+	handler := Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		Recovery(logger),
+		RequestLogging(logger), // no sensitive prefixes at all — the pre-FIX-15 call shape.
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/social/witness/some-token", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	lines := decodeLogLines(t, &buf)
+	if lines[0]["path"] != "/social/witness/some-token" {
+		t.Errorf("logged path = %v, want unredacted when no sensitive prefixes are configured", lines[0]["path"])
+	}
+}
+
 func TestRequestLogging_EdgeCase_DefaultsStatusTo200WhenHandlerNeverCallsWriteHeader(t *testing.T) {
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
@@ -156,6 +228,44 @@ func TestRecovery_ErrorCase_PanicIsRecoveredAndLoggedWithRequestID(t *testing.T)
 	}
 	if lines[0]["panic"] != "boom" {
 		t.Errorf("panic field = %v, want boom", lines[0]["panic"])
+	}
+}
+
+// TestRecovery_ErrorCase_RedactsSensitivePathOnPanic closes the residual
+// flagged after FIX 15 (winzy.ai-rdc7.4 review): a panic mid-request on a
+// witness route must not leak the token into the panic log line either — a
+// crash is exactly the moment someone is reading logs.
+func TestRecovery_ErrorCase_RedactsSensitivePathOnPanic(t *testing.T) {
+	var buf bytes.Buffer
+	logger := testLogger(&buf)
+
+	handler := Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("boom")
+		}),
+		Recovery(logger, "/social/witness/"),
+	)
+
+	token := "AbCdEf0123456789AbCdEf0123456789AbCdEf01234"
+	req := httptest.NewRequest(http.MethodGet, "/social/witness/"+token, nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Result().StatusCode != http.StatusInternalServerError {
+		t.Errorf("status code = %d, want 500", rec.Result().StatusCode)
+	}
+
+	lines := decodeLogLines(t, &buf)
+	if len(lines) != 1 {
+		t.Fatalf("got %d log lines, want 1: %v", len(lines), lines)
+	}
+	path, _ := lines[0]["path"].(string)
+	if strings.Contains(path, token) {
+		t.Errorf("panic log path = %q, want the token redacted", path)
+	}
+	if path != "/social/witness/[redacted]" {
+		t.Errorf("panic log path = %q, want \"/social/witness/[redacted]\"", path)
 	}
 }
 

@@ -4,6 +4,7 @@ package habits_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -168,6 +169,36 @@ func TestCreateHabit_HappyPath_EmitsHabitCreated(t *testing.T) {
 	}
 	if captured[0].UserID != userID || captured[0].HabitID != habit.ID || captured[0].Name != "Event Test" {
 		t.Errorf("captured event = %+v, want UserID=%s HabitID=%s Name=Event Test", captured[0], userID, habit.ID)
+	}
+}
+
+// TestCreateHabit_ErrorCase_FailingHabitCreatedHandlerAbortsCreation asserts
+// FIX 16 (winzy.ai-rdc7.4 review): CreateHabit now emits HabitCreated inside
+// the same transaction as the insert, so a failing handler rolls back the
+// habit row too — no permanently-committed habit that a downstream module
+// (social) never got to react to.
+func TestCreateHabit_ErrorCase_FailingHabitCreatedHandlerAbortsCreation(t *testing.T) {
+	srv, tokens, registry := newTestServer(t)
+	userID := newUserID(t, "0000000000fe")
+	a := bearerFor(t, tokens, userID)
+
+	wantErr := errors.New("simulated habit.created handler failure")
+	events.Register(registry, events.Handler[events.HabitCreated](func(_ context.Context, _ events.HabitCreated) error {
+		return wantErr
+	}))
+
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits", headers: a,
+		body: habits.CreateHabitRequest{Name: "Should Not Persist"},
+	})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 when the HabitCreated handler fails", resp.StatusCode)
+	}
+
+	listResp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits", headers: a})
+	list := decodeBody[[]habits.HabitResponse](t, listResp)
+	if len(list) != 0 {
+		t.Errorf("habits after a failed HabitCreated handler = %+v, want none — the insert should have rolled back with the handler", list)
 	}
 }
 
@@ -401,6 +432,33 @@ func TestArchiveHabit_HappyPath_EmitsHabitArchived(t *testing.T) {
 
 	if len(captured) != 1 || captured[0].HabitID != created.ID || captured[0].UserID != userID {
 		t.Errorf("captured = %+v, want one HabitArchived for %s/%s", captured, userID, created.ID)
+	}
+}
+
+// TestArchiveHabit_ErrorCase_FailingHabitArchivedHandlerAbortsArchive is
+// FIX 16's symmetric case for ArchiveHabit: its Emit now runs inside the
+// same transaction as the archive write, so a failing handler rolls back
+// the archive too, leaving the habit active.
+func TestArchiveHabit_ErrorCase_FailingHabitArchivedHandlerAbortsArchive(t *testing.T) {
+	srv, tokens, registry := newTestServer(t)
+	userID := newUserID(t, "0000000000fd")
+	a := bearerFor(t, tokens, userID)
+	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Should Stay Active"})
+
+	wantErr := errors.New("simulated habit.archived handler failure")
+	events.Register(registry, events.Handler[events.HabitArchived](func(_ context.Context, _ events.HabitArchived) error {
+		return wantErr
+	}))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodDelete, path: "/habits/" + created.ID, headers: a})
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 when the HabitArchived handler fails", resp.StatusCode)
+	}
+
+	listResp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits", headers: a})
+	list := decodeBody[[]habits.HabitResponse](t, listResp)
+	if len(list) != 1 {
+		t.Errorf("habits after a failed HabitArchived handler = %+v, want the habit still active (non-archived) — the archive should have rolled back", list)
 	}
 }
 

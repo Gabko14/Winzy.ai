@@ -7,6 +7,7 @@ package httpserver
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Gabko14/winzy/backend/internal/reqid"
@@ -29,8 +30,12 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 // chain, logging them at error level with that request ID before returning a
 // generic 500. It must be the outermost middleware so no other middleware's
 // panic escapes unlogged, and so every later log line has a request ID to
-// attach to.
-func Recovery(logger *slog.Logger) Middleware {
+// attach to. sensitivePathPrefixes is the same list RequestLogging takes
+// (see its doc comment and redactPath) — a panic mid-request on a sensitive
+// route (e.g. GET /social/witness/{token}) must not leak the token into the
+// panic log line either; a crash is exactly the moment someone is reading
+// logs.
+func Recovery(logger *slog.Logger, sensitivePathPrefixes ...string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := reqid.New()
@@ -42,7 +47,7 @@ func Recovery(logger *slog.Logger) Middleware {
 					logger.Error("panic recovered",
 						"request_id", id,
 						"method", r.Method,
-						"path", r.URL.Path,
+						"path", redactPath(r.URL.Path, sensitivePathPrefixes),
 						"panic", rec,
 					)
 					w.Header().Set("Content-Type", "application/json")
@@ -69,9 +74,31 @@ func (s *statusRecorder) WriteHeader(status int) {
 	s.ResponseWriter.WriteHeader(status)
 }
 
+// redactPath returns path unchanged unless it starts with one of
+// sensitivePrefixes, in which case everything after the matching prefix is
+// replaced with "[redacted]" — e.g. "/social/witness/AbC123..." logs as
+// "/social/witness/[redacted]". Kept generic (no knowledge of what a
+// "witness token" is, no import of internal/social) so httpserver stays
+// free of module-specific dependencies; callers (cmd/api/main.go) supply
+// the actual sensitive prefixes.
+func redactPath(path string, sensitivePrefixes []string) string {
+	for _, prefix := range sensitivePrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return prefix + "[redacted]"
+		}
+	}
+	return path
+}
+
 // RequestLogging logs one structured line per request: request_id, method,
 // path, status, duration_ms, and user_id when the request is authenticated.
-func RequestLogging(logger *slog.Logger) Middleware {
+// sensitivePathPrefixes lists path prefixes whose trailing segment must
+// never reach the log line verbatim (see redactPath) — e.g.
+// "/social/witness/", so a Witness Link token never lands in stdout/Railway
+// logs. This is deliberately stricter than the old system (the old gateway
+// logged full request paths, tokens included); the never-log-a-token rule
+// on winzy.ai-rdc7.4 applies here too.
+func RequestLogging(logger *slog.Logger, sensitivePathPrefixes ...string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -92,7 +119,7 @@ func RequestLogging(logger *slog.Logger) Middleware {
 			attrs := []any{
 				"request_id", reqid.FromContext(r.Context()),
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", redactPath(r.URL.Path, sensitivePathPrefixes),
 				"status", rec.status,
 				"duration_ms", time.Since(start).Milliseconds(),
 			}

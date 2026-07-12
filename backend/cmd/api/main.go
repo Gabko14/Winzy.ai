@@ -22,6 +22,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/health"
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
+	"github.com/Gabko14/winzy/backend/internal/social"
 )
 
 func main() {
@@ -77,29 +78,49 @@ func run() error {
 	habitsService.SetUsernameResolver(authService)
 	habitsHandlers := habits.NewHandlers(habitsService)
 
+	// social may import auth and habits directly (friend-list enrichment via
+	// auth.BatchProfiles, ownership/flame reads via habits.GetHabit/
+	// HabitsForUser — see internal/social's service.go doc comment); the
+	// reverse wiring below (habitsService.SetVisibilityFilter) is what keeps
+	// habits from importing social back, closing the loop with the narrow
+	// habits.PublicVisibilityFilter interface instead.
+	socialService := social.NewService(pool, registry, exportRegistry, authService, habitsService, logger)
+	// socialService satisfies habits.PublicVisibilityFilter structurally (its
+	// VisibleHabitIDs method) — the public flame surfaces' in-process
+	// replacement for the old GET
+	// /social/internal/visible-habits/{userId}?viewer=public call.
+	habitsService.SetVisibilityFilter(socialService)
+	socialHandlers := social.NewHandlers(socialService)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health.Handler(pool))
 	auth.RegisterRoutes(mux, authHandlers)
 	habits.RegisterRoutes(mux, habitsHandlers)
+	social.RegisterRoutes(mux, socialHandlers)
 
 	// Public-route allowlist: auth's own slice, GET /health (every service's
 	// health check must be reachable without a token — Railway, docker
-	// healthcheck, and uptime monitoring all hit it directly), and habits'
-	// public flame surfaces. "GET /habits/public/*" is a prefix entry (see
-	// auth.Middleware's isPublicRoute doc comment) covering both GET
-	// /habits/public/{username} and its /flame.svg sibling, since neither
-	// endpoint's final path segment (a caller-supplied username) is
-	// enumerable as an exact route. Later module beads (social,
-	// notifications) add their own public routes here too.
+	// healthcheck, and uptime monitoring all hit it directly), habits'
+	// public flame surfaces, and social's Witness Link viewer. "GET
+	// /habits/public/*" and "GET /social/witness/*" are prefix entries (see
+	// auth.Middleware's isPublicRoute doc comment) covering routes whose
+	// final path segment (a username or a witness token) isn't enumerable as
+	// an exact route. Later module beads (notifications) add their own
+	// public routes here too.
 	publicRoutes := auth.DefaultPublicRoutes()
 	publicRoutes["GET /health"] = true
 	publicRoutes["GET /habits/public/*"] = true
+	publicRoutes["GET /social/witness/*"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 
 	generalLimiter := ratelimit.New(cfg.RateLimitGeneralPerMinute, time.Minute)
 	authLimiter := ratelimit.New(cfg.RateLimitAuthPerMinute, time.Minute)
 	rateLimited := ratelimit.PrefixMiddleware(generalLimiter, authLimiter, "/auth/")(protected)
 
-	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, rateLimited, logger)
+	// "/social/witness/" is redacted from request logs — its trailing path
+	// segment is the witness token itself, a bearer credential that must
+	// never reach stdout/Railway logs (see httpserver.RequestLogging's doc
+	// comment).
+	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, rateLimited, logger, "/social/witness/")
 	return httpserver.Serve(ctx, srv, logger)
 }

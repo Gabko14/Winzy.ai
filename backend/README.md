@@ -43,7 +43,7 @@ TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
   go test -tags=integration -race -v -p 1 ./...
 ```
 
-`-p 1` is required for multi-package integration runs: all packages share the one live database and each test truncates every table, so concurrently running packages wipe each other's rows mid-test.
+`-p 1` is required for multi-package integration runs: all packages share the one live database and each test truncates every table, so concurrently running packages wipe each other's rows mid-test. The same rule applies one level up: never run two `go test -tags=integration` **invocations** at once against the same `winzy-db` (e.g. two terminals, or an agent and a human) — they clobber each other's state and fail nondeterministically (vanished rows, phantom rows, even deadlocks between concurrent cascades).
 
 **Integration-test convention** (every module bead's handler tests follow this — see `internal/dbtest`): point at the compose `winzy-db` service via `TEST_DATABASE_URL` rather than spinning up testcontainers-go. This repo already treats Postgres as a docker-compose service everywhere else, the pre-push hook already assumes Docker is running, and CI already knows how to bring up a Postgres service container — reusing that avoids a second container-management dependency. `internal/dbtest.Connect(t)` runs migrations, truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL` is unset.
 

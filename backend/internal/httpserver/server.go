@@ -15,10 +15,13 @@ const shutdownTimeout = 10 * time.Second
 
 // New wraps handler in the fixed middleware stack (recovery, request
 // logging, CORS) and returns an *http.Server bound to port.
-func New(port int, corsOrigin string, handler http.Handler, logger *slog.Logger) *http.Server {
+// sensitiveLogPathPrefixes is passed straight through to BOTH Recovery and
+// RequestLogging — see their doc comments; cmd/api/main.go supplies
+// "/social/witness/" here.
+func New(port int, corsOrigin string, handler http.Handler, logger *slog.Logger, sensitiveLogPathPrefixes ...string) *http.Server {
 	wrapped := Chain(handler,
-		Recovery(logger),
-		RequestLogging(logger),
+		Recovery(logger, sensitiveLogPathPrefixes...),
+		RequestLogging(logger, sensitiveLogPathPrefixes...),
 		CORS(corsOrigin),
 	)
 	return &http.Server{

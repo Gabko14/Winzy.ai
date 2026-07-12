@@ -52,3 +52,5 @@ frontend/coverage
 coverage.json
 # br doctor per-run artifacts
 .doctor/
+# dcg installer provisions per-repo Copilot CLI hooks here (machine-local absolute path, not repo config)
+.github/hooks/
