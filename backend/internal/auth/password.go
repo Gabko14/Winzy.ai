@@ -16,15 +16,32 @@ import (
 // the old stack still verify after cutover. golang.org/x/crypto/argon2's
 // IDKey(password, salt, time, memory, threads, keyLen) maps directly onto
 // Konscious's Iterations/MemorySize/DegreeOfParallelism/GetBytes(len) — see
-// the DotNetHashFixture tests in password_test.go, which verify a real hash
-// captured from the running .NET auth-service.
+// the DotNetHashFixture tests in password_dotnet_test.go, which verify a real
+// hash captured from the running .NET auth-service.
+//
+// Production values live in named constants; HashPassword/VerifyPassword read
+// hashingParams (initialized from those constants). Tests may retune the var
+// via SetHashingParamsForTests — the constants themselves are the contract
+// pinned by TestProductionHashingParamsPinned.
 const (
-	saltSize    = 16
-	hashSize    = 32
-	parallelism = 1
-	memoryKiB   = 65536 // 64 MB
-	iterations  = 3
+	saltSize        = 16
+	hashSize        = 32
+	prodParallelism = 1
+	prodMemoryKiB   = 65536 // 64 MB
+	prodIterations  = 3
 )
+
+type argon2Params struct {
+	parallelism uint8
+	memoryKiB   uint32
+	iterations  uint32
+}
+
+var hashingParams = argon2Params{
+	parallelism: prodParallelism,
+	memoryKiB:   prodMemoryKiB,
+	iterations:  prodIterations,
+}
 
 // HashPassword returns a new Argon2id hash for password, encoded as
 // "base64(salt):base64(hash)" — the exact wire format PasswordHasher.cs
@@ -35,7 +52,8 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("auth: generating salt: %w", err)
 	}
-	hash := argon2.IDKey([]byte(password), salt, iterations, memoryKiB, parallelism, hashSize)
+	p := hashingParams
+	hash := argon2.IDKey([]byte(password), salt, p.iterations, p.memoryKiB, p.parallelism, hashSize)
 	return base64.StdEncoding.EncodeToString(salt) + ":" + base64.StdEncoding.EncodeToString(hash), nil
 }
 
@@ -59,6 +77,7 @@ func VerifyPassword(password, encoded string) bool {
 		return false
 	}
 
-	actual := argon2.IDKey([]byte(password), salt, iterations, memoryKiB, parallelism, uint32(len(expected)))
+	p := hashingParams
+	actual := argon2.IDKey([]byte(password), salt, p.iterations, p.memoryKiB, p.parallelism, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1
 }
