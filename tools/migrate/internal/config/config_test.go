@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestAssertNotForbidden_ErrorCase_WinzyAndParity(t *testing.T) {
 	for _, db := range []string{"winzy", "winzy_parity", "WINZY"} {
@@ -18,18 +22,40 @@ func TestAssertNotForbidden_HappyPath_ManagedDBs(t *testing.T) {
 	}
 }
 
-func TestExpectedCounts_EdgeCase_MatchesBeadArchive(t *testing.T) {
-	want := map[string]int{
-		"users": 6, "habits": 10, "completions": 63, "promises": 0,
-		"friendships": 2, "social_preferences": 1, "visibility_settings": 10,
-		"witness_links": 1, "witness_link_habits": 2, "challenges": 1,
-		"notifications": 61, "device_tokens": 0, "notification_settings": 0,
-		"feed_entries": 92, "refresh_tokens": 169,
+func TestLoadExpectedCounts_HappyPath_ParsesArchiveFile(t *testing.T) {
+	dir := t.TempDir()
+	contents := "-- auth-db\n__EFMigrationsHistory=1\nrefresh_tokens=203\nusers=6\n-- habit-db\ncompletions=66\nhabits=10\n\n"
+	if err := os.WriteFile(filepath.Join(dir, "source-row-counts.txt"), []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadExpectedCounts(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"refresh_tokens": 203, "users": 6, "completions": 66, "habits": 10}
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries (%v), want %d", len(got), got, len(want))
 	}
 	for k, v := range want {
-		if ExpectedCounts[k] != v {
-			t.Errorf("ExpectedCounts[%s]=%d want %d", k, ExpectedCounts[k], v)
+		if got[k] != v {
+			t.Errorf("counts[%s]=%d want %d", k, got[k], v)
 		}
+	}
+	if _, ok := got["__EFMigrationsHistory"]; ok {
+		t.Error("__EFMigrationsHistory must be excluded")
+	}
+}
+
+func TestLoadExpectedCounts_ErrorCase_MissingFileAndBadLine(t *testing.T) {
+	if _, err := LoadExpectedCounts(t.TempDir()); err == nil {
+		t.Error("missing file: want error")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "source-row-counts.txt"), []byte("users=abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadExpectedCounts(dir); err == nil {
+		t.Error("bad count line: want error")
 	}
 }
 

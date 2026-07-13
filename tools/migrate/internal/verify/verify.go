@@ -31,6 +31,7 @@ type Report struct {
 	Counts           []Counts
 	RefreshTokensSrc int
 	RefreshTokensTgt int
+	RefreshTokensExp int // dump-time n_live_tup estimate — informational only
 	Orphans          []load.Orphan
 	UserDistincts    []UserDistinct
 	AuthUsers        int
@@ -88,6 +89,11 @@ func Run(ctx context.Context, cfg config.Config, loadRes *load.Result) (*Report,
 		{"feed_entries", "activity"},
 	}
 
+	expected, err := config.LoadExpectedCounts(cfg.ArchiveDir)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, s := range specs {
 		srcN, err := count(ctx, sources[s.source], s.table)
 		if err != nil {
@@ -97,7 +103,7 @@ func Run(ctx context.Context, cfg config.Config, loadRes *load.Result) (*Report,
 		if err != nil {
 			return nil, err
 		}
-		exp := config.ExpectedCounts[s.table]
+		exp := expected[s.table]
 		c := Counts{Table: s.table, Source: srcN, Target: tgtN, Expected: exp, Delta: tgtN - srcN}
 		rep.Counts = append(rep.Counts, c)
 		if srcN != exp {
@@ -118,9 +124,11 @@ func Run(ctx context.Context, cfg config.Config, loadRes *load.Result) (*Report,
 	}
 	rep.RefreshTokensSrc = rtSrc
 	rep.RefreshTokensTgt = rtTgt
-	if rtSrc != config.ExpectedCounts["refresh_tokens"] {
-		rep.Failures = append(rep.Failures, fmt.Sprintf("refresh_tokens: source %d != expected %d", rtSrc, config.ExpectedCounts["refresh_tokens"]))
-	}
+	rep.RefreshTokensExp = expected["refresh_tokens"]
+	// refresh_tokens is deliberately not migrated and churns constantly, so
+	// the dump-time n_live_tup estimate may differ slightly from the exact
+	// restored count — informational only, never a failure. The hard
+	// invariant is target == 0.
 	if rtTgt != 0 {
 		rep.Failures = append(rep.Failures, fmt.Sprintf("refresh_tokens: target has %d rows (must be 0 — not migrated)", rtTgt))
 	}

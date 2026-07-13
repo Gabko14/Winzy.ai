@@ -36,7 +36,7 @@ func Write(path string, v *verify.Report, a *authcheck.Result) error {
 			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %d | %+d |\n", c.Table, c.Expected, c.Source, c.Target, c.Delta))
 		}
 		b.WriteString(fmt.Sprintf("| `refresh_tokens` (NOT migrated) | %d | %d | %d | — |\n",
-			169, v.RefreshTokensSrc, v.RefreshTokensTgt))
+			v.RefreshTokensExp, v.RefreshTokensSrc, v.RefreshTokensTgt))
 	}
 
 	b.WriteString("\n## Referential integrity (orphans)\n\n")

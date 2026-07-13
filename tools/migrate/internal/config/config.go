@@ -42,23 +42,38 @@ type SourceService struct {
 	DB       string
 }
 
-// ExpectedCounts match source-row-counts.txt in the archive (refresh_tokens excluded).
-var ExpectedCounts = map[string]int{
-	"users":                 6,
-	"habits":                10,
-	"completions":           63,
-	"promises":              0,
-	"friendships":           2,
-	"social_preferences":    1,
-	"visibility_settings":   10,
-	"witness_links":         1,
-	"witness_link_habits":   2,
-	"challenges":            1,
-	"notifications":         61,
-	"device_tokens":         0,
-	"notification_settings": 0,
-	"feed_entries":          92,
-	"refresh_tokens":        169, // deliberately NOT migrated
+// LoadExpectedCounts reads source-row-counts.txt from the archive dir —
+// the row counts recorded at dump time are the baseline the restored
+// sources must match. Counts come from pg_stat n_live_tup, which is an
+// ESTIMATE: exact for quiet tables (everything we migrate) but can drift
+// slightly on high-churn ones (refresh_tokens) — the caller decides how
+// strictly to compare. Lines are "table=count" grouped under "-- <svc>"
+// headers; __EFMigrationsHistory is dump bookkeeping, not app data.
+func LoadExpectedCounts(archiveDir string) (map[string]int, error) {
+	raw, err := os.ReadFile(filepath.Join(archiveDir, "source-row-counts.txt"))
+	if err != nil {
+		return nil, fmt.Errorf("config: expected counts: %w", err)
+	}
+	counts := map[string]int{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "--") {
+			continue
+		}
+		name, val, ok := strings.Cut(line, "=")
+		if !ok || name == "__EFMigrationsHistory" {
+			continue
+		}
+		n := 0
+		if _, err := fmt.Sscanf(val, "%d", &n); err != nil {
+			return nil, fmt.Errorf("config: expected counts: bad line %q: %w", line, err)
+		}
+		counts[name] = n
+	}
+	if len(counts) == 0 {
+		return nil, fmt.Errorf("config: expected counts: no table counts in %s", archiveDir)
+	}
+	return counts, nil
 }
 
 // Config holds CLI-resolved paths and connection settings.
