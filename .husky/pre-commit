@@ -2,6 +2,16 @@
 # Pre-commit: fast checks only (<10 seconds)
 # Skip with: git commit --no-verify
 
+# --- PM-only commits (added 2026-07-13 after an unattributed agent commit) ---
+# Worker agents implement and report on their Agent Mail thread; the PM
+# session reviews, commits, and pushes. If you are a worker seeing this:
+# do NOT retry, do NOT bypass — post your report on your bead thread instead.
+if [ "$WINZY_PM_COMMIT" != "1" ]; then
+  echo "BLOCKED: commits in this repo are made by the PM session only."
+  echo "Workers: report your finished work on your Agent Mail bead thread."
+  exit 1
+fi
+
 # --- Frontend: ESLint on staged files via lint-staged ---
 npx lint-staged
 
