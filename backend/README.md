@@ -77,21 +77,50 @@ docker build -f backend/Dockerfile.railway -t winzy-api .
 go test ./...                          # unit tests only, no DB required
 ```
 
-Integration tests (handler tests against a **real** Postgres) are build-tagged `integration` so the plain `go test ./...` above never needs a database:
+Integration tests (handler tests against a **real** Postgres) are build-tagged
+`integration` so the plain `go test ./...` above never needs a database:
 
 ```bash
 docker compose up -d winzy-db
 TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
-  go test -tags=integration -race -v ./...
+  go test -tags=integration -race ./...
 ```
 
-Each package gets its own database (`winzy_test_<package>_<hash>`, auto-created on first Connect — see `internal/dbtest`, winzy.ai-edxi). `TEST_DATABASE_URL` still points at the shared `winzy` database; Connect rewrites the dbname internally. Dropping any `winzy_test_*` database is always safe (they are recreated on the next run). Multi-package runs do **not** need `-p 1`.
+**Fast path (Phase A+B of winzy.ai-s8ly — current state; Phase C / zfa3 deferred):**
 
-The shared `winzy` database remains for the E2E compose stack. `winzy_parity` / `winzy_rehearsal` / winzy-mig-db are untouched by integration tests.
+| Lever | What it does |
+|---|---|
+| Argon2 test params (`SetHashingParamsForTests` from TestMain) | Weak params in test processes; production constants pinned by `TestProductionHashingParamsPinned` |
+| `winzy_test_*` per-package DBs (`internal/dbtest`) | Packages run in parallel — **no `-p 1`** |
+| migrate-once + cached truncate list | Per-process fast path inside each package DB |
+| fsync / synchronous_commit / full_page_writes off | Local: applied by compose/`ALTER SYSTEM` on winzy-db; CI: tmpfs + same GUCs. **Never use these flags on real data.** |
 
-**Integration-test convention** (every module bead's handler tests follow this — see `internal/dbtest`): point at the compose `winzy-db` service via `TEST_DATABASE_URL` rather than spinning up testcontainers-go. This repo already treats Postgres as a docker-compose service everywhere else, the pre-push hook already assumes Docker is running, and CI already knows how to bring up a Postgres service container — reusing that avoids a second container-management dependency. `internal/dbtest.Connect(t)` ensures the package database, runs migrations, truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL` is unset.
+Each package gets its own database (`winzy_test_<package>_<hash>`, auto-created
+on first `dbtest.Connect` — winzy.ai-edxi). `TEST_DATABASE_URL` still points at
+the shared `winzy` database; Connect rewrites the dbname internally. Dropping
+any `winzy_test_*` database is always safe (they are recreated on the next run).
 
-CI (`.github/workflows/ci-go.yml`) runs `go test -tags=integration -race -v ./...` against a Postgres service container on every push/PR touching `backend/**`.
+Today use `dbtest.Connect(t)` (package-scoped DB + advisory lock + truncate).
+In-package `t.Parallel` via `dbtest.ConnectParallel` is **Phase C**
+(`winzy.ai-utzz` pilot, `winzy.ai-zfa3` rollout — both deferred); do not invent
+a parallel helper ahead of that design.
+
+The shared `winzy` database remains for the E2E compose stack.
+`winzy_parity` / `winzy_rehearsal` / winzy-mig-db are untouched by integration
+tests. Agent coordination: integration needs no PM GO (per-package DBs);
+E2E / parity / mig-db lanes still do.
+
+**Integration-test convention** (every module bead's handler tests follow this —
+see `internal/dbtest`): point at the compose `winzy-db` service via
+`TEST_DATABASE_URL` rather than spinning up testcontainers-go.
+`internal/dbtest.Connect(t)` ensures the package database, runs migrations,
+truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL`
+is unset.
+
+CI (`.github/workflows/ci-go.yml`) runs `go test -tags=integration -race -json
+./...` piped through `go run ./tools/testtiming` (per-package duration table +
+soft 40s wall-clock tripwire — warn only, ~3× measured ~13s Phase A+B steady
+state).
 
 ## Migrate
 
