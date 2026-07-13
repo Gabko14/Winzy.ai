@@ -76,6 +76,49 @@ Both subcommands also accept `--goldens DIR` (default `goldens`),
 scenarios by name. Exit code is non-zero if any scenario has **unexplained**
 diffs after allowlist filtering.
 
+### Part 2 — flame golden-master (migrated real data)
+
+Diffs every user's every habit's consistency through the OLD API and the NEW
+API on identical migrated data. **No scenario seeding** — authenticates as
+existing users. Zero numeric tolerance (`.NET` banker's rounding is the #1
+suspect on any mismatch). PM orchestrates the dual-stack run; the command
+itself is DB-free when you pass `--users-file`.
+
+Surfaces per habit:
+
+| Surface | How |
+| --- | --- |
+| `owner-stats-europe-zurich` | `GET /habits/{id}/stats` with `X-Timezone: Europe/Zurich` (override via `--owner-tz`) |
+| `owner-stats-utc` | same with `X-Timezone: UTC` |
+| `public-flame-utc` | `GET /habits/public/{username}` habit `consistency` (skipped when the habit is not public) |
+
+Auth (`--token-mode`):
+
+| Mode | Use when |
+| --- | --- |
+| `jwt` (preferred) | Mint HS256 access tokens (`sub`, `email`, `jti`, `exp`; no `iss`/`aud`) with `--jwt-secret` matching both local stacks. Users from `--users-file` or `--database-url` (psql client; LOCAL DEV ONLY — never prod). |
+| `x-user-id` | Hit OLD services directly with `X-User-Id` when gateway JWT proves awkward. Prefer `jwt` through the gateway/API front doors. |
+
+```sh
+# Prefer users-file during tool development / CI-style gates (no DB).
+# PM-orchestrated rehearsal run supplies both stacks + identical data.
+cd tools/parity
+go run ./cmd/parity golden-master \
+  --old-base-url http://localhost:5050 \
+  --new-base-url http://localhost:5051 \
+  --token-mode jwt \
+  --jwt-secret 'winzy-dev-jwt-secret-minimum-32-characters-long!!' \
+  --users-file /path/to/users.json \
+  --owner-tz Europe/Zurich \
+  --report artifacts/golden-master/report.json \
+  --artifacts artifacts/golden-master
+```
+
+`--users-file` is a JSON array of `{id,email,username}`. `--database-url`
+alternative lists `users` via `psql` (requires a local client). Exit code is
+non-zero on any mismatch or transport/status error. Mismatch artifacts
+include both full responses under `--artifacts`.
+
 ## Dual-target design
 
 Every scenario is written against a `*runner.Context` that carries a
@@ -190,8 +233,9 @@ users (never touches `e2e/fixtures`, which stay reserved for Playwright).
   `public-flame-page-utc-contract`. Phase-1 review asked for byte-level SVG
   goldens in phase 2; naive byte compare breaks under independent seeding
   (SVG embeds username / consistency). Needs SVG-aware normalization or a
-  same-seed dual-hit — deferred pending PM direction (PART 2 flame
-  golden-master over the rdc7.9 rehearsal dataset is a separate scope).
+  same-seed dual-hit — deferred pending PM direction. Numeric flame
+  consistency across migrated real data is covered by `parity golden-master`
+  (Part 2) rather than SVG bytes.
 - Async NATS-consumer side effects (challenge progress, friend-activity
   notifications) are waited-for with a bounded poll (`waitUntil` in
   `helpers.go`) before the recorded assertion, but that poll is NOT part of
