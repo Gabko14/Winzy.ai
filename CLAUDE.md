@@ -55,7 +55,8 @@ Every test module must cover three areas:
 **Solo project — commit directly to `main`.** (The PR workflow was retired 2026-07 when this stopped being a group school project.)
 
 - Work on `main` by default. Use a `feature/` or `fix/` branch only for risky or experimental work you might throw away.
-- **Commits must be meaningful.** No standalone commits for small docs/chore/beads tweaks — amend them into the previous commit or let them ride along with the next real change. Conventional commits; include the beads issue ID when the commit maps to a specific issue.
+- **Commits must be meaningful.** No standalone commits for small docs/chore/beads tweaks — amend them into the previous commit or let them ride along with the next real change.
+- **Commit messages are for strangers (rule since 2026-07-13).** Subject = `feat:`/`fix:`/`perf:`/`chore:` prefix + one plain-English sentence that says WHY the change exists / what it does for the project — readable without knowing bead IDs or project codenames ("make backend tests run in parallel (5 min -> 13 s)", not "per-package test databases, no -p 1"). Mechanism and detail go in the body. The beads issue ID goes on the LAST line as a `Bead: winzy.ai-xxx` trailer — never in the subject.
 - **Push in batches, not per commit.** The pre-push hook rebuilds and re-tests every changed service (slow), so push once per work session/milestone, or when the user asks — not after every commit.
 - **Quality gates before every push** — CI runs on `main` after the fact; run the gates listed under Workflow step 5 first.
 - **Railway deploys are manual, via the `railway` CLI** (`railway up`). Services are NOT repo-connected — pushing `main` does not deploy. Claude operates Railway; the config source of truth is the Railway project itself (`winzy-staging`).
