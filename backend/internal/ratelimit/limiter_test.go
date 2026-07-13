@@ -108,12 +108,32 @@ func TestClientIP_EdgeCase_MalformedRemoteAddrReturnedVerbatim(t *testing.T) {
 	}
 }
 
-func TestClientIP_HappyPath_TrustedProxyUsesRailwayRealIP(t *testing.T) {
+func TestClientIP_HappyPath_TrustedProxyUsesLeftmostForwardedFor(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "10.0.0.2:1234"
-	r.Header.Set("X-Real-IP", "203.0.113.9")
+	r.Header.Set("X-Forwarded-For", "203.0.113.9, 10.10.10.10")
 	if got := ratelimit.ClientIP(r, true); got != "203.0.113.9" {
-		t.Errorf("ClientIP() = %q, want Railway X-Real-IP", got)
+		t.Errorf("ClientIP() = %q, want leftmost X-Forwarded-For entry", got)
+	}
+}
+
+func TestClientIP_HappyPath_TrustedProxySingleForwardedFor(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.2:1234"
+	r.Header.Set("X-Forwarded-For", "203.0.113.9")
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.9" {
+		t.Errorf("ClientIP() = %q, want the sole X-Forwarded-For entry", got)
+	}
+}
+
+func TestClientIP_EdgeCase_TrustedProxyIgnoresRealIPHeader(t *testing.T) {
+	// Railway sets X-Real-IP to the CDN edge IP when its CDN is in the
+	// path (known Railway bug) — the limiter must not read it at all.
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "203.0.113.5:1234"
+	r.Header.Set("X-Real-IP", "198.51.100.9")
+	if got := ratelimit.ClientIP(r, true); got != "203.0.113.5" {
+		t.Errorf("ClientIP() = %q, want RemoteAddr (X-Real-IP must be ignored)", got)
 	}
 }
 
@@ -135,26 +155,12 @@ func TestClientIP_EdgeCase_TrustedProxyFallsBackWhenHeaderMissing(t *testing.T) 
 	}
 }
 
-func TestClientIP_ErrorCase_TrustedProxyRejectsMalformedRealIP(t *testing.T) {
+func TestClientIP_ErrorCase_TrustedProxyRejectsMalformedForwardedFor(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "203.0.113.5:1234"
-	r.Header.Set("X-Real-IP", "attacker-controlled-bucket")
+	r.Header.Set("X-Forwarded-For", "attacker-controlled-bucket")
 	if got := ratelimit.ClientIP(r, true); got != "203.0.113.5" {
-		t.Errorf("ClientIP() = %q, want RemoteAddr fallback for malformed X-Real-IP", got)
-	}
-}
-
-// TestClientIP_HappyPath_TrustedProxyUsesLastRealIPValue closes FIX B
-// (winzy.ai-n5fv review round 1): if the client sends its own X-Real-IP and
-// the proxy APPENDS its own rather than replacing it, an attacker rotating
-// the first value must not escape their bucket — the last value must win.
-func TestClientIP_HappyPath_TrustedProxyUsesLastRealIPValue(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.RemoteAddr = "10.0.0.2:1234"
-	r.Header.Add("X-Real-IP", "198.51.100.9") // attacker-supplied, arrives first
-	r.Header.Add("X-Real-IP", "203.0.113.9")  // proxy-appended, must win
-	if got := ratelimit.ClientIP(r, true); got != "203.0.113.9" {
-		t.Errorf("ClientIP() = %q, want the last X-Real-IP value 203.0.113.9", got)
+		t.Errorf("ClientIP() = %q, want RemoteAddr fallback for malformed X-Forwarded-For", got)
 	}
 }
 
@@ -241,7 +247,7 @@ func TestPrefixMiddleware_HappyPath_TrustedProxySeparatesClientBuckets(t *testin
 	for _, ip := range []string{"203.0.113.1", "203.0.113.2"} {
 		req := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
 		req.RemoteAddr = "10.0.0.2:1234"
-		req.Header.Set("X-Real-IP", ip)
+		req.Header.Set("X-Forwarded-For", ip)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {

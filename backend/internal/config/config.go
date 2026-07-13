@@ -33,7 +33,8 @@ type Config struct {
 	JWTAccessTokenMinutes int
 	// JWTRefreshTokenDays is the refresh token lifetime in days.
 	JWTRefreshTokenDays int
-	// TrustedProxy enables Railway's X-Real-IP client address contract.
+	// TrustedProxy enables Railway's X-Forwarded-For client address
+	// contract (leftmost entry; Railway's edge owns the header).
 	TrustedProxy bool
 	// RateLimitAuthPerMinute caps requests per client IP per minute to
 	// /auth/* endpoints.

@@ -90,21 +90,21 @@ func (l *Limiter) scavengeLocked(now time.Time) {
 	}
 }
 
-// ClientIP returns the request's client IP. Railway documents X-Real-IP as
-// the original client address; it is trusted only when explicitly enabled,
-// so a direct client cannot spoof a header into another limiter bucket. The
-// LAST occurrence of the header wins: if the proxy appends its own
-// X-Real-IP after a client-supplied one (rather than replacing it), taking
-// the first value would let an attacker rotate that first value and escape
-// their bucket — the exact bypass trustedProxy is meant to close. Taking
-// the last is safe either way: if the proxy replaces the header outright,
-// there is only one value to take.
+// ClientIP returns the request's client IP. Behind Railway (trustedProxy),
+// the FIRST X-Forwarded-For entry is the client: Railway's edge proxy owns
+// the header — it strips any client-supplied value and writes the real
+// client address as the leftmost entry (Railway staff guidance, 2026-03;
+// X-Real-IP is NOT used because Railway sets it to the CDN edge IP when
+// their CDN is in the path — a known bug on their side). Trusting leftmost
+// XFF is therefore only safe when the proxy in front rewrites the header,
+// which is exactly what TRUSTED_PROXY asserts; it must stay false anywhere
+// clients can reach the service directly.
 func ClientIP(r *http.Request, trustedProxy bool) string {
 	if trustedProxy {
-		values := r.Header.Values("X-Real-IP")
-		if len(values) > 0 {
-			if realIP := strings.TrimSpace(values[len(values)-1]); net.ParseIP(realIP) != nil {
-				return realIP
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			first, _, _ := strings.Cut(xff, ",")
+			if ip := strings.TrimSpace(first); net.ParseIP(ip) != nil {
+				return ip
 			}
 		}
 	}
