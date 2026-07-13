@@ -171,6 +171,9 @@ services:
   # touched by the rewrite before then.
   winzy-db:
     image: postgres:17-alpine
+    # TEST instance only — trades crash-durability for speed (winzy.ai-r1pf).
+    # NEVER copy these flags to production, Railway, or winzy-mig-db.
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
     ports:
       - "5439:5432"
     environment:

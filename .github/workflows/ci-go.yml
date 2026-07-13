@@ -29,11 +29,16 @@ jobs:
           POSTGRES_PASSWORD: winzy
         ports:
           - 5432:5432
+        # tmpfs: RAM-backed data dir for throwaway CI data (winzy.ai-r1pf).
+        # Path is /var/lib/postgresql/data on postgres:17 (not the PG18 parent).
+        # GHA service containers cannot override `command`; write-speed GUCs
+        # are applied via ALTER SYSTEM + pg_reload_conf in a step below.
         options: >-
           --health-cmd "pg_isready -U winzy -d winzy"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
+          --tmpfs /var/lib/postgresql/data
 
     defaults:
       run:
@@ -50,6 +55,22 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+
+      - name: Tune test Postgres write-speed flags
+        # GHA Postgres service containers do not support command overrides
+        # (winzy.ai-r1pf). fsync / synchronous_commit / full_page_writes are
+        # sighup GUCs — ALTER SYSTEM + pg_reload_conf is enough, no restart.
+        working-directory: .
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql "$TEST_DATABASE_URL" \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
+          echo "=== verified GUCs after reload ==="
+          psql "$TEST_DATABASE_URL" -c "SHOW fsync" -c "SHOW synchronous_commit" -c "SHOW full_page_writes"
 
       - name: gofmt check
         run: |
