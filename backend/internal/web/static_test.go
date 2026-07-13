@@ -89,6 +89,41 @@ func TestSPAHandler_ServesFilesAndFallback(t *testing.T) {
 	})
 }
 
+func TestSPAHandler_CacheHeaders(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "index.html"), "<html>spa</html>")
+	mustWrite(t, filepath.Join(root, "sw.js"), "// sw")
+	mustWrite(t, filepath.Join(root, "assets", "icon.png"), "png")
+	mustWrite(t, filepath.Join(root, "_expo", "static", "js", "app-abc123.js"), "bundle")
+
+	h := SPAHandler(root)
+
+	const immutable = "public, max-age=31536000, immutable"
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/", "no-cache"}, // FileServer 301s /index.html to / — this covers index
+		{"/sw.js", "no-cache"},
+		{"/assets/icon.png", "no-cache"},
+		{"/_expo/static/js/app-abc123.js", immutable},
+		{"/@alice", "no-cache"},                  // SPA fallback
+		{"/does/not/exist", "no-cache"},          // SPA fallback
+		{"/_expo/static/js/gone.js", "no-cache"}, // missing file -> fallback, must not be immutable
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status = %d", tc.path, rec.Code)
+			continue
+		}
+		if got := rec.Header().Get("Cache-Control"); got != tc.want {
+			t.Errorf("%s: Cache-Control = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestSplitHandler_APIPrecedenceAndStaticBypass(t *testing.T) {
 	apiHits := 0
 	staticHits := 0

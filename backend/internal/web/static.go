@@ -57,6 +57,18 @@ func SplitHandler(api, static http.Handler) http.Handler {
 	})
 }
 
+// cacheControl returns the Cache-Control value for a served static path.
+// Only Expo's content-hashed bundles under /_expo/static/ may be cached
+// forever; everything else (index.html, sw.js, /assets/**, the SPA
+// fallback) must revalidate so clients pick up new deploys — ETag /
+// Last-Modified from the file server keep revalidation a cheap 304.
+func cacheControl(name string) string {
+	if strings.HasPrefix(name, "/_expo/static/") {
+		return "public, max-age=31536000, immutable"
+	}
+	return "no-cache"
+}
+
 // SPAHandler serves files from root and falls back to index.html for
 // missing paths (SPA deep links like /@username). Existing files win;
 // directories without an implicit file fall through to index.html.
@@ -67,6 +79,7 @@ func SPAHandler(root string) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := path.Clean("/" + r.URL.Path)
+		w.Header().Set("Cache-Control", cacheControl(name))
 		if name != "/" {
 			if f, err := dir.Open(name); err == nil {
 				stat, statErr := f.Stat()
@@ -84,6 +97,8 @@ func SPAHandler(root string) http.Handler {
 			}
 		}
 
+		// SPA fallback is index.html — always revalidate, never immutable.
+		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, indexPath)
 	})
 }
