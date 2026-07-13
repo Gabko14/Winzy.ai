@@ -28,12 +28,18 @@
 // (intermittent spurious 404s; winzy.ai-rdc7.3.1 / winzy.ai-rdc7.14). The
 // lock auto-releases if the process dies. Multi-package runs should still
 // pass -p 1 so suites do not pile up waiting on the lock.
+//
+// FAST-PATH (winzy.ai-b8z5): migrations run once per process+database URL
+// (sync.Once), and the truncate table list is cached per URL for the
+// process lifetime. Truncate semantics and the advisory-lock sequence stay
+// unchanged: lock → truncate → test → unlock.
 package dbtest
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -46,6 +52,64 @@ import (
 // dbtest.Connect callers share so concurrent suites on the same database
 // cannot truncate each other mid-test.
 const integrationAdvisoryLockKey int64 = 0x57696e7a79444254 // "WinzyDBT"
+
+var (
+	migrateByURL sync.Map // string -> *migrateOnce
+	tablesByURL  sync.Map // string -> *tablesOnce
+	migrateFn    = db.Migrate
+)
+
+type migrateOnce struct {
+	once sync.Once
+	err  error
+}
+
+type tablesOnce struct {
+	once   sync.Once
+	tables []string
+	err    error
+}
+
+func ensureMigrated(databaseURL string) error {
+	v, _ := migrateByURL.LoadOrStore(databaseURL, &migrateOnce{})
+	state := v.(*migrateOnce)
+	state.once.Do(func() {
+		state.err = migrateFn(databaseURL)
+	})
+	return state.err
+}
+
+func cachedPublicTables(ctx context.Context, pool *pgxpool.Pool, databaseURL string) ([]string, error) {
+	v, _ := tablesByURL.LoadOrStore(databaseURL, &tablesOnce{})
+	state := v.(*tablesOnce)
+	state.once.Do(func() {
+		rows, err := pool.Query(ctx, `
+			SELECT tablename FROM pg_tables
+			WHERE schemaname = 'public' AND tablename <> 'schema_migrations'
+		`)
+		if err != nil {
+			state.err = err
+			return
+		}
+		defer rows.Close()
+
+		var tables []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				state.err = err
+				return
+			}
+			tables = append(tables, name)
+		}
+		if err := rows.Err(); err != nil {
+			state.err = err
+			return
+		}
+		state.tables = tables
+	})
+	return state.tables, state.err
+}
 
 // RowExists is a raw-SQL existence check independent of any module's own
 // store/service code, so cascade tests verify actual database state rather
@@ -78,7 +142,7 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		t.Skip("TEST_DATABASE_URL not set; skipping integration test (see internal/dbtest doc comment)")
 	}
 
-	if err := db.Migrate(url); err != nil {
+	if err := ensureMigrated(url); err != nil {
 		t.Fatalf("dbtest: applying migrations to TEST_DATABASE_URL: %v", err)
 	}
 
@@ -103,7 +167,7 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("dbtest: acquiring integration advisory lock: %v", err)
 	}
 
-	Truncate(t, pool)
+	Truncate(t, pool, url)
 
 	t.Cleanup(func() {
 		if _, err := lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, integrationAdvisoryLockKey); err != nil {
@@ -119,30 +183,14 @@ func Connect(t *testing.T) *pgxpool.Pool {
 // Truncate empties every user table in the public schema (excluding
 // golang-migrate's own schema_migrations bookkeeping table) so each test
 // starts from a clean slate regardless of what a previous test left behind.
-func Truncate(t *testing.T, pool *pgxpool.Pool) {
+// databaseURL keys the process-lifetime table-list cache (winzy.ai-b8z5).
+func Truncate(t *testing.T, pool *pgxpool.Pool, databaseURL string) {
 	t.Helper()
 	ctx := context.Background()
 
-	rows, err := pool.Query(ctx, `
-		SELECT tablename FROM pg_tables
-		WHERE schemaname = 'public' AND tablename <> 'schema_migrations'
-	`)
+	tables, err := cachedPublicTables(ctx, pool, databaseURL)
 	if err != nil {
 		t.Fatalf("dbtest: listing tables to truncate: %v", err)
-	}
-
-	var tables []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			rows.Close()
-			t.Fatalf("dbtest: scanning table name: %v", err)
-		}
-		tables = append(tables, name)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		t.Fatalf("dbtest: iterating tables: %v", err)
 	}
 
 	if len(tables) == 0 {
