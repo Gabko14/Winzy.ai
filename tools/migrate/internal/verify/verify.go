@@ -38,8 +38,11 @@ type Report struct {
 	Failures         []string
 }
 
-// Run compares source DBs to winzy_rehearsal and builds a verification report.
+// Run compares source DBs to the target and builds a verification report.
 func Run(ctx context.Context, cfg config.Config, loadRes *load.Result) (*Report, error) {
+	if err := cfg.ValidateTarget(); err != nil {
+		return nil, err
+	}
 	rep := &Report{Orphans: nil}
 	if loadRes != nil {
 		rep.Orphans = loadRes.Orphans

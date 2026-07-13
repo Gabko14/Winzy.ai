@@ -19,7 +19,8 @@ import (
 
 // Apply runs every pending up migration against cfg.TargetURL().
 func Apply(cfg config.Config) error {
-	if err := config.AssertNotForbidden(config.TargetDB); err != nil {
+	db, err := cfg.EffectiveTargetDB()
+	if err != nil {
 		return err
 	}
 	dir, err := migrationsDir()
@@ -36,7 +37,7 @@ func Apply(cfg config.Config) error {
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("schema: applying migrations from %s: %w", dir, err)
 	}
-	fmt.Fprintf(os.Stderr, "schema: migrations applied to %s from %s\n", config.TargetDB, dir)
+	fmt.Fprintf(os.Stderr, "schema: migrations applied to %s from %s\n", db, dir)
 	return nil
 }
 

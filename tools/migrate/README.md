@@ -79,9 +79,39 @@ go run ./cmd/migrate verify --report ./verification-report.md
 | Flag | Default |
 |---|---|
 | `--admin-url` | `postgres://winzy:winzy@localhost:5440/postgres?sslmode=disable` |
+| `--sslmode` | `disable` (used when composing SourceURL / TargetURL) |
+| `--target-db` | `winzy_rehearsal` |
+| `--target-url` | _(empty)_ — when set, full override for the target (wins over host/port/user/db/sslmode) |
 | `--docker-image` | `postgres:18-alpine` |
 
+`CREATE DATABASE … OWNER` uses `--user` (not a hardcoded `winzy` role). Forbidden
+database names `winzy` / `winzy_parity` are refused whether composed or parsed
+from `--target-url`.
+
 Auth audit runs format + PLACEHOLDER rejection for **all** migrated users (no owner-username guessing).
+
+## Railway cutover targeting
+
+Local `rehearse` defaults are unchanged. For a Railway Postgres target, pass a
+full `--target-url` (and usually a Railway `--admin-url` for `CREATE DATABASE`).
+Pull values from `railway variables` / the dashboard — **never commit URLs**.
+
+```bash
+# Example shape only — substitute real values from Railway; do not commit them.
+ADMIN_URL='postgres://USER:PASS@HOST:PORT/railway?sslmode=require'   # maintenance DB
+TARGET_URL='postgres://USER:PASS@HOST:PORT/YOUR_APP_DB?sslmode=require'
+
+go run ./cmd/migrate prepare-target \
+  --admin-url "$ADMIN_URL" \
+  --target-url "$TARGET_URL" \
+  --user "$USER"
+
+go run ./cmd/migrate load --target-url "$TARGET_URL"
+go run ./cmd/migrate verify --target-url "$TARGET_URL" --report ./verification-report.md
+```
+
+`--sslmode=require` is also available when composing URLs from `--host` / `--port`
+/ `--user` / `--password` / `--target-db` without a full `--target-url`.
 
 ## Decisions encoded
 

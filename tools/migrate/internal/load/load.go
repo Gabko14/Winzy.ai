@@ -33,7 +33,7 @@ type Orphan struct {
 // Run truncates target application tables then loads parents-first.
 // Orphans are collected and returned; callers must fail the run if any exist.
 func Run(ctx context.Context, cfg config.Config) (*Result, error) {
-	if err := config.AssertNotForbidden(config.TargetDB); err != nil {
+	if err := cfg.ValidateTarget(); err != nil {
 		return nil, err
 	}
 	target, err := pgxpool.New(ctx, cfg.TargetURL())

@@ -30,7 +30,7 @@ func Sources(ctx context.Context, cfg config.Config) error {
 		if err := config.AssertNotForbidden(svc.DB); err != nil {
 			return err
 		}
-		if err := recreateDB(ctx, conn, svc.DB); err != nil {
+		if err := recreateDB(ctx, conn, svc.DB, cfg.User); err != nil {
 			return err
 		}
 		if err := pgRestore(cfg, svc); err != nil {
@@ -41,9 +41,12 @@ func Sources(ctx context.Context, cfg config.Config) error {
 	return nil
 }
 
-// Target creates (drop/recreate) winzy_rehearsal. Schema application is separate.
+// Target creates (drop/recreate) the effective target database (default
+// winzy_rehearsal, or the DB named in --target-url / --target-db). Schema
+// application is separate.
 func Target(ctx context.Context, cfg config.Config) error {
-	if err := config.AssertNotForbidden(config.TargetDB); err != nil {
+	db, err := cfg.EffectiveTargetDB()
+	if err != nil {
 		return err
 	}
 	conn, err := pgx.Connect(ctx, cfg.AdminURL)
@@ -51,16 +54,19 @@ func Target(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("restore: connect admin: %w", err)
 	}
 	defer conn.Close(ctx)
-	if err := recreateDB(ctx, conn, config.TargetDB); err != nil {
+	if err := recreateDB(ctx, conn, db, cfg.User); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "restore: created %s\n", config.TargetDB)
+	fmt.Fprintf(os.Stderr, "restore: created %s\n", db)
 	return nil
 }
 
-func recreateDB(ctx context.Context, admin *pgx.Conn, name string) error {
+func recreateDB(ctx context.Context, admin *pgx.Conn, name, owner string) error {
 	if err := config.AssertNotForbidden(name); err != nil {
 		return err
+	}
+	if owner == "" {
+		return fmt.Errorf("restore: create %s: empty owner user", name)
 	}
 	// Terminate leftover sessions so DROP succeeds during idempotent reruns.
 	_, _ = admin.Exec(ctx, `
@@ -71,7 +77,7 @@ func recreateDB(ctx context.Context, admin *pgx.Conn, name string) error {
 	if err != nil {
 		return fmt.Errorf("restore: drop %s: %w", name, err)
 	}
-	_, err = admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s OWNER %s", quoteIdent(name), quoteIdent(config.DefaultUser)))
+	_, err = admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s OWNER %s", quoteIdent(name), quoteIdent(owner)))
 	if err != nil {
 		return fmt.Errorf("restore: create %s: %w", name, err)
 	}

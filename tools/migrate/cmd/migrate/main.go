@@ -72,18 +72,19 @@ func usage() {
       Create winzy_mig_src_{auth,habit,social,challenge,notification,activity}
       and pg_restore each dump via postgres:18-alpine.
 
-  prepare-target [--admin-url URL]
-      Create winzy_rehearsal and apply backend embedded migrations.
+  prepare-target [--admin-url URL] [--target-url URL] [--target-db NAME] [--sslmode MODE]
+      Create the target database and apply backend embedded migrations.
 
-  load [--admin-url URL]
+  load [--admin-url URL] [--target-url URL]
       Truncate target app tables and copy transformed rows from source DBs.
 
-	verify --report FILE
+	verify --report FILE [--target-url URL]
       Emit verification report (row counts, orphans, distinct users, auth audit).
 
 Defaults: admin postgres://winzy:winzy@localhost:5440/postgres?sslmode=disable
   (dedicated winzy-mig-db postgres:18 container — see README)
-Archive must stay outside the repo (real user data).`)
+  --sslmode=disable, --target-db=winzy_rehearsal; --target-url overrides target composition.
+Archive must stay outside the repo (real user data). NEVER commit Railway URLs.`)
 }
 
 func parseCommon(fs *flag.FlagSet, cfg *config.Config, args []string) error {
@@ -92,8 +93,11 @@ func parseCommon(fs *flag.FlagSet, cfg *config.Config, args []string) error {
 	fs.StringVar(&cfg.ReportPath, "report", cfg.ReportPath, "verification report output path")
 	fs.StringVar(&cfg.Host, "host", cfg.Host, "postgres host for docker pg_restore")
 	fs.StringVar(&cfg.Port, "port", cfg.Port, "postgres port for docker pg_restore")
-	fs.StringVar(&cfg.User, "user", cfg.User, "postgres user")
+	fs.StringVar(&cfg.User, "user", cfg.User, "postgres user (also CREATE DATABASE OWNER)")
 	fs.StringVar(&cfg.Password, "password", cfg.Password, "postgres password")
+	fs.StringVar(&cfg.SSLMode, "sslmode", cfg.SSLMode, "sslmode for composed SourceURL/TargetURL (default disable)")
+	fs.StringVar(&cfg.TargetDBName, "target-db", cfg.TargetDBName, "target database name when not using --target-url")
+	fs.StringVar(&cfg.TargetURLOverride, "target-url", cfg.TargetURLOverride, "full target postgres URL (wins over host/port/user/db/sslmode for target)")
 	fs.StringVar(&cfg.DockerImage, "docker-image", cfg.DockerImage, "postgres client image for pg_restore")
 	return fs.Parse(args)
 }

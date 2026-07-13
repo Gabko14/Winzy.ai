@@ -54,6 +54,9 @@ type Result struct {
 // Run audits every migrated user's hash format and exercises verifyPassword
 // with a PLACEHOLDER password (must reject for every user).
 func Run(ctx context.Context, cfg config.Config) (*Result, error) {
+	if err := cfg.ValidateTarget(); err != nil {
+		return nil, err
+	}
 	pool, err := pgxpool.New(ctx, cfg.TargetURL())
 	if err != nil {
 		return nil, fmt.Errorf("authcheck: connect: %w", err)
