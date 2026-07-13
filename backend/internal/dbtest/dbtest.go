@@ -18,16 +18,16 @@
 //
 // Usage: build integration-only test files with `//go:build integration`
 // so `go test ./...` (no real DB required) stays green everywhere, and CI
-// additionally runs `go test -tags=integration -race -v -p 1 ./...` with
+// additionally runs `go test -tags=integration -race ./...` with
 // TEST_DATABASE_URL pointed at a live Postgres.
 //
-// IMPORTANT: Connect holds a Postgres session advisory lock for the duration
-// of each test on a dedicated connection (released in Cleanup). That
-// serializes integration suites across packages AND processes/agents sharing
-// winzy-db, so one test's Truncate cannot wipe another's rows mid-flight
-// (intermittent spurious 404s; winzy.ai-rdc7.3.1 / winzy.ai-rdc7.14). The
-// lock auto-releases if the process dies. Multi-package runs should still
-// pass -p 1 so suites do not pile up waiting on the lock.
+// PER-PACKAGE DATABASES (winzy.ai-edxi): Connect rewrites TEST_DATABASE_URL's
+// dbname to winzy_test_<package>_<hash> derived from os.Getwd() (go test sets
+// CWD to the package source dir), auto-creates that database on first use,
+// and migrates it via the b8z5 migrate-once cache. Packages no longer share
+// truncate state, so multi-package runs do NOT need -p 1. The advisory lock
+// (rdc7.14) remains — it is scoped per database, so it only serializes tests
+// within one package (and across processes on that same package DB).
 //
 // FAST-PATH (winzy.ai-b8z5): migrations run once per process+database URL
 // (sync.Once), and the truncate table list is cached per URL for the
@@ -50,7 +50,9 @@ import (
 
 // integrationAdvisoryLockKey is the fixed session advisory lock all
 // dbtest.Connect callers share so concurrent suites on the same database
-// cannot truncate each other mid-test.
+// cannot truncate each other mid-test. Per-database scoping (Postgres) means
+// each winzy_test_* database has its own lock namespace — no re-key needed
+// for winzy.ai-edxi.
 const integrationAdvisoryLockKey int64 = 0x57696e7a79444254 // "WinzyDBT"
 
 var (
@@ -128,35 +130,52 @@ func RowExists(t *testing.T, pool *pgxpool.Pool, table, id string) bool {
 	return exists
 }
 
-// Connect returns a pool connected to TEST_DATABASE_URL with migrations
-// applied and every table truncated before the test runs. It skips the test
-// (rather than failing) when TEST_DATABASE_URL is unset, so `go test ./...`
-// without a database available still passes. A session advisory lock is
-// held on a dedicated connection for the whole test (see package doc); the
-// pool, lock, and connection are released via t.Cleanup.
+// Connect returns a pool connected to a per-package test database derived
+// from TEST_DATABASE_URL (winzy.ai-edxi), with migrations applied and every
+// table truncated before the test runs. Callers still set TEST_DATABASE_URL
+// to the shared winzy URL; Connect rewrites the dbname internally and
+// auto-creates winzy_test_* databases as needed. It skips the test (rather
+// than failing) when TEST_DATABASE_URL is unset, so `go test ./...` without
+// a database available still passes. A session advisory lock is held on a
+// dedicated connection for the whole test (see package doc); the pool, lock,
+// and connection are released via t.Cleanup.
 func Connect(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
+	baseURL := os.Getenv("TEST_DATABASE_URL")
+	if baseURL == "" {
 		t.Skip("TEST_DATABASE_URL not set; skipping integration test (see internal/dbtest doc comment)")
 	}
 
-	if err := ensureMigrated(url); err != nil {
-		t.Fatalf("dbtest: applying migrations to TEST_DATABASE_URL: %v", err)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("dbtest: resolving package working directory: %v", err)
+	}
+	dbName := packageTestDBName(wd)
+	pkgURL, err := rewriteDatabaseURL(baseURL, dbName)
+	if err != nil {
+		t.Fatalf("dbtest: rewriting TEST_DATABASE_URL for package DB: %v", err)
 	}
 
 	ctx := context.Background()
-	pool, err := db.New(ctx, url)
+	if err := ensurePackageDatabase(ctx, baseURL, dbName); err != nil {
+		t.Fatalf("dbtest: ensuring package database %s: %v", dbName, err)
+	}
+
+	if err := ensureMigrated(pkgURL); err != nil {
+		t.Fatalf("dbtest: applying migrations to package database %s: %v", dbName, err)
+	}
+
+	pool, err := db.New(ctx, pkgURL)
 	if err != nil {
-		t.Fatalf("dbtest: connecting to TEST_DATABASE_URL: %v", err)
+		t.Fatalf("dbtest: connecting to package database %s: %v", dbName, err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		t.Fatalf("dbtest: pinging TEST_DATABASE_URL: %v", err)
+		t.Fatalf("dbtest: pinging package database %s: %v", dbName, err)
 	}
 
-	lockConn, err := pgx.Connect(ctx, url)
+	lockConn, err := pgx.Connect(ctx, pkgURL)
 	if err != nil {
 		pool.Close()
 		t.Fatalf("dbtest: opening advisory-lock connection: %v", err)
@@ -167,7 +186,7 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("dbtest: acquiring integration advisory lock: %v", err)
 	}
 
-	Truncate(t, pool, url)
+	Truncate(t, pool, pkgURL)
 
 	t.Cleanup(func() {
 		if _, err := lockConn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, integrationAdvisoryLockKey); err != nil {

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# .NET microservice test runner (legacy stack). Go backend tests live under
+# backend/ — see backend/README.md. After winzy.ai-edxi, Go integration runs
+# do NOT need `go test -p 1` (per-package winzy_test_* databases).
+#
 # Run all backend tests sequentially to avoid file-locking issues
 # Usage: ./test-backend.sh [--coverage]
 

@@ -82,12 +82,14 @@ Integration tests (handler tests against a **real** Postgres) are build-tagged `
 ```bash
 docker compose up -d winzy-db
 TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
-  go test -tags=integration -race -v -p 1 ./...
+  go test -tags=integration -race -v ./...
 ```
 
-`-p 1` is required for multi-package integration runs: all packages share the one live database and each test truncates every table, so concurrently running packages wipe each other's rows mid-test. The same rule applies one level up: never run two `go test -tags=integration` **invocations** at once against the same `winzy-db` (e.g. two terminals, or an agent and a human) — they clobber each other's state and fail nondeterministically (vanished rows, phantom rows, even deadlocks between concurrent cascades).
+Each package gets its own database (`winzy_test_<package>_<hash>`, auto-created on first Connect — see `internal/dbtest`, winzy.ai-edxi). `TEST_DATABASE_URL` still points at the shared `winzy` database; Connect rewrites the dbname internally. Dropping any `winzy_test_*` database is always safe (they are recreated on the next run). Multi-package runs do **not** need `-p 1`.
 
-**Integration-test convention** (every module bead's handler tests follow this — see `internal/dbtest`): point at the compose `winzy-db` service via `TEST_DATABASE_URL` rather than spinning up testcontainers-go. This repo already treats Postgres as a docker-compose service everywhere else, the pre-push hook already assumes Docker is running, and CI already knows how to bring up a Postgres service container — reusing that avoids a second container-management dependency. `internal/dbtest.Connect(t)` runs migrations, truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL` is unset.
+The shared `winzy` database remains for the E2E compose stack. `winzy_parity` / `winzy_rehearsal` / winzy-mig-db are untouched by integration tests.
+
+**Integration-test convention** (every module bead's handler tests follow this — see `internal/dbtest`): point at the compose `winzy-db` service via `TEST_DATABASE_URL` rather than spinning up testcontainers-go. This repo already treats Postgres as a docker-compose service everywhere else, the pre-push hook already assumes Docker is running, and CI already knows how to bring up a Postgres service container — reusing that avoids a second container-management dependency. `internal/dbtest.Connect(t)` ensures the package database, runs migrations, truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL` is unset.
 
 CI (`.github/workflows/ci-go.yml`) runs `go test -tags=integration -race -v ./...` against a Postgres service container on every push/PR touching `backend/**`.
 
