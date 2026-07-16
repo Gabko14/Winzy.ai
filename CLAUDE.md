@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> This file is the shared instruction set for EVERY agent working in this repo — AGENTS.md and GEMINI.md are symlinks to it, so Claude, Codex, grok, and any other worker all read the same rules.
+
 > Keep this file concise. Only non-obvious decisions and rules belong here.
 > Don't add conventions, naming patterns, or project structure — those are discoverable from the code in seconds.
 
@@ -111,7 +113,7 @@ br dep add <issue> <depends-on>                   # Add dependency
 
 Planning, review, and the bead lifecycle belong to the PM session (top-tier model); implementation beads are executed by worker agents.
 
-**Dispatching workers — MANDATORY, especially after a context compaction:** this is generally how implementation gets done here — load and follow the `worker-dispatch` skill (`.claude/skills/worker-dispatch/SKILL.md`) before dispatching anything; it defines the whole protocol and the worker model policy.
+**Dispatching workers (PM session only) — MANDATORY, especially after a context compaction:** this is generally how implementation gets done here — the PM loads and follows the `worker-dispatch` skill (`.claude/skills/worker-dispatch/SKILL.md`) before dispatching anything; it defines the whole protocol and the worker model policy. Workers never dispatch other workers.
 
 Rules for workers:
 
