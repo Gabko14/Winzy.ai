@@ -11,6 +11,17 @@ const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 128;
 const EMAIL_MAX = 256;
 
+/**
+ * Character count the way the backend counts (Go rune count = Unicode code
+ * points). JS `.length` counts UTF-16 code units, so an emoji counts as 2
+ * there but 1 on the backend — using `.length` against backend limits lets
+ * a too-short password through client-side ("123456😀" is length 8 but 7
+ * characters) and blocks backend-valid long values.
+ */
+export function codePointLength(s: string): number {
+  return [...s].length;
+}
+
 export type FieldError = string | null;
 
 export function validateEmail(email: string): FieldError {
@@ -34,8 +45,9 @@ export function validateUsername(username: string): FieldError {
 
 export function validatePassword(password: string): FieldError {
   if (!password) return "Password is required.";
-  if (password.length < PASSWORD_MIN) return "Password must be at least 8 characters.";
-  if (password.length > PASSWORD_MAX) return "Password must not exceed 128 characters.";
+  const chars = codePointLength(password);
+  if (chars < PASSWORD_MIN) return "Password must be at least 8 characters.";
+  if (chars > PASSWORD_MAX) return "Password must not exceed 128 characters.";
   return null;
 }
 

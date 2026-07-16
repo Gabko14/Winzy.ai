@@ -81,6 +81,16 @@ describe("validatePassword", () => {
   it("rejects too-long passwords", () => {
     expect(validatePassword("a".repeat(129))).toBe("Password must not exceed 128 characters.");
   });
+
+  it("counts characters like the backend (code points, not UTF-16 units)", () => {
+    // "123456😀" is .length 8 but only 7 characters — the backend rejects it,
+    // so the client must too instead of letting it through.
+    expect(validatePassword("123456😀")).toBe("Password must be at least 8 characters.");
+    expect(validatePassword("1234567😀")).toBeNull();
+    // 128 emoji is .length 256 but exactly the backend's 128-character max.
+    expect(validatePassword("😀".repeat(128))).toBeNull();
+    expect(validatePassword("😀".repeat(129))).toBe("Password must not exceed 128 characters.");
+  });
 });
 
 describe("validateLoginIdentifier", () => {

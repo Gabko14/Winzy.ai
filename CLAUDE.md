@@ -109,7 +109,11 @@ br dep add <issue> <depends-on>                   # Add dependency
 
 ### PM / Worker Split
 
-Planning, review, and the bead lifecycle belong to the PM session (top-tier model); implementation beads are executed by worker sessions/agents (Sonnet/Opus). Rules for workers:
+Planning, review, and the bead lifecycle belong to the PM session (top-tier model); implementation beads are executed by worker agents.
+
+**Dispatching workers — MANDATORY, especially after a context compaction:** this is generally how implementation gets done here — load and follow the `worker-dispatch` skill (`.claude/skills/worker-dispatch/SKILL.md`) before dispatching anything; it defines the whole protocol and the worker model policy.
+
+Rules for workers:
 
 - Implement exactly **one bead**, following its `EXECUTION STEPS` in order; run the quality gates; then **stop and report** (files changed, decisions, full gate output, deviations, open questions).
 - Workers **never close beads, never commit, never push**, and don't run `br` write commands. A bead is done when the PM has reviewed the diff against the acceptance criteria — not when the worker says so.

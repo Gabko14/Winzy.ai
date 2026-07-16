@@ -28,7 +28,7 @@ Content-Type: application/json
   "name": "Read Book",
   "icon": "📖",
   "frequency": "weekly",
-  "customDays": ["saturday", "sunday"]
+  "customDays": [6, 0]
 }
 
 ### 3. Create habit (custom days)
@@ -40,7 +40,7 @@ Content-Type: application/json
   "name": "Gym",
   "icon": "💪",
   "frequency": "custom",
-  "customDays": ["monday", "wednesday", "friday"]
+  "customDays": [1, 3, 5]
 }
 
 ### 4. List all habits

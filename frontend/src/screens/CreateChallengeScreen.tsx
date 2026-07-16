@@ -25,6 +25,7 @@ import type { FriendHabit } from "../api/social";
 import { fetchFriendProfile } from "../api/social";
 import { createChallenge } from "../api/challenges";
 import type { CreateChallengeRequest } from "../api/challenges";
+import { codePointLength } from "../utils/validation";
 import type { ApiError } from "../api/types";
 import { isApiError } from "../api/types";
 
@@ -127,7 +128,9 @@ export function CreateChallengeScreen({
 
   // --- Validation ---
   const rewardTrimmed = rewardDescription.trim();
-  const rewardTooLong = rewardTrimmed.length > MAX_REWARD_LENGTH;
+  // Backend counts characters (runes), not UTF-16 units — see codePointLength.
+  const rewardChars = codePointLength(rewardTrimmed);
+  const rewardTooLong = rewardChars > MAX_REWARD_LENGTH;
   const rewardEmpty = rewardTrimmed.length === 0;
 
   const canProceedFromStep1 = selectedHabit !== null;
@@ -397,7 +400,7 @@ export function CreateChallengeScreen({
                   maxLength={MAX_REWARD_LENGTH}
                   validationState={rewardTooLong ? "error" : "default"}
                   errorMessage={rewardTooLong ? `Maximum ${MAX_REWARD_LENGTH} characters` : undefined}
-                  hint={`${rewardTrimmed.length}/${MAX_REWARD_LENGTH} characters`}
+                  hint={`${rewardChars}/${MAX_REWARD_LENGTH} characters`}
                   testID="reward-input"
                   accessibilityLabel="Describe the shared experience reward"
                 />
