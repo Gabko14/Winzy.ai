@@ -1,6 +1,0 @@
-{
-  "status": 400,
-  "body": {
-    "error": "Invalid timezone: Not/ARealZone"
-  }
-}

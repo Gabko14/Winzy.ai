@@ -7,33 +7,32 @@ See [VISION.md](VISION.md) for the full product philosophy.
 ## Stack
 
 - **Frontend** — Expo / React Native, web-first PWA ([`frontend/`](frontend/))
-- **Backend** — .NET 10 microservices behind a YARP gateway ([`services/`](services/)): auth, habits, social, challenges, notifications, activity
-- **Messaging** — NATS JetStream for cross-service events; one PostgreSQL database per service
-- **Docs** — [Flame architecture](docs/architecture.html), [ADRs](docs/decisions/), agent/working rules in [CLAUDE.md](CLAUDE.md)
+- **Backend** — a single Go service ([`backend/`](backend/)) with one PostgreSQL database. Modules: auth, habits, social, challenges, notifications, activity. The API also serves the exported web bundle same-origin.
+- **Docs** — agent/working rules in [CLAUDE.md](CLAUDE.md)
 
 ## Running locally
 
 ```bash
-# Backend stack (gateway on http://localhost:5050, Seq logs on http://localhost:5341)
+cp .env.example .env    # once
+
+# Backend stack (API on http://localhost:5050, Postgres on localhost:5439)
 docker compose up -d --build
 
 # Frontend (Expo web)
 cd frontend && npm install && npm run web
 ```
 
-The gateway is the only public surface — services are reached through it, never directly.
-
 ## Tests
 
 ```bash
-dotnet test                    # backend (from repo root)
+make test-backend              # Go unit + integration (needs winzy-db from compose)
 cd frontend && npm test        # frontend (Jest)
 cd e2e && npm test             # end-to-end (Playwright, needs the compose stack up)
 ```
 
 ## Deployment
 
-Deployed on Railway: gateway (serving the exported web bundle same-origin) + private services, six PostgreSQL services, and NATS with a persistent JetStream volume. Topology and secrets are managed in the Railway dashboard; Railway-specific images are `services/gateway/Dockerfile.railway` and `services/nats/Dockerfile.railway`.
+Deployed on Railway (`winzy-staging`): the `api-gateway` service runs the Go binary (built from [`backend/Dockerfile.railway`](backend/Dockerfile.railway), configured by [`railway.json`](railway.json)) next to one PostgreSQL service. Deploys are manual — `railway up --service api-gateway` via the Railway CLI; pushing `main` does not deploy. Secrets live in the Railway dashboard.
 
 ## Issue tracking
 

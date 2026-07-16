@@ -43,7 +43,7 @@ Authorization: Bearer {{accessToken}}
 
 ### 7. View friend's profile (visible habits)
 # Response includes habitsUnavailable: false|true for graceful degradation
-# when habit-service is unreachable. habits array may be empty in either case.
+# when habit data can't be loaded. habits array may be empty in either case.
 GET {{baseUrl}}/social/friends/{{friendId}}/profile
 Authorization: Bearer {{accessToken}}
 

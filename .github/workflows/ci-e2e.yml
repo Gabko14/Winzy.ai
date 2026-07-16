@@ -6,18 +6,16 @@ on:
     paths:
       - 'frontend/**'
       - 'e2e/**'
-      - 'services/**'
+      - 'backend/**'
       - 'docker-compose.yml'
-      - 'docker-compose.ci.yml'
       - '.github/workflows/ci-e2e.yml'
   pull_request:
     branches: [main]
     paths:
       - 'frontend/**'
       - 'e2e/**'
-      - 'services/**'
+      - 'backend/**'
       - 'docker-compose.yml'
-      - 'docker-compose.ci.yml'
       - '.github/workflows/ci-e2e.yml'
 
 concurrency:
@@ -25,15 +23,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
-  APP_SERVICES: api-gateway auth-service habit-service social-service challenge-service notification-service activity-service
+  JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      packages: read
 
     steps:
       - uses: actions/checkout@v4
@@ -47,66 +42,26 @@ jobs:
             frontend/package-lock.json
             e2e/package-lock.json
 
-      - name: Log in to ghcr.io
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve image tag
-        id: resolve-tag
-        run: |
-          SHA_TAG="sha-${{ github.sha }}"
-          REF_TAG="ref-$(echo '${{ github.ref_name }}' | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)"
-
-          # Try sha-exact first, then ref-branch fallback
-          for TAG in "$SHA_TAG" "$REF_TAG"; do
-            echo "Trying tag: $TAG"
-            IMAGE_TAG="$TAG" docker compose -f docker-compose.yml -f docker-compose.ci.yml pull --quiet ${{ env.APP_SERVICES }} 2>/dev/null && {
-              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-              echo "pulled=true" >> "$GITHUB_OUTPUT"
-              echo "Successfully pulled all images with tag: $TAG"
-              exit 0
-            }
-            echo "Tag $TAG not available, trying next..."
-          done
-
-          echo "No pre-built images available, will build locally"
-          echo "pulled=false" >> "$GITHUB_OUTPUT"
-
-      - name: Start backend services (pre-built)
-        if: steps.resolve-tag.outputs.pulled == 'true'
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --no-build --wait
-        timeout-minutes: 3
-        env:
-          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
-          IMAGE_TAG: ${{ steps.resolve-tag.outputs.tag }}
-
-      - name: Start backend services (build fallback)
-        if: steps.resolve-tag.outputs.pulled != 'true'
-        run: docker compose -f docker-compose.yml up -d --build --wait
+      - name: Start backend stack
+        run: docker compose up -d --build --wait
         timeout-minutes: 5
         env:
-          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
           DOCKER_BUILDKIT: "1"
           COMPOSE_DOCKER_CLI_BUILD: "1"
 
-      - name: Wait for gateway health
+      - name: Wait for API health
         run: |
-          echo "Waiting for API gateway to report healthy..."
+          echo "Waiting for the API to report healthy..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:5050/health > /dev/null 2>&1; then
-              echo "Gateway is healthy after ${i}s"
+              echo "API is healthy after ${i}s"
               exit 0
             fi
             sleep 1
           done
-          echo "Gateway failed to become healthy within 60s"
+          echo "API failed to become healthy within 60s"
           docker compose logs --tail=50
           exit 1
-        env:
-          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
       - name: Install frontend and E2E dependencies
         run: |
@@ -144,8 +99,6 @@ jobs:
       - name: Docker compose logs
         if: failure()
         run: docker compose logs --tail=100
-        env:
-          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -163,8 +116,6 @@ jobs:
           path: e2e/test-results/
           retention-days: 7
 
-      - name: Stop backend services
+      - name: Stop backend stack
         if: always()
         run: docker compose down
-        env:
-          JWT_SECRET: ci-test-jwt-secret-minimum-32-characters-long!!

@@ -1,13 +1,13 @@
 # backend
 
-Single Go service replacing the .NET microservices (epic `winzy.ai-rdc7`). Scaffold only right now — feature modules (auth, habits, social, challenges, notifications, activity) land in later beads as `internal/<module>` packages.
+The Winzy.ai backend: a single Go service (it replaced the original .NET microservices in epic `winzy.ai-rdc7`, live since 2026-07-13). Feature modules — auth, habits, social, challenges, notifications, activity — live as `internal/<module>` packages.
 
 ## Stack
 
 - stdlib `net/http` with Go 1.22+ method routing — no web framework.
 - [pgx v5](https://github.com/jackc/pgx) (`pgxpool`) for Postgres. One database.
 - [golang-migrate](https://github.com/golang-migrate/migrate) for schema migrations, embedded into the binary via `//go:embed` (no mounted migrations directory at runtime).
-- `log/slog` JSON logging to stdout (Railway captures stdout; no Seq in the new world).
+- `log/slog` JSON logging to stdout (Railway captures stdout).
 
 ## Run
 
@@ -20,13 +20,13 @@ curl http://localhost:8080/health
 
 ### Full stack on :5050 (E2E / same-origin)
 
-Port 5050 matches Playwright fixtures. Do **not** start the old `api-gateway` at the same time.
+Port 5050 matches Playwright fixtures.
 
 **Compose (production bundle inside the image):**
 
 ```bash
 # from repo root; requires JWT_SECRET in .env (see .env.example)
-docker compose --profile go up -d --build winzy-db winzy-api
+docker compose up -d --build
 curl http://localhost:5050/health
 # SPA: http://localhost:5050/   API: http://localhost:5050/auth/...
 ```
@@ -106,9 +106,6 @@ In-package `t.Parallel` via `dbtest.ConnectParallel` is **Phase C**
 a parallel helper ahead of that design.
 
 The shared `winzy` database remains for the E2E compose stack.
-`winzy_parity` / `winzy_rehearsal` / winzy-mig-db are untouched by integration
-tests. Agent coordination: integration needs no PM GO (per-package DBs);
-E2E / parity / mig-db lanes still do.
 
 **Integration-test convention** (every module bead's handler tests follow this —
 see `internal/dbtest`): point at the compose `winzy-db` service via

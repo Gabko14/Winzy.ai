@@ -21,7 +21,6 @@
 
 # IDE / editor
 .idea/
-.vs/
 
 # Claude Code (local settings, not .mcp.json)
 .claude/
@@ -31,12 +30,6 @@
 
 # Node.js
 node_modules/
-
-# .NET
-**/bin/
-**/obj/
-*.user
-*.suo
 
 # Test results
 test-results/

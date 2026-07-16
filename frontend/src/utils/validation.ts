@@ -2,8 +2,7 @@
  * Client-side validation matching backend rules.
  *
  * Keep in sync with:
- *   services/auth-service/src/Validation/ValidationFilter.cs
- *   services/auth-service/src/Models/AuthModels.cs
+ *   backend/internal/auth/validation.go (register/login validation)
  */
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,64}$/;

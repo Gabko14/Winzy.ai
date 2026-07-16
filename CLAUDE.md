@@ -17,23 +17,24 @@ Winzy.ai is a habit tracker with an optional social layer. Users track daily hab
 
 **Product strategy:** Web-first PWA via Expo. Native apps later. Same codebase.
 
-**⚠️ Backend rewrite in progress (decided 2026-07-09, epic `winzy.ai-rdc7`):** the .NET microservices + NATS + per-service Postgres are being replaced by a **single Go service + one Postgres** (the microservices were a school requirement, not a product need). All features are kept; the C# services and their tests are the porting spec. The Key Design Decisions below describe the current live system and stay binding until cutover (`winzy.ai-rdc7.10`).
+**Architecture:** a **single Go service + one Postgres** (`backend/`), cut over from .NET microservices on 2026-07-13 (epic `winzy.ai-rdc7` — the microservices were a school requirement, not a product need). Deployed on Railway (`winzy-staging`): `api-gateway` (the Go binary, keeps its historical name) + `Postgres`.
 
 ## Key Design Decisions
 
 These are the non-obvious choices that agents get wrong without being told:
 
-- **JetStream, not core NATS.** `user.deleted` cascades to 5 services that must all process it (data cleanup, GDPR). Core NATS is fire-and-forget — a restarting service silently misses the event.
-- **Gateway validates JWT, services trust X-User-Id.** Services never re-validate tokens. The gateway strips any client-supplied `X-User-Id` and sets it from JWT claims. Never expose service ports directly.
-- **Gateway must NOT reference Winzy.Common.** The gateway has no NATS dependency. If it needs shared types, reference `Winzy.Contracts` directly.
-- **NATS subjects have no prefix.** `user.registered`, not `events.user.registered`. Matches `Subjects.cs` constants.
-- **Result pattern for business logic errors.** Return result types, don't throw exceptions for expected failures (validation, not-found, conflict).
-- **Gateway is exposed on port 5050, not 5000.** Port 5000 conflicts with macOS AirPlay Receiver. The gateway listens on 5000 internally, docker-compose maps `5050:5000`.
-- **No direct DB access across services.** Each service owns its data. Cross-service data via REST or NATS only.
-- **Internal endpoints stay internal.** Endpoints like `GET /habits/user/{userId}` are service-to-service only — never exposed through the Gateway.
-- **Public endpoints are explicit.** Only these work without auth: `/auth/register`, `/auth/login`, `/auth/refresh`, `/habits/public/{username}`, `/notifications/vapid-public-key`.
-- **Every service implements `GET /health`.** Returns service status, DB connectivity, and NATS connection status. Gateway aggregates all health checks.
-- **Services return results, UI shows feedback.** Backend services never format user-facing messages. They return structured data; the frontend decides how to present it.
+- **One service, module packages.** `backend/internal/{auth,habits,social,challenges,notifications,activity}` — each module owns its tables; cross-module reads go through small interfaces wired in `cmd/api/main.go`, never another module's store.
+- **In-process registries replace NATS.** `internal/events` is a typed, synchronous pub/sub hub (modules register handlers at startup, emitters don't know who listens); `internal/export` collects per-module export sections for GET /auth/export. New cross-module reactions belong in these registries, not in direct calls.
+- **Account deletion is one transaction.** DELETE /auth/account runs every module's cascade delete in a single Postgres transaction — any failure rolls back everything. No partial deletes, ever (GDPR).
+- **Public endpoints are an explicit allowlist.** `auth.Middleware` guards everything; only `DefaultPublicRoutes` + `GET /health`, `GET /habits/public/*`, `GET /social/witness/*`, `GET /notifications/vapid-public-key` skip auth. New public routes must be added to the allowlist deliberately.
+- **Error body contract.** Business errors return `{"error": "message"}` with 409 (conflict), 404, 401 (no body detail for bad credentials); validation failures return 400 `{"errors": {field: [messages]}}`. Return errors, don't panic, for expected failures.
+- **Timezone is per-surface, not global.** Habit completion takes `timezone` in the request BODY; stats requires the `X-Timezone` header (400 without it); promise surfaces read `X-Timezone` and fall back to UTC. Don't "unify" these — the frontend depends on each contract.
+- **No caching in flame math.** Consistency/flame values are computed fresh from completions on every request — deliberate; at this scale correctness beats speed, and stale flames were a real bug class in the old stack.
+- **Argon2id parameters are pinned.** `internal/auth/password.go` constants must match what migrated hashes were created with (verified by `TestProductionHashingParamsPinned`) — changing them silently locks out every existing user.
+- **VAPID keys are continuity-critical.** The Railway VAPID env vars were carried over from the old stack; rotating them kills every existing push subscription.
+- **Port contract.** The binary listens on `PORT` (Railway sets 5000 — load-bearing, the public domain routes to it; local compose maps `5050:8080`). The API serves the exported web bundle same-origin from `WEB_DIST`.
+- **Backend returns data, UI shows feedback.** The backend never formats user-facing presentation; the frontend decides how to present structured results.
+- **Rate limiting trusts leftmost X-Forwarded-For** (when `TRUSTED_PROXY=true`). Railway's edge owns XFF; X-Real-IP is broken behind their CDN — don't switch to it.
 
 ## Working Rules
 
@@ -57,7 +58,7 @@ Every test module must cover three areas:
 - Work on `main` by default. Use a `feature/` or `fix/` branch only for risky or experimental work you might throw away.
 - **Commits must be meaningful.** No standalone commits for small docs/chore/beads tweaks — amend them into the previous commit or let them ride along with the next real change.
 - **Commit messages are for strangers (rule since 2026-07-13).** Subject = `feat:`/`fix:`/`perf:`/`chore:` prefix + one plain-English sentence that says WHY the change exists / what it does for the project — readable without knowing bead IDs or project codenames ("make backend tests run in parallel (5 min -> 13 s)", not "per-package test databases, no -p 1"). Mechanism and detail go in the body. The beads issue ID goes on the LAST line as a `Bead: winzy.ai-xxx` trailer — never in the subject.
-- **Push in batches, not per commit.** The pre-push hook rebuilds and re-tests every changed service (slow), so push once per work session/milestone, or when the user asks — not after every commit.
+- **Push in batches, not per commit.** Push once per work session/milestone, or when the user asks — not after every commit.
 - **Quality gates before every push** — CI runs on `main` after the fact; run the gates listed under Workflow step 5 first.
 - **Railway deploys are manual, via the `railway` CLI** (`railway up`). Services are NOT repo-connected — pushing `main` does not deploy. Claude operates Railway; the config source of truth is the Railway project itself (`winzy-staging`).
 
@@ -94,7 +95,7 @@ br dep add <issue> <depends-on>                   # Add dependency
    - File issues for remaining work
    - Run quality gates (if code changed):
      - Frontend: `npm run lint && npx tsc --noEmit && npm test`
-     - Backend: `dotnet format --verify-no-changes && dotnet build && dotnet test`
+     - Backend (from `backend/`): `gofmt -l .` (must be empty) `&& go vet -tags=integration ./... && go build ./... && go test -tags=integration ./...` (integration tests need `docker compose up -d winzy-db`)
      - If Dockerfiles changed: `docker compose build`
    - Close finished issues, update in-progress items
    - Sync, commit, push:

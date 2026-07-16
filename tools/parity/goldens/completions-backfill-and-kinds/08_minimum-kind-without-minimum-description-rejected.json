@@ -1,6 +1,0 @@
-{
-  "status": 400,
-  "body": {
-    "error": "Cannot log minimum completion for a habit without a configured minimum description"
-  }
-}

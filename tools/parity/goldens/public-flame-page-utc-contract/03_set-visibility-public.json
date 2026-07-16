@@ -1,7 +1,0 @@
-{
-  "status": 200,
-  "body": {
-    "habitId": "{{seed:habit:flameowner:reading}}",
-    "visibility": "public"
-  }
-}

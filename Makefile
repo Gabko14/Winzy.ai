@@ -19,15 +19,15 @@ format-frontend:
 check-frontend:
 	cd frontend && npm run lint && npm run format:check
 
-# Backend
+# Backend (Go)
 lint-backend:
-	dotnet format --verify-no-changes
+	cd backend && test -z "$$(gofmt -l .)" && go vet -tags=integration ./...
 
 format-backend:
-	dotnet format
+	cd backend && gofmt -w .
 
 check-backend:
-	dotnet format --verify-no-changes
+	cd backend && test -z "$$(gofmt -l .)"
 
 # Testing
 test: test-frontend test-backend
@@ -35,8 +35,9 @@ test: test-frontend test-backend
 test-frontend:
 	cd frontend && npm test
 
+# Integration tests need Postgres: docker compose up -d winzy-db (host port 5439)
 test-backend:
-	./test-backend.sh
+	cd backend && TEST_DATABASE_URL=$${TEST_DATABASE_URL:-postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable} go test -tags=integration ./...
 
 # E2E (Playwright)
 e2e-install:

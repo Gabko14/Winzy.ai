@@ -15,9 +15,13 @@ fi
 # --- Frontend: ESLint on staged files via lint-staged ---
 npx lint-staged
 
-# --- Backend: dotnet format on staged .cs files ---
-STAGED_CS=$(git diff --cached --name-only --diff-filter=ACM -- '*.cs')
-if [ -n "$STAGED_CS" ]; then
-  echo "Checking C# formatting..."
-  dotnet format Winzy.slnx --verify-no-changes --include $STAGED_CS
+# --- Backend: gofmt on staged .go files ---
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')
+if [ -n "$STAGED_GO" ]; then
+  FMT_OUT=$(gofmt -l $STAGED_GO)
+  if [ -n "$FMT_OUT" ]; then
+    echo "Not gofmt-formatted:"
+    echo "$FMT_OUT"
+    exit 1
+  fi
 fi

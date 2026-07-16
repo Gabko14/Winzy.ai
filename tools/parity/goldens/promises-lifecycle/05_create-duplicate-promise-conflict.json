@@ -1,6 +1,0 @@
-{
-  "status": 409,
-  "body": {
-    "error": "An active promise already exists for this habit"
-  }
-}

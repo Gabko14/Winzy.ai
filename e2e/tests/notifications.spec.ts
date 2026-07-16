@@ -8,8 +8,8 @@ const API_BASE = "http://localhost:5050";
  *
  * Tests the full user journey: bell icon on TodayScreen, opening the
  * notifications screen, seeing notifications, marking as read, and
- * verifying badge state. Uses the social-service friend-request flow
- * to generate real notifications via NATS.
+ * verifying badge state. Uses the friend-request flow to generate real
+ * notifications.
  *
  * Each test is fully independent — creates its own users and data via API.
  */
@@ -48,7 +48,7 @@ async function setupNotifPair(request: APIRequestContext, label: string): Promis
   expect(resB.status()).toBe(201);
   const bodyB = await resB.json();
 
-  // A sends friend request to B (triggers notification via NATS)
+  // A sends friend request to B (creates B's notification)
   const reqRes = await request.post(`${API_BASE}/social/friends/request`, {
     headers: { Authorization: `Bearer ${bodyA.accessToken}` },
     data: { friendId: bodyB.user.id },

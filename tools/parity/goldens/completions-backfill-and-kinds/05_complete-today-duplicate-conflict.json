@@ -1,6 +1,0 @@
-{
-  "status": 409,
-  "body": {
-    "error": "Habit already completed for this date"
-  }
-}

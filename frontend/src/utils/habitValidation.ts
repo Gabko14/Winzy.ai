@@ -2,7 +2,7 @@
  * Habit-specific validation matching backend rules.
  *
  * Keep in sync with:
- *   services/habit-service/src/Program.cs (CreateHabitRequest validation)
+ *   backend/internal/habits/handlers.go (create/update habit validation)
  */
 
 import type { FieldError } from "./validation";
