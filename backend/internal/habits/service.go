@@ -565,6 +565,21 @@ func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone stri
 			kind := d.Kind.String()
 			completedTodayKind = &kind
 		}
+		// Contract: completedDates shows history up to "today" in the
+		// viewer's timezone, same as completionsInWindow/completedToday
+		// above — but unlike those two it is NOT clamped to the 60-day
+		// window (the calendar in HabitDetailScreen lets users browse
+		// months older than the window, and StatsScreen's aggregations
+		// read the full history, so window-filtering here would silently
+		// blank them). Only the future side is clamped: an owner in a
+		// date-line-ahead timezone can log "today" their time, which is
+		// still tomorrow for this viewer — that completion must stay
+		// invisible to this view until the viewer's own clock reaches it,
+		// matching the 0 it already contributes to consistency/window
+		// counts above.
+		if cd.after(today) {
+			continue
+		}
 		entries = append(entries, CompletionDateEntry{
 			Date:           formatISODate(d.LocalDate),
 			CompletionKind: d.Kind.String(),

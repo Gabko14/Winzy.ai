@@ -181,11 +181,13 @@ func TestStats_BackfilledMinimum_RoundsHalfAwayFromZero(t *testing.T) {
 //
 // The UTC (share) view is where 0 legitimately appears: the completion is
 // future-dated relative to UTC's "today", so it contributes 0, is not
-// completedToday, and is not in-window — yet is still LISTED in the
-// unfiltered completedDates array. This is the intended per-surface timezone
-// contract, matched exactly by the Go endpoint. The UTC-side assertions are
-// guarded on the date-line split actually being active at run time (it is
-// whenever the UTC clock is past ~10:00), so the test is deterministic in CI.
+// completedToday, and is not in-window. FIX (winzy.ai-6yoo): completedDates
+// is now clamped on its future side to match — the UTC viewer no longer sees
+// a date-dot for a completion their own "today" hasn't reached yet, while the
+// owner's own view (queried in their own timezone) still lists it, since for
+// them it is not in the future. The UTC-side assertions are guarded on the
+// date-line split actually being active at run time (it is whenever the UTC
+// clock is past ~10:00), so the test is deterministic in CI.
 func TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine(t *testing.T) {
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000006"))
@@ -200,13 +202,17 @@ func TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine(t *testing.T) {
 	}
 	completedLocalDate := decodeBody[map[string]any](t, resp)["localDate"].(string)
 
-	// Owner view: the completion is on the owner's own "today" -> counts fully.
+	// Owner view: the completion is on the owner's own "today" -> counts fully,
+	// and is listed in completedDates (it is not future-dated for the owner).
 	owner := getStats(t, srv, a, created.ID, "Pacific/Kiritimati")
 	if !owner.CompletedToday {
 		t.Error("owner view completedToday = false, want true")
 	}
 	if owner.Consistency != 100 {
 		t.Errorf("owner view consistency = %v, want 100 (completion is on owner's today — the anomaly does NOT reproduce)", owner.Consistency)
+	}
+	if len(owner.CompletedDates) != 1 || owner.CompletedDates[0].Date != completedLocalDate {
+		t.Errorf("owner completedDates = %+v, want it to list %s (not future for the owner)", owner.CompletedDates, completedLocalDate)
 	}
 
 	kiri, err := time.LoadLocation("Pacific/Kiritimati")
@@ -228,9 +234,10 @@ func TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine(t *testing.T) {
 		if utc.CompletionsInWindow != 0 {
 			t.Errorf("UTC view completionsInWindow = %d, want 0", utc.CompletionsInWindow)
 		}
-		// The quirk: the future/out-of-window date is still listed (unfiltered).
-		if len(utc.CompletedDates) != 1 || utc.CompletedDates[0].Date != completedLocalDate {
-			t.Errorf("UTC completedDates = %+v, want it to still list %s (unfiltered, matching C#)", utc.CompletedDates, completedLocalDate)
+		// FIX (winzy.ai-6yoo): the future-dated completion must now be absent
+		// from completedDates too, matching consistency/completedToday/window.
+		if len(utc.CompletedDates) != 0 {
+			t.Errorf("UTC completedDates = %+v, want empty (completion is future-dated for this viewer)", utc.CompletedDates)
 		}
 	} else {
 		// No split (UTC clock before ~10:00): both views agree.
