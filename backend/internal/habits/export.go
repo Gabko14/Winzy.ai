@@ -77,16 +77,30 @@ func (s *Service) exportSection(ctx context.Context, userID string) (any, error)
 		return nil, export.ErrNoData
 	}
 
+	// Batch-fetch completions and promises for every habit in two queries
+	// total (WHERE habit_id = ANY($1::uuid[])), not two queries PER habit —
+	// exportSection used to do 2N+1 round trips for N habits, one connection
+	// held for the whole request (winzy.ai-vz0i). Grouping happens in
+	// memory below; see batchCompletionsForExport/batchPromisesForExport's
+	// doc comments for why each habit's group ends up in the same order the
+	// old per-habit queries produced.
+	habitIDs := make([]string, len(habitsList))
+	for i, hb := range habitsList {
+		habitIDs[i] = hb.ID
+	}
+	completionsByHabit, err := batchCompletionsForExport(ctx, s.pool, habitIDs)
+	if err != nil {
+		return nil, err
+	}
+	promisesByHabit, err := batchPromisesForExport(ctx, s.pool, habitIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make([]habitExport, len(habitsList))
 	for i, hb := range habitsList {
-		completions, err := completionsForExport(ctx, s.pool, hb.ID)
-		if err != nil {
-			return nil, err
-		}
-		promises, err := promisesForExport(ctx, s.pool, hb.ID)
-		if err != nil {
-			return nil, err
-		}
+		completions := completionsByHabit[hb.ID]
+		promises := promisesByHabit[hb.ID]
 
 		completionsOut := make([]completionExport, len(completions))
 		for j, c := range completions {

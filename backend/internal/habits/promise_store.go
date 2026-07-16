@@ -214,27 +214,36 @@ func deletePromisesForUser(ctx context.Context, db querier, userID string) error
 	return nil
 }
 
-// promisesForExport returns every promise (any status) for habitID, oldest
-// first — the data-export query (export.go), which includes full owner
-// detail regardless of status or visibility.
-func promisesForExport(ctx context.Context, db querier, habitID string) ([]Promise, error) {
+// batchPromisesForExport returns every promise (any status) for ALL of
+// habitIDs in a single round trip, grouped by habit_id, each habit's slice
+// oldest-first — matching the ordering the old per-habit promisesForExport
+// query produced. exportSection used to call a per-habit version of this
+// query in a loop (2N+1 round trips for N habits total, see
+// winzy.ai-vz0i). ORDER BY habit_id, created_at guarantees each habit's rows
+// already arrive oldest-first, so grouping by habit_id below (in a single
+// pass) reproduces the exact old per-habit ordering with no re-sort needed.
+func batchPromisesForExport(ctx context.Context, db querier, habitIDs []string) (map[string][]Promise, error) {
+	result := make(map[string][]Promise, len(habitIDs))
+	if len(habitIDs) == 0 {
+		return result, nil
+	}
+
 	rows, err := db.Query(ctx, `
 		SELECT `+promiseColumns+` FROM promises
-		WHERE habit_id = $1::uuid
-		ORDER BY created_at`,
-		habitID)
+		WHERE habit_id = ANY($1::uuid[])
+		ORDER BY habit_id, created_at`,
+		habitIDs)
 	if err != nil {
-		return nil, fmt.Errorf("habits: listing promises for export: %w", err)
+		return nil, fmt.Errorf("habits: batch listing promises for export: %w", err)
 	}
 	defer rows.Close()
 
-	result := []Promise{}
 	for rows.Next() {
 		p, err := scanPromise(rows)
 		if err != nil {
 			return nil, fmt.Errorf("habits: scanning promise for export: %w", err)
 		}
-		result = append(result, p)
+		result[p.HabitID] = append(result[p.HabitID], p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("habits: iterating promises for export: %w", err)

@@ -435,28 +435,37 @@ func listAllHabitsForUser(ctx context.Context, db querier, userID string) ([]Hab
 	return result, nil
 }
 
-// completionsForExport returns every completion for habitID in full (unlike
-// habitCompletionDates' minimal LocalDate/Kind projection), ordered by
-// local_date — the data-export query, matching InternalExport's
-// `h.Completions.OrderBy(c => c.LocalDate)`.
-func completionsForExport(ctx context.Context, db querier, habitID string) ([]Completion, error) {
+// batchCompletionsForExport returns every completion for ALL of habitIDs in
+// a single round trip, grouped by habit_id, with each habit's slice in the
+// same local_date order the old per-habit completionsForExport query
+// produced (`h.Completions.OrderBy(c => c.LocalDate)` in InternalExport) —
+// replacing exportSection's former loop of one completionsForExport call per
+// habit (2N+1 round trips for N habits total, see winzy.ai-vz0i). ORDER BY
+// habit_id, local_date guarantees each habit's rows already arrive in
+// local_date order, so grouping by habit_id below (in a single pass)
+// reproduces the exact old per-habit ordering with no re-sort needed.
+func batchCompletionsForExport(ctx context.Context, db querier, habitIDs []string) (map[string][]Completion, error) {
+	result := make(map[string][]Completion, len(habitIDs))
+	if len(habitIDs) == 0 {
+		return result, nil
+	}
+
 	rows, err := db.Query(ctx, `
 		SELECT `+completionColumns+` FROM completions
-		WHERE habit_id = $1::uuid
-		ORDER BY local_date`,
-		habitID)
+		WHERE habit_id = ANY($1::uuid[])
+		ORDER BY habit_id, local_date`,
+		habitIDs)
 	if err != nil {
-		return nil, fmt.Errorf("habits: listing completions for export: %w", err)
+		return nil, fmt.Errorf("habits: batch listing completions for export: %w", err)
 	}
 	defer rows.Close()
 
-	result := []Completion{}
 	for rows.Next() {
 		c, err := scanCompletion(rows)
 		if err != nil {
 			return nil, fmt.Errorf("habits: scanning completion for export: %w", err)
 		}
-		result = append(result, c)
+		result[c.HabitID] = append(result[c.HabitID], c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("habits: iterating completions for export: %w", err)
