@@ -13,9 +13,6 @@ export type Habit = Schemas["Habit"];
 export type CreateHabitRequest = Schemas["CreateHabitRequest"];
 export type UpdateHabitRequest = Schemas["UpdateHabitRequest"];
 
-/** Backend enum values for CompletionKind */
-export const COMPLETION_KIND = { full: 1, minimum: 2 } as const;
-
 // --- API functions ---
 
 export function fetchHabits(): Promise<Habit[]> {
@@ -65,7 +62,7 @@ export function deleteCompletion(habitId: string, date: string): Promise<void> {
 export function updateCompletion(
   habitId: string,
   date: string,
-  completionKind: number, // 1=full, 2=minimum (backend enum)
+  completionKind: CompletionKind,
 ): Promise<HabitCompletion> {
   return api.put<HabitCompletion>(`/habits/${habitId}/completions/${date}`, {
     completionKind,

@@ -349,8 +349,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
         if (action === "uncomplete") {
           await uncomplete(date);
         } else if (action === "updateKind") {
-          // 2 = minimum backend enum
-          await updateKind(date, targetKind === "minimum" ? 2 : 1);
+          await updateKind(date, "minimum");
         } else {
           await complete(date);
         }

@@ -65,19 +65,15 @@ func TestRenderFlameBadgeSVG_HappyPath_ColorsMatchEachFlameLevel(t *testing.T) {
 	}
 }
 
-// TestRenderFlameBadgeSVG_EdgeCase_ConsistencyRoundsBankersStyle proves the
-// consistency text uses roundNET (round-half-to-even), matching C#'s
-// Math.Round(aggregateConsistency) default MidpointRounding — 62.5 rounds
-// down to 62 (nearest even) and 63.5 rounds up to 64 (nearest even), which
-// Go's ordinary math.Round (round-half-away-from-zero) would get wrong in
-// the first case.
-func TestRenderFlameBadgeSVG_EdgeCase_ConsistencyRoundsBankersStyle(t *testing.T) {
+// TestRenderFlameBadgeSVG_EdgeCase_ConsistencyRoundsToNearestInteger proves
+// the consistency text rounds half away from zero to a whole percentage.
+func TestRenderFlameBadgeSVG_EdgeCase_ConsistencyRoundsToNearestInteger(t *testing.T) {
 	tests := []struct {
 		consistency float64
 		want        string
 	}{
-		{62.5, "62%"},
-		{63.5, "64%"},
+		{62.5, "63%"},
+		{63.4, "63%"},
 		{99.95 + 0.05, "100%"}, // exact 100, sanity check on the upper end
 	}
 	for _, tt := range tests {

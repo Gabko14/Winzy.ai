@@ -4,7 +4,6 @@ import {
   fetchHabitStats,
   completeHabit,
   deleteCompletion,
-  COMPLETION_KIND,
   type Habit,
   type FlameLevel,
   type CompletionKind,
@@ -116,8 +115,7 @@ export function useTodayHabits() {
       if (!currentItem) return;
 
       const wasCompleted = currentItem.completedToday;
-      const targetKind = kind ?? "full";
-      const backendKind = targetKind === "minimum" ? COMPLETION_KIND.minimum : COMPLETION_KIND.full;
+      const targetKind: CompletionKind = kind ?? "full";
 
       // Prevent double-taps while a completion is in flight
       if (completing.has(habitId)) return;
@@ -137,7 +135,7 @@ export function useTodayHabits() {
         if (wasCompleted) {
           await deleteCompletion(habitId, today);
         } else {
-          await completeHabit(habitId, { timezone: tz, date: today, completionKind: backendKind });
+          await completeHabit(habitId, { timezone: tz, date: today, completionKind: targetKind });
         }
 
         if (!mountedRef.current) return;

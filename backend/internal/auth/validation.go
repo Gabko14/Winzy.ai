@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Gabko14/winzy/backend/internal/habits"
+	"unicode/utf8"
 )
 
 // usernameRegex is ported verbatim from RequestValidator.cs / AuthModels.cs.
@@ -46,7 +46,7 @@ func validateRegistration(email, username, password string) validationErrors {
 		errs["username"] = []string{"Username must be 3-64 characters: letters, digits, hyphens, underscores only."}
 	}
 
-	passwordLength := habits.UTF16Len(password)
+	passwordLength := utf8.RuneCountInString(password)
 	if strings.TrimSpace(password) == "" || passwordLength < minPasswordLength {
 		errs["password"] = []string{"Password must be at least 8 characters."}
 	} else if passwordLength > maxPasswordLength {
@@ -63,7 +63,7 @@ func validateRegistration(email, username, password string) validationErrors {
 func validateChangePassword(newPassword string) validationErrors {
 	errs := validationErrors{}
 
-	passwordLength := habits.UTF16Len(newPassword)
+	passwordLength := utf8.RuneCountInString(newPassword)
 	if strings.TrimSpace(newPassword) == "" || passwordLength < minPasswordLength {
 		errs["newPassword"] = []string{"Password must be at least 8 characters."}
 	} else if passwordLength > maxPasswordLength {

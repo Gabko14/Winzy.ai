@@ -186,33 +186,11 @@ func (v *uuidValue) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// milestoneTypeValue accepts camelCase string names and numeric enum ordinals
-// (0..4), matching JsonStringEnumConverter's dual accept behavior used by
-// CreateChallengeRequest.
+// milestoneTypeValue decodes the camelCase string names of MilestoneType
+// (e.g. "consistencyTarget") used by CreateChallengeRequest.
 type milestoneTypeValue MilestoneType
 
 func (v *milestoneTypeValue) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
-		return errInvalidMilestoneType
-	}
-	var n int
-	if err := json.Unmarshal(data, &n); err == nil {
-		switch n {
-		case 0:
-			*v = milestoneTypeValue(MilestoneConsistencyTarget)
-		case 1:
-			*v = milestoneTypeValue(MilestoneDaysInPeriod)
-		case 2:
-			*v = milestoneTypeValue(MilestoneTotalCompletions)
-		case 3:
-			*v = milestoneTypeValue(MilestoneCustomDateRange)
-		case 4:
-			*v = milestoneTypeValue(MilestoneImprovementMilestone)
-		default:
-			return errInvalidMilestoneType
-		}
-		return nil
-	}
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return errInvalidMilestoneType
@@ -226,16 +204,16 @@ func (v *milestoneTypeValue) UnmarshalJSON(data []byte) error {
 }
 
 func parseMilestoneType(s string) (MilestoneType, bool) {
-	switch strings.ToLower(s) {
-	case "consistencytarget":
+	switch s {
+	case "consistencyTarget":
 		return MilestoneConsistencyTarget, true
-	case "daysinperiod":
+	case "daysInPeriod":
 		return MilestoneDaysInPeriod, true
-	case "totalcompletions":
+	case "totalCompletions":
 		return MilestoneTotalCompletions, true
-	case "customdaterange":
+	case "customDateRange":
 		return MilestoneCustomDateRange, true
-	case "improvementmilestone":
+	case "improvementMilestone":
 		return MilestoneImprovementMilestone, true
 	default:
 		return "", false

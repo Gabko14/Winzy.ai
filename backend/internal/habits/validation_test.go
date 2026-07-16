@@ -107,7 +107,6 @@ func TestFrequency_UnmarshalJSON_HappyPath_AcceptsKnownValues(t *testing.T) {
 		{`"daily"`, FrequencyDaily},
 		{`"weekly"`, FrequencyWeekly},
 		{`"custom"`, FrequencyCustom},
-		{`"DAILY"`, FrequencyDaily},
 	} {
 		var f Frequency
 		if err := f.UnmarshalJSON([]byte(tc.wire)); err != nil {
@@ -125,6 +124,9 @@ func TestFrequency_UnmarshalJSON_ErrorCase_RejectsUnknownValue(t *testing.T) {
 	if err := f.UnmarshalJSON([]byte(`"biweekly"`)); err == nil {
 		t.Error("Frequency.UnmarshalJSON(\"biweekly\") should return an error")
 	}
+	if err := f.UnmarshalJSON([]byte(`"DAILY"`)); err == nil {
+		t.Error("Frequency.UnmarshalJSON(\"DAILY\") should return an error — the wire enum is lowercase")
+	}
 }
 
 func TestCompletionKind_ValidForLogging_HappyPathAndErrorCase(t *testing.T) {
@@ -139,22 +141,18 @@ func TestCompletionKind_ValidForLogging_HappyPathAndErrorCase(t *testing.T) {
 	}
 }
 
-func TestCompletionKind_UnmarshalJSON_AcceptsIntAndStringForms(t *testing.T) {
+func TestCompletionKind_UnmarshalJSON_LowercaseStringsOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		wire    string
 		want    CompletionKind
 		wantErr bool
 	}{
-		{name: "int_full", wire: `1`, want: CompletionFull},
-		{name: "int_minimum", wire: `2`, want: CompletionMinimum},
-		{name: "int_none_accepted_at_decode", wire: `0`, want: CompletionNone},
-		{name: "int_out_of_range_accepted_at_decode", wire: `99`, want: CompletionKind(99)},
 		{name: "string_full", wire: `"full"`, want: CompletionFull},
 		{name: "string_minimum", wire: `"minimum"`, want: CompletionMinimum},
-		{name: "string_none", wire: `"none"`, want: CompletionNone},
-		{name: "string_Full_Pascal", wire: `"Full"`, want: CompletionFull},
-		{name: "string_MINIMUM_upper", wire: `"MINIMUM"`, want: CompletionMinimum},
+		{name: "string_none_rejected", wire: `"none"`, wantErr: true},
+		{name: "int_rejected", wire: `1`, wantErr: true},
+		{name: "string_Full_Pascal_rejected", wire: `"Full"`, wantErr: true},
 		{name: "string_unknown", wire: `"partial"`, wantErr: true},
 		{name: "null", wire: `null`, wantErr: true},
 		{name: "bool", wire: `true`, wantErr: true},
@@ -178,7 +176,7 @@ func TestCompletionKind_UnmarshalJSON_AcceptsIntAndStringForms(t *testing.T) {
 	}
 }
 
-func TestCreateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
+func TestCreateHabitRequest_UnmarshalJSON_CustomDaysIntOrdinals(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		wire    string
@@ -191,23 +189,8 @@ func TestCreateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
 			want: []int{1, 3, 5},
 		},
 		{
-			name: "day_names_mon_wed_fri",
-			wire: `{"name":"Gym","frequency":"weekly","customDays":["monday","wednesday","friday"]}`,
-			want: []int{1, 3, 5},
-		},
-		{
-			name: "mixed_int_and_name",
-			wire: `{"name":"Gym","frequency":"weekly","customDays":[1,"wednesday",5]}`,
-			want: []int{1, 3, 5},
-		},
-		{
-			name: "pascal_day_names",
-			wire: `{"name":"Gym","frequency":"weekly","customDays":["Monday","Wednesday","Friday"]}`,
-			want: []int{1, 3, 5},
-		},
-		{
 			name: "sunday_saturday_boundary",
-			wire: `{"name":"Gym","frequency":"weekly","customDays":["sunday","saturday"]}`,
+			wire: `{"name":"Gym","frequency":"weekly","customDays":[0,6]}`,
 			want: []int{0, 6},
 		},
 		{
@@ -221,14 +204,17 @@ func TestCreateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
 			want: []int{},
 		},
 		{
-			name:    "unknown_day_name",
-			wire:    `{"name":"Gym","frequency":"weekly","customDays":["moonday"]}`,
+			name:    "day_name_strings_rejected",
+			wire:    `{"name":"Gym","frequency":"weekly","customDays":["monday"]}`,
 			wantErr: true,
 		},
 		{
-			name:    "null_element",
-			wire:    `{"name":"Gym","frequency":"weekly","customDays":[1,null]}`,
-			wantErr: true,
+			// encoding/json leaves the zero value in place for a null array
+			// element — nonsense input from our own client, not worth a
+			// custom decoder to reject.
+			name: "null_element_decodes_as_zero",
+			wire: `{"name":"Gym","frequency":"weekly","customDays":[1,null]}`,
+			want: []int{1, 0},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,8 +236,8 @@ func TestCreateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
 	}
 }
 
-func TestUpdateHabitRequest_UnmarshalJSON_CustomDaysDualForm(t *testing.T) {
-	wire := `{"frequency":"weekly","customDays":["monday","friday"]}`
+func TestUpdateHabitRequest_UnmarshalJSON_CustomDaysIntOrdinals(t *testing.T) {
+	wire := `{"frequency":"weekly","customDays":[1,5]}`
 	var req UpdateHabitRequest
 	if err := json.Unmarshal([]byte(wire), &req); err != nil {
 		t.Fatalf("Unmarshal error = %v", err)

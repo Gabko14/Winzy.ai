@@ -130,11 +130,11 @@ func TestStats_HappyPath_CreatedTodayCompletedTodayReturns100(t *testing.T) {
 	}
 }
 
-// TestStats_BackfilledMinimum_BankersRounding drives the exact banker's-rounding
+// TestStats_BackfilledMinimum_RoundsHalfAwayFromZero drives the rounding
 // midpoint through the endpoint: a single Minimum backfilled 7 days ago on a
 // habit created today gives 8 applicable days (backfill rule) with weight 0.5,
-// = 0.5/8*100 = 6.25, which must round to 6.2 (not 6.3).
-func TestStats_BackfilledMinimum_BankersRounding(t *testing.T) {
+// = 0.5/8*100 = 6.25, which rounds half away from zero to 6.3.
+func TestStats_BackfilledMinimum_RoundsHalfAwayFromZero(t *testing.T) {
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000005"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{
@@ -152,8 +152,8 @@ func TestStats_BackfilledMinimum_BankersRounding(t *testing.T) {
 	}
 
 	stats := getStats(t, srv, a, created.ID, "UTC")
-	if stats.Consistency != 6.2 {
-		t.Errorf("consistency = %v, want 6.2 (0.5/8*100=6.25 banker's-rounded down)", stats.Consistency)
+	if stats.Consistency != 6.3 {
+		t.Errorf("consistency = %v, want 6.3 (0.5/8*100=6.25 rounded half away from zero)", stats.Consistency)
 	}
 	// 6.2% is below the Ember rising threshold (10%), so the flame is None.
 	if stats.FlameLevel != "none" {

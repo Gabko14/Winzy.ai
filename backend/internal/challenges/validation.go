@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Gabko14/winzy/backend/internal/habits"
+	"unicode/utf8"
 )
 
 type fieldError struct {
@@ -54,7 +54,7 @@ func validateCreateRequest(creatorID string, req CreateChallengeRequest) error {
 		return newFieldError("RewardDescription is required")
 	}
 	trimmed := strings.TrimSpace(req.RewardDescription)
-	if habits.UTF16Len(trimmed) > maxRewardDescriptionLength {
+	if utf8.RuneCountInString(trimmed) > maxRewardDescriptionLength {
 		return newFieldError("RewardDescription must not exceed 512 characters")
 	}
 	if htmlTagPattern.MatchString(req.RewardDescription) {

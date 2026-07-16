@@ -5,6 +5,7 @@ import {
   completeHabit as apiCompleteHabit,
   deleteCompletion as apiDeleteCompletion,
   updateCompletion as apiUpdateCompletion,
+  type CompletionKind,
   type Habit,
   type HabitStats,
 } from "../api/habits";
@@ -101,7 +102,7 @@ export function useToggleCompletion(
   );
 
   const updateKind = useCallback(
-    async (date: string, completionKind: number) => {
+    async (date: string, completionKind: CompletionKind) => {
       setState({ loading: true, error: null });
       try {
         await apiUpdateCompletion(habitId, date, completionKind);

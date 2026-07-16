@@ -827,8 +827,8 @@ export type components = {
         FrequencyType: "daily" | "weekly" | "custom";
         /** @enum {string} */
         CompletionKind: "full" | "minimum";
-        CustomDayInput: number | ("sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday");
-        CompletionKindInput: number | ("full" | "minimum");
+        /** @description DayOfWeek ordinal: sunday=0 .. saturday=6 */
+        CustomDayInput: number;
         /** @enum {string} */
         FlameLevel: "none" | "ember" | "steady" | "strong" | "blazing";
         Habit: {
@@ -866,10 +866,10 @@ export type components = {
             /** Format: date */
             date?: string;
             timezone: string;
-            completionKind?: components["schemas"]["CompletionKindInput"];
+            completionKind?: components["schemas"]["CompletionKind"];
         };
         UpdateCompletionRequest: {
-            completionKind: components["schemas"]["CompletionKindInput"];
+            completionKind: components["schemas"]["CompletionKind"];
         };
         HabitCompletion: {
             /** Format: uuid */

@@ -6,15 +6,11 @@ import (
 	"time"
 )
 
-// This file ports EVERY test in
-// services/habit-service/tests/ConsistencyCalculatorTests.cs, preserving each
-// case's inputs and expected values exactly (a C# expectation is the spec — it
-// is never adjusted to match the Go output). It then adds the acceptance
-// criteria's extra coverage: backfill-before-creation, DST transitions,
-// date-line timezones, weekly best-kind mixes, minimum-weight mixes, rounding
-// midpoints, empty window, and day-old habits. The rounding table
-// (TestRoundNET_MatchesDotNet) is captured from a live .NET 10 run and is the
-// explicit banker's-rounding regression the bead requires.
+// This file originated as a port of the old stack's ConsistencyCalculator
+// test suite and adds extra coverage: backfill-before-creation, DST
+// transitions, date-line timezones, weekly best-kind mixes, minimum-weight
+// mixes, rounding midpoints, empty window, and day-old habits. Rounding is
+// plain half-away-from-zero to one decimal (round1) since winzy.ai-ffe8.
 
 // --- helpers ---
 
@@ -278,7 +274,7 @@ func TestWeekly(t *testing.T) {
 				weekCount++
 			}
 		}
-		want := roundNET(float64(targetWeeks)/float64(totalWeeks)*100, 1)
+		want := round1(float64(targetWeeks) / float64(totalWeeks) * 100)
 		assertEq(t, weekly(full(dates...), today, day(2024, 12, 1)), want, "6 of 8 weeks")
 	})
 }
@@ -336,7 +332,7 @@ func TestCustom(t *testing.T) {
 				}
 			}
 		}
-		want := roundNET(float64(saturdays)/float64(weekendDays)*100, 1)
+		want := round1(float64(saturdays) / float64(weekendDays) * 100)
 		assertEq(t, Calculate(FrequencyCustom, weekend, full(completed...), today, oldCreated), want, "weekends, only Sat")
 	})
 
@@ -835,59 +831,43 @@ func TestShareSurfaceUtcParity(t *testing.T) {
 
 // --- Additional AC coverage ---
 
-// TestRoundNET_MatchesDotNet is the explicit banker's-rounding regression the
-// bead requires. Every "want" was captured from a live .NET 10 run of
-// Math.Round(x, 1) (see the bead report's rounding section); each x.x5 case is
-// a genuine midpoint that Go's default half-away-from-zero rounding would get
-// wrong.
-func TestRoundNET_MatchesDotNet(t *testing.T) {
+// TestRound1_HalfAwayFromZero pins round1's plain rounding: one decimal
+// place, midpoints away from zero. (The .NET banker's rounding this used to
+// verify was removed with the old stack: winzy.ai-ffe8.)
+func TestRound1_HalfAwayFromZero(t *testing.T) {
 	cases := []struct {
 		in   float64
 		want float64
 	}{
-		{0.5 / 8 * 100, 6.2}, // one minimum over 8 applicable days
-		{6.25, 6.2},
-		{0.15, 0.2}, // *10 rounds back up to 1.5 on both stacks -> 0.2
+		{0.5 / 8 * 100, 6.3}, // one minimum over 8 applicable days
+		{6.25, 6.3},
+		{0.15, 0.2},
 		{1.0 / 3 * 100, 33.3},
 		{2.0 / 3 * 100, 66.7},
 		{37.35, 37.4},
-		{37.45, 37.4},
 		{62.55, 62.6},
-		{0.5 / 40 * 100, 1.2},
-		{1.5 / 40 * 100, 3.8},
-		{2.5 / 40 * 100, 6.2},
-		{14.25, 14.2},
-		{14.35, 14.4},
-		{0.05, 0.0},
-		{0.25, 0.2},
-		{0.35, 0.4},
-		{0.45, 0.4},
-		{0.55, 0.6},
-		{0.65, 0.6},
+		{14.25, 14.3},
+		{0.25, 0.3},
 		{0.75, 0.8},
-		{0.85, 0.8},
-		{0.95, 1.0},
-		{1.05, 1.0},
-		{33.25, 33.2},
-		{33.35, 33.4},
+		{33.25, 33.3},
+		{0, 0},
+		{100, 100},
 	}
 	for _, c := range cases {
-		if got := roundNET(c.in, 1); got != c.want {
-			t.Errorf("roundNET(%.17g, 1) = %v, want %v (.NET Math.Round)", c.in, got, c.want)
+		if got := round1(c.in); got != c.want {
+			t.Errorf("round1(%.17g) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }
 
-// TestConsistency_RoundingMidpoint_BankersNotAwayFromZero proves the banker's
-// rule flows through the actual calculator: one Minimum over 8 daily
-// applicable days is 0.5/8*100 = 6.25, which .NET rounds to 6.2 (2 is even),
-// NOT 6.3. A naive half-away-from-zero implementation would return 6.3 and
-// diverge from the old stack.
-func TestConsistency_RoundingMidpoint_BankersNotAwayFromZero(t *testing.T) {
+// TestConsistency_RoundingMidpoint proves rounding flows through the actual
+// calculator: one Minimum over 8 daily applicable days is 0.5/8*100 = 6.25,
+// which rounds half away from zero to 6.3.
+func TestConsistency_RoundingMidpoint(t *testing.T) {
 	today := day(2025, 3, 8)
 	created := today.AddDate(0, 0, -7) // 8 applicable days
 	c := withKind(CompletionMinimum, created)
-	assertEq(t, calcDaily(c, today, created), 6.2, "6.25 -> 6.2 (banker's)")
+	assertEq(t, calcDaily(c, today, created), 6.3, "6.25 -> 6.3")
 }
 
 // TestConsistency_BackfillWeightedBeforeCreation verifies the a35bd06 backfill

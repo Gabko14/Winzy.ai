@@ -78,14 +78,16 @@ func TestValidateRegistration_ErrorCase_TooLongPasswordRejected(t *testing.T) {
 	}
 }
 
-func TestValidateRegistration_EdgeCase_PasswordUsesUTF16CodeUnits(t *testing.T) {
-	if errs := validateRegistration("user@example.com", "validuser", "123456😀"); errs != nil {
-		t.Errorf("8 UTF-16-code-unit password = %v, want accepted", errs)
+func TestValidateRegistration_EdgeCase_PasswordLengthCountsRunes(t *testing.T) {
+	// "1234567😀" is 8 runes (12 UTF-8 bytes) — a byte-length check would
+	// mis-measure multi-byte input; rune count is the character count.
+	if errs := validateRegistration("user@example.com", "validuser", "1234567😀"); errs != nil {
+		t.Errorf("8-rune password = %v, want accepted", errs)
 	}
-	password := strings.Repeat("a", 127) + "😀"
+	password := strings.Repeat("a", 128) + "😀"
 	errs := validateRegistration("user@example.com", "validuser", password)
 	if errs == nil || errs["password"] == nil {
-		t.Errorf("129 UTF-16-code-unit password = %v, want rejected", errs)
+		t.Errorf("129-rune password = %v, want rejected", errs)
 	}
 }
 

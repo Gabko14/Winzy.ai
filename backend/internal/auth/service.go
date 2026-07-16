@@ -8,13 +8,13 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
-	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 )
 
@@ -25,10 +25,7 @@ var (
 	// undifferentiated, matching Results.Unauthorized()'s empty body.
 	ErrInvalidCredentials = errors.New("auth: invalid credentials")
 	// ErrMissingCredentials is Login's specific "both fields required"
-	// 400, distinct from the {"errors": {...}} validation shape. Message
-	// text is verbatim AuthEndpoints.cs's Login: Results.BadRequest(new {
-	// error = "Email/username and password are required." }) — the parity
-	// harness diffs these strings.
+	// 400, distinct from the {"errors": {...}} validation shape.
 	ErrMissingCredentials = errors.New("Email/username and password are required.")
 	// ErrRateLimited is returned by Export when the per-user export rate
 	// limit (1/60s) rejects the request.
@@ -97,13 +94,11 @@ func (s *Service) Register(ctx context.Context, email, username, password string
 	if taken, err := emailExists(ctx, s.pool, emailLower); err != nil {
 		return AuthResult{}, err
 	} else if taken {
-		// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Email already registered." })
 		return AuthResult{}, fmt.Errorf("%w: Email already registered.", ErrConflict)
 	}
 	if taken, err := usernameExists(ctx, s.pool, usernameLower); err != nil {
 		return AuthResult{}, err
 	} else if taken {
-		// Verbatim AuthEndpoints.cs: Results.Conflict(new { error = "Username already taken." })
 		return AuthResult{}, fmt.Errorf("%w: Username already taken.", ErrConflict)
 	}
 
@@ -364,9 +359,9 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 }
 
 // SearchUsers returns an empty (never nil) slice for a query shorter than
-// 2 characters, matching SearchUsers's early-return in AuthEndpoints.cs.
+// 2 characters.
 func (s *Service) SearchUsers(ctx context.Context, query string) ([]UserSearchResult, error) {
-	if habits.UTF16Len(query) < 2 {
+	if utf8.RuneCountInString(query) < 2 {
 		return []UserSearchResult{}, nil
 	}
 	trimmed := strings.ToLower(strings.TrimSpace(query))

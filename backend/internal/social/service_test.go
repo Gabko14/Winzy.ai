@@ -1,9 +1,8 @@
 package social
 
 import (
+	"math"
 	"testing"
-
-	"github.com/Gabko14/winzy/backend/internal/habits"
 )
 
 func TestIsValidUUID(t *testing.T) {
@@ -97,19 +96,14 @@ func TestRankOf(t *testing.T) {
 	})
 }
 
-// TestAggregateVisibleFlame_UsesNETRounding documents FIX 5 (winzy.ai-rdc7.4
-// review): aggregateVisibleFlame's naive round-half-up (roundToOneDecimal)
-// was replaced with habits.RoundNET — the bit-exact .NET banker's-rounding
-// port the flame engine itself already uses, tested at its own exact
-// midpoints in internal/habits/net_compat_test.go
-// (TestRoundNET_ExportedWrapper_MatchesMidpointBehavior). aggregateVisibleFlame
-// itself needs a live habits.Service + Postgres to exercise end to end — see
-// cross_integration_test.go's flame-aggregation cases — so this file only
-// asserts the wrapper is actually wired in, not duplicating the midpoint
-// math test.
-func TestAggregateVisibleFlame_UsesNETRounding(t *testing.T) {
-	if got := habits.RoundNET(82.25, 1); got != 82.2 {
-		t.Fatalf("habits.RoundNET(82.25, 1) = %v, want 82.2 — aggregateVisibleFlame relies on this exact behavior", got)
+// TestAggregateVisibleFlame_RoundsToOneDecimal pins the average-consistency
+// rounding aggregateVisibleFlame applies: one decimal place, half away from
+// zero. aggregateVisibleFlame itself needs a live habits.Service + Postgres
+// to exercise end to end — see cross_integration_test.go's flame-aggregation
+// cases.
+func TestAggregateVisibleFlame_RoundsToOneDecimal(t *testing.T) {
+	if got := math.Round(82.25*10) / 10; got != 82.3 {
+		t.Fatalf("round(82.25, 1) = %v, want 82.3", got)
 	}
 }
 

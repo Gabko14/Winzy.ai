@@ -253,7 +253,7 @@ func calcDailyOrCustom(freq Frequency, customDays []int, effectiveStart, end civ
 	if applicableDays == 0 {
 		return 0
 	}
-	return roundNET(weightedSum/float64(applicableDays)*100, 1)
+	return round1(weightedSum / float64(applicableDays) * 100)
 }
 
 // calcWeekly ports CalculateWeeklyWeighted: each ISO week (Monday start)
@@ -291,7 +291,7 @@ func calcWeekly(effectiveStart, end civilDate, completions map[civilDate]Complet
 	if totalWeeks == 0 {
 		return 0
 	}
-	return roundNET(weightedSum/float64(totalWeeks)*100, 1)
+	return round1(weightedSum / float64(totalWeeks) * 100)
 }
 
 // isoWeekStart returns the Monday of the ISO week containing date, matching
@@ -376,33 +376,10 @@ func fallingLevel(consistency float64) FlameLevel {
 	}
 }
 
-// roundPower10 mirrors .NET's roundPower10Double table of exact powers of ten.
-var roundPower10 = [...]float64{
-	1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7,
-	1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
-}
-
-// doubleRoundLimit mirrors .NET's constant: values at or beyond 1e16 are
-// returned unchanged (they carry no fractional part a double can round).
-const doubleRoundLimit = 1e16
-
-// roundNET replicates System.Math.Round(value, digits) with its default
-// MidpointRounding.ToEven — banker's rounding — bit-for-bit. .NET scales by an
-// exact power of ten, rounds the scaled double to the nearest integer with
-// ties-to-even, then unscales; Go's math.RoundToEven is the identical IEEE-754
-// roundTiesToEven, and IEEE multiply/divide are deterministic, so the two
-// stacks produce identical results. This is NOT the same as Go's default
-// math.Round (half away from zero) or an fmt "%.1f" shortcut — using either
-// would diverge from C# at x.x5 midpoints (e.g. 6.25 -> 6.2 here, not 6.3).
-// Verified empirically against .NET 10 and covered by consistency_test.go's
-// rounding table.
-func roundNET(value float64, digits int) float64 {
-	if math.Abs(value) >= doubleRoundLimit {
-		return value
-	}
-	power10 := roundPower10[digits]
-	value *= power10
-	value = math.RoundToEven(value)
-	value /= power10
-	return value
+// round1 rounds to one decimal place, half away from zero — plain Go
+// rounding for the consistency percentages shown to users. (The bit-exact
+// .NET banker's rounding this used to replicate was removed with the old
+// stack: winzy.ai-ffe8.)
+func round1(value float64) float64 {
+	return math.Round(value*10) / 10
 }

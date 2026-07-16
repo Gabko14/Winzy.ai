@@ -7,7 +7,6 @@ jest.mock("../../api/habits", () => ({
   fetchHabitStats: jest.fn(),
   completeHabit: jest.fn(),
   deleteCompletion: jest.fn(),
-  COMPLETION_KIND: { full: 1, minimum: 2 },
 }));
 
 // Also need to mock the isApiError import from types

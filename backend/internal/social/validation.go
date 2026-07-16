@@ -1,6 +1,6 @@
 package social
 
-import "github.com/Gabko14/winzy/backend/internal/habits"
+import "unicode/utf8"
 
 // fieldError is the single {"error": "message"} shape every social endpoint
 // uses, matching FriendEndpoints.cs/VisibilityEndpoints.cs/
@@ -20,18 +20,13 @@ func newFieldError(message string) error {
 
 const maxWitnessLabelLength = 100
 
-// validateWitnessLabel mirrors CreateWitnessLink/UpdateWitnessLink's
-// `request.Label is { Length: > 100 }` check in WitnessLinkEndpoints.cs — the
-// only validation either endpoint applies to Label. C#'s string.Length
-// counts UTF-16 code units, not bytes — habits.UTF16Len is the shared
-// exported helper (see its doc comment) that fixes exactly this bug class
-// for promise notes in winzy.ai-rdc7.3.3; counting Go's len(*label) (UTF-8
-// bytes) would reject far shorter multi-byte input than the C# does.
+// validateWitnessLabel enforces the 100-character label limit — counted in
+// runes, not bytes, so multi-byte input isn't unfairly truncated.
 func validateWitnessLabel(label *string) error {
 	if label == nil {
 		return nil
 	}
-	if habits.UTF16Len(*label) > maxWitnessLabelLength {
+	if utf8.RuneCountInString(*label) > maxWitnessLabelLength {
 		return newFieldError("Label must be 100 characters or fewer")
 	}
 	return nil

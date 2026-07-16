@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // ErrPromiseConflict is returned when creating a promise for a habit that
@@ -19,22 +19,6 @@ const (
 	maxTargetConsistency = 100.0
 	maxPrivateNoteLength = 512
 )
-
-// utf16Len returns the length of s the way C#'s string.Length does: a count
-// of UTF-16 code units, not bytes and not runes. CreatePromise's
-// `privateNote.Length > 512` check in PromiseEndpoints.cs counts UTF-16
-// code units, so counting UTF-8 bytes here (len(s)) would reject far
-// shorter multi-byte input than the C# does — e.g. 400 "é" characters is
-// 800 UTF-8 bytes but only 400 UTF-16 code units (each fits in one BMP
-// code unit), so byte-length would wrongly 400-error a note the C# accepts
-// happily. Runes-outside-the-BMP (rare in practice, e.g. emoji) each
-// encode to a UTF-16 SURROGATE PAIR (2 code units) despite being a single
-// Go rune, which is exactly why counting runes (utf8.RuneCountInString)
-// would also diverge from C#; utf16.Encode's output length is the precise
-// match.
-func utf16Len(s string) int {
-	return len(utf16.Encode([]rune(s)))
-}
 
 // resolveTimezoneLenient parses tz as an IANA timezone identifier, falling
 // back to UTC for a blank or unrecognized value rather than erroring —
@@ -83,7 +67,7 @@ func (s *Service) CreatePromise(ctx context.Context, userID, habitID string, req
 	}
 
 	privateNote := trimToNil(req.PrivateNote)
-	if privateNote != nil && utf16Len(*privateNote) > maxPrivateNoteLength {
+	if privateNote != nil && utf8.RuneCountInString(*privateNote) > maxPrivateNoteLength {
 		return Promise{}, newFieldError("Private note must not exceed 512 characters")
 	}
 

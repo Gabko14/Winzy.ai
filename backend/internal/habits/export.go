@@ -114,15 +114,11 @@ func (s *Service) exportSection(ctx context.Context, userID string) (any, error)
 		}
 
 		out[i] = habitExport{
-			HabitID: hb.ID,
-			Name:    hb.Name,
-			Icon:    hb.Icon,
-			Color:   hb.Color,
-			// Frequency.dbValue() (PascalCase: "Daily"/"Weekly"/"Custom"),
-			// NOT the lowercase wire form string(hb.Frequency) — InternalExport
-			// uses `h.Frequency.ToString()` with no ToLowerInvariant(), unlike
-			// every other field in this file and unlike HabitResponse.
-			Frequency:   hb.Frequency.dbValue(),
+			HabitID:     hb.ID,
+			Name:        hb.Name,
+			Icon:        hb.Icon,
+			Color:       hb.Color,
+			Frequency:   string(hb.Frequency),
 			CustomDays:  hb.CustomDays,
 			ArchivedAt:  hb.ArchivedAt,
 			CreatedAt:   hb.CreatedAt,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math"
 	"net/http"
 	"time"
 )
@@ -348,21 +349,13 @@ func flameBadgeColors(level FlameLevel) (flameColor, glowColor string) {
 	}
 }
 
-// renderFlameBadgeSVG is a pure port of the raw-string SVG literal in
-// GetFlameBadge (PublicEndpoints.cs) — identical viewBox, paths, and color
-// mapping, so the rendered markup matches the C# output byte-for-byte for
-// the same inputs (verified in promise_public_test.go's table; the bead
-// report leaves a PM review step to diff this against a live C# run
-// directly). consistency is rounded the same way the C#'s
-// `Math.Round(aggregateConsistency)` does — default MidpointRounding.ToEven
-// — via roundNET(consistency, 0) rather than Go's math.Round (which rounds
-// half away from zero and would diverge at a .5 midpoint); username is
-// escaped with html.EscapeString, a strict superset of what
-// SecurityElement.Escape covers (it additionally escapes quotes), which is
-// safe inside this text node.
+// renderFlameBadgeSVG renders the shareable flame badge (viewBox, paths,
+// and color mapping verified in promise_public_test.go's table). The
+// consistency percentage is rounded to the nearest integer; username is
+// escaped with html.EscapeString, which is safe inside this text node.
 func renderFlameBadgeSVG(username string, level FlameLevel, consistency float64) string {
 	flameColor, glowColor := flameBadgeColors(level)
-	consistencyText := fmt.Sprintf("%d%%", int(roundNET(consistency, 0)))
+	consistencyText := fmt.Sprintf("%d%%", int(math.Round(consistency)))
 	escapedUsername := html.EscapeString(username)
 
 	return `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32" viewBox="0 0 160 32">

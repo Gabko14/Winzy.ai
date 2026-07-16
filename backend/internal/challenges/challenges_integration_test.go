@@ -53,7 +53,7 @@ func TestCreateChallenge_ErrorCase_NotFriends_Returns400(t *testing.T) {
 		headers: bearerFor(t, stack.tokens, creator.User.ID),
 		body: map[string]any{
 			"habitId": habitID, "recipientId": stranger.User.ID,
-			"milestoneType": 0, "targetValue": 80.0,
+			"milestoneType": "consistencyTarget", "targetValue": 80.0,
 			"periodDays": 30, "rewardDescription": "Coffee",
 		},
 	})
@@ -73,7 +73,7 @@ func TestCreateChallenge_ErrorCase_SelfChallenge_Returns400(t *testing.T) {
 		headers: bearerFor(t, stack.tokens, creator.User.ID),
 		body: map[string]any{
 			"habitId": habitID, "recipientId": creator.User.ID,
-			"milestoneType": 0, "targetValue": 80.0,
+			"milestoneType": "consistencyTarget", "targetValue": 80.0,
 			"periodDays": 30, "rewardDescription": "Self",
 		},
 	})
@@ -91,7 +91,7 @@ func TestCreateChallenge_ErrorCase_UniqueActiveConflict_Returns409(t *testing.T)
 
 	body := map[string]any{
 		"habitId": habitID, "recipientId": recipient.User.ID,
-		"milestoneType": 0, "targetValue": 80.0,
+		"milestoneType": "consistencyTarget", "targetValue": 80.0,
 		"periodDays": 30, "rewardDescription": "Coffee",
 	}
 	status, _ := doRequest(t, stack.srv, testRequest{

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -379,11 +380,7 @@ func (s *Service) aggregateVisibleFlame(ctx context.Context, ownerID string) (fl
 	if visibleCount == 0 {
 		return "none", 0, false, nil
 	}
-	// habits.RoundNET, not a naive round-half-away-from-zero: matches
-	// Math.Round(totalConsistency / visibleHabits.Count, 1)'s default
-	// MidpointRounding.ToEven in FetchFlameMap (FriendEndpoints.cs) bit-for-bit
-	// at exact midpoints (e.g. 82.25 -> 82.2, 82.35 -> 82.4).
-	return bestFlame, habits.RoundNET(total/float64(visibleCount), 1), false, nil
+	return bestFlame, math.Round(total/float64(visibleCount)*10) / 10, false, nil
 }
 
 // visibilityContextFor loads ownerID's explicit visibility settings and
