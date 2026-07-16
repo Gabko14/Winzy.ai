@@ -86,7 +86,7 @@ TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
   go test -tags=integration -race ./...
 ```
 
-**Fast path (Phase A+B of winzy.ai-s8ly — current state; Phase C / zfa3 deferred):**
+**Fast path (Phase A+B plus the Phase C habits pilot of winzy.ai-s8ly):**
 
 | Lever | What it does |
 |---|---|
@@ -100,10 +100,40 @@ on first `dbtest.Connect` — winzy.ai-edxi). `TEST_DATABASE_URL` still points a
 the shared `winzy` database; Connect rewrites the dbname internally. Dropping
 any `winzy_test_*` database is always safe (they are recreated on the next run).
 
-Today use `dbtest.Connect(t)` (package-scoped DB + advisory lock + truncate).
-In-package `t.Parallel` via `dbtest.ConnectParallel` is **Phase C**
-(`winzy.ai-utzz` pilot, `winzy.ai-zfa3` rollout — both deferred); do not invent
-a parallel helper ahead of that design.
+Unconverted packages use `dbtest.Connect(t)` (package-scoped DB + advisory
+lock + truncate). The habits pilot uses `dbtest.ConnectParallel(t)`, which
+clones a pre-migrated per-package template into a process-unique database for
+each test and drops the clone in `t.Cleanup`. Full isolation means parallel
+tests do not hold the shared-DB advisory lock and do not truncate tables.
+
+### Parallel integration tests
+
+Use this checklist when converting one package to in-package parallel tests:
+
+- Change every database fixture in that package from `dbtest.Connect(t)` to
+  `dbtest.ConnectParallel(t)`; do not change `Connect` for packages that have
+  not been converted yet.
+- Put `t.Parallel()` at the start of every top-level integration test. Keep all
+  existing test cases and assertions intact.
+- Remove cross-test dependencies instead of adding ordering, sleeps, or shared
+  cleanup. Parallel tests must not mutate process-wide environment variables or
+  reuse fixed external resources.
+- Confirm direct store/service fixtures as well as HTTP test-server fixtures
+  use the parallel connection helper.
+- Run the package with `-tags=integration -race -count=1` ten consecutive
+  times, then run the full integration suite once to verify unconverted
+  packages still work through `Connect`.
+
+`ConnectParallel` names clones with the OS process ID plus a per-process atomic
+counter and drops them during normal test cleanup. A killed test process can
+leave an orphan. Never auto-drop test databases by age: another live process
+may own them. This manual mop-up only generates drops for `winzy_test_%_%`
+databases with no active connections (a connection racing in makes `DROP
+DATABASE` fail safely):
+
+```bash
+psql "$TEST_DATABASE_URL" -Atc "SELECT format('DROP DATABASE %I;', d.datname) FROM pg_database d WHERE d.datname LIKE 'winzy\_test\_%\_%' ESCAPE '\\' AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname);" | psql "$TEST_DATABASE_URL"
+```
 
 The shared `winzy` database remains for the E2E compose stack.
 
@@ -112,7 +142,8 @@ see `internal/dbtest`): point at the compose `winzy-db` service via
 `TEST_DATABASE_URL` rather than spinning up testcontainers-go.
 `internal/dbtest.Connect(t)` ensures the package database, runs migrations,
 truncates every table, and skips (not fails) the test when `TEST_DATABASE_URL`
-is unset.
+is unset. `ConnectParallel(t)` has the same skip contract but supplies a
+pre-migrated isolated clone instead of truncating a shared package database.
 
 CI (`.github/workflows/ci-go.yml`) runs `go test -tags=integration -race -json
 ./...` piped through `go run ./tools/testtiming` (per-package duration table +

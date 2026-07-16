@@ -20,6 +20,7 @@ import (
 )
 
 func TestExportSection_HappyPath_IncludesHabitsCompletionsAndPromises(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, exportReg := newTestServerWithAuth(t)
 	reg := registerUserViaService(t, authService, "exporthappy1@example.com", "exporthappy1")
 	userID := reg.User.ID
@@ -80,6 +81,7 @@ func TestExportSection_HappyPath_IncludesHabitsCompletionsAndPromises(t *testing
 // for the ordinary, expected case of a brand-new user with no habits yet;
 // the old system never emitted anything for that case at all.
 func TestExportSection_EdgeCase_NoHabitsOmitsSectionSilently(t *testing.T) {
+	t.Parallel()
 	_, _, _, authService, exportReg := newTestServerWithAuth(t)
 	reg := registerUserViaService(t, authService, "exportnohabits1@example.com", "exportnohabits1")
 
@@ -159,6 +161,7 @@ func daysAgoISODate(days int) string {
 // primary ORDER BY key) would both show up as a mismatch here, not just
 // happen to look right from insertion order alone.
 func TestExportSection_HappyPath_BatchedQueriesPreservePerHabitOrdering(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, exportReg := newTestServerWithAuth(t)
 	reg := registerUserViaService(t, authService, "exportbatch1@example.com", "exportbatch1")
 	userID := reg.User.ID

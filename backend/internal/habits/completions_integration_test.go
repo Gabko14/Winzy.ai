@@ -14,6 +14,7 @@ import (
 // --- POST /habits/{id}/complete ---
 
 func TestCompleteHabit_HappyPath_ReturnsCreatedWithConsistencyAndLocalDate(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000001"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -41,6 +42,7 @@ func TestCompleteHabit_HappyPath_ReturnsCreatedWithConsistencyAndLocalDate(t *te
 }
 
 func TestCompleteHabit_HappyPath_SpecificDateIsHonored(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000002"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -60,6 +62,7 @@ func TestCompleteHabit_HappyPath_SpecificDateIsHonored(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_DuplicateDateReturns409(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000003"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -82,6 +85,7 @@ func TestCompleteHabit_ErrorCase_DuplicateDateReturns409(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_MissingTimezoneReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000004"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -96,6 +100,7 @@ func TestCompleteHabit_ErrorCase_MissingTimezoneReturns400(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_InvalidTimezoneReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000005"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -110,6 +115,7 @@ func TestCompleteHabit_ErrorCase_InvalidTimezoneReturns400(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_NonExistentHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000006"))
 
@@ -123,6 +129,7 @@ func TestCompleteHabit_ErrorCase_NonExistentHabitReturns404(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_FutureDateReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000007"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -142,6 +149,7 @@ func TestCompleteHabit_ErrorCase_FutureDateReturns400(t *testing.T) {
 }
 
 func TestCompleteHabit_EdgeCase_ExactWindowBoundaryAccepted(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000008"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -157,6 +165,7 @@ func TestCompleteHabit_EdgeCase_ExactWindowBoundaryAccepted(t *testing.T) {
 }
 
 func TestCompleteHabit_EdgeCase_OneDayBeforeWindowRejected(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000009"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -174,6 +183,7 @@ func TestCompleteHabit_EdgeCase_OneDayBeforeWindowRejected(t *testing.T) {
 // --- Honest Minimums ---
 
 func TestCompleteHabit_HappyPath_FullAndMinimumKindsRoundTrip(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000a"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Workout", MinimumDescription: strPtr("10-minute walk")})
@@ -201,6 +211,7 @@ func TestCompleteHabit_HappyPath_FullAndMinimumKindsRoundTrip(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_MinimumWithoutConfigReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000b"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -220,6 +231,7 @@ func TestCompleteHabit_ErrorCase_MinimumWithoutConfigReturns400(t *testing.T) {
 }
 
 func TestCompleteHabit_ErrorCase_InvalidCompletionKindReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000c"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Test"})
@@ -237,6 +249,7 @@ func TestCompleteHabit_ErrorCase_InvalidCompletionKindReturns400(t *testing.T) {
 // --- DELETE /habits/{id}/completions/{date} ---
 
 func TestDeleteCompletion_HappyPath_RemovesCompletion(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000d"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -259,6 +272,7 @@ func TestDeleteCompletion_HappyPath_RemovesCompletion(t *testing.T) {
 }
 
 func TestDeleteCompletion_ErrorCase_NonExistentReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000e"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -270,6 +284,7 @@ func TestDeleteCompletion_ErrorCase_NonExistentReturns404(t *testing.T) {
 }
 
 func TestDeleteCompletion_ErrorCase_InvalidDateFormatReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000000f"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -281,6 +296,7 @@ func TestDeleteCompletion_ErrorCase_InvalidDateFormatReturns400(t *testing.T) {
 }
 
 func TestDeleteCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
+	t.Parallel()
 	// CompletionEndpoints.cs maps this route with a `{id:guid}` constraint —
 	// a segment that doesn't parse as a Guid never reaches the handler, so
 	// ASP.NET falls through to 404. A malformed id must not reach the
@@ -297,6 +313,7 @@ func TestDeleteCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
 // --- PUT /habits/{id}/completions/{date} ---
 
 func TestUpdateCompletion_HappyPath_MinimumToFullAndBack(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000010"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Workout", MinimumDescription: strPtr("10-minute walk")})
@@ -324,6 +341,7 @@ func TestUpdateCompletion_HappyPath_MinimumToFullAndBack(t *testing.T) {
 }
 
 func TestUpdateCompletion_ErrorCase_ToMinimumWithoutConfigReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000011"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -343,6 +361,7 @@ func TestUpdateCompletion_ErrorCase_ToMinimumWithoutConfigReturns400(t *testing.
 }
 
 func TestUpdateCompletion_ErrorCase_NonExistentReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000012"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Test"})
@@ -358,6 +377,7 @@ func TestUpdateCompletion_ErrorCase_NonExistentReturns404(t *testing.T) {
 }
 
 func TestUpdateCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
+	t.Parallel()
 	// Same `{id:guid}` route-constraint semantics as
 	// TestDeleteCompletion_ErrorCase_MalformedHabitIDReturns404 — see that
 	// test's comment.
@@ -374,6 +394,7 @@ func TestUpdateCompletion_ErrorCase_MalformedHabitIDReturns404(t *testing.T) {
 }
 
 func TestUpdateCompletion_ErrorCase_InvalidKindReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000013"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Test"})
@@ -395,6 +416,7 @@ func TestUpdateCompletion_ErrorCase_InvalidKindReturns400(t *testing.T) {
 // --- GET /habits/completions?date= ---
 
 func TestCompletionsByDate_HappyPath_ReturnsCompletionStatusForAllHabits(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000014"))
 	h1 := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -426,6 +448,7 @@ func TestCompletionsByDate_HappyPath_ReturnsCompletionStatusForAllHabits(t *test
 }
 
 func TestCompletionsByDate_ErrorCase_MissingDateReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000015"))
 
@@ -436,6 +459,7 @@ func TestCompletionsByDate_ErrorCase_MissingDateReturns400(t *testing.T) {
 }
 
 func TestCompletionsByDate_ErrorCase_InvalidDateReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000016"))
 
@@ -446,6 +470,7 @@ func TestCompletionsByDate_ErrorCase_InvalidDateReturns400(t *testing.T) {
 }
 
 func TestCompletionsByDate_EdgeCase_NoHabitsReturnsEmptyList(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000017"))
 	today := time.Now().UTC().Format("2006-01-02")
@@ -458,6 +483,7 @@ func TestCompletionsByDate_EdgeCase_NoHabitsReturnsEmptyList(t *testing.T) {
 }
 
 func TestCompletionsByDate_EdgeCase_ExcludesArchivedAndOtherUsersHabits(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000018"))
 	other := bearerFor(t, tokens, newUserID(t, "100000000019"))
@@ -478,6 +504,7 @@ func TestCompletionsByDate_EdgeCase_ExcludesArchivedAndOtherUsersHabits(t *testi
 }
 
 func TestCompletionsByDate_HappyPath_ReturnsMinimumDescriptionAndKind(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000001a"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Workout", MinimumDescription: strPtr("10-minute walk")})
@@ -518,6 +545,7 @@ func TestCompletionsByDate_HappyPath_ReturnsMinimumDescriptionAndKind(t *testing
 // tzdata database being incomplete for +14/-12 offsets).
 
 func TestCompleteHabit_EdgeCase_DSTObservingZoneRoundTripsExactDate(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "10000000001b"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -541,6 +569,7 @@ func TestCompleteHabit_EdgeCase_DSTObservingZoneRoundTripsExactDate(t *testing.T
 }
 
 func TestCompleteHabit_EdgeCase_DateLineTimezonesAreAccepted(t *testing.T) {
+	t.Parallel()
 	for _, tz := range []string{
 		"Pacific/Kiritimati", // UTC+14, the easternmost IANA zone
 		"Etc/GMT+12",         // UTC-12, the westernmost side of the date line

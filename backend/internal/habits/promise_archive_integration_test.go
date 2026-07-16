@@ -65,6 +65,7 @@ func habitsExportSection(t *testing.T, exportReg *export.Registry, userID string
 }
 
 func TestArchiveHabit_HappyPath_CancelsActivePromise(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, _, exportReg := newTestServerWithAuth(t)
 	userID := newUserID(t, "330000000001")
 	a := bearerFor(t, tokens, userID)
@@ -101,6 +102,7 @@ func TestArchiveHabit_HappyPath_CancelsActivePromise(t *testing.T) {
 // to cancel — matching DeleteHabit's `if (activePromise is not null)` guard
 // in HabitEndpoints.cs.
 func TestArchiveHabit_EdgeCase_NoActivePromiseStillArchivesSuccessfully(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "330000000002"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -116,6 +118,7 @@ func TestArchiveHabit_EdgeCase_NoActivePromiseStillArchivesSuccessfully(t *testi
 // that promise's terminal status untouched — the cancel step only ever
 // looks at the Active promise, matching findActivePromise's WHERE clause.
 func TestArchiveHabit_EdgeCase_AlreadyResolvedPromiseUntouchedByArchive(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, _, exportReg := newTestServerWithAuth(t)
 	userID := newUserID(t, "330000000003")
 	a := bearerFor(t, tokens, userID)

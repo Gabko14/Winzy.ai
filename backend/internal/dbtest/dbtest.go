@@ -29,6 +29,13 @@
 // (rdc7.14) remains — it is scoped per database, so it only serializes tests
 // within one package (and across processes on that same package DB).
 //
+// PARALLEL PATH (winzy.ai-utzz): ConnectParallel clones a pre-migrated
+// per-package template into a process-unique database for each test. Fully
+// isolated callers need no test-lifetime advisory lock or truncate. Template
+// preparation and the short CREATE DATABASE ... TEMPLATE operation are still
+// serialized across processes on the maintenance database; each clone is
+// dropped in t.Cleanup.
+//
 // FAST-PATH (winzy.ai-b8z5): migrations run once per process+database URL
 // (sync.Once), and the truncate table list is cached per URL for the
 // process lifetime. Truncate semantics and the advisory-lock sequence stay
@@ -40,6 +47,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -56,9 +64,11 @@ import (
 const integrationAdvisoryLockKey int64 = 0x57696e7a79444254 // "WinzyDBT"
 
 var (
-	migrateByURL sync.Map // string -> *migrateOnce
-	tablesByURL  sync.Map // string -> *tablesOnce
-	migrateFn    = db.Migrate
+	migrateByURL      sync.Map // string -> *migrateOnce
+	tablesByURL       sync.Map // string -> *tablesOnce
+	templateByURL     sync.Map // string -> *migrateOnce
+	migrateFn         = db.Migrate
+	parallelDBCounter atomic.Uint64
 )
 
 type migrateOnce struct {
@@ -196,6 +206,71 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		pool.Close()
 	})
 
+	return pool
+}
+
+// ConnectParallel returns a pool backed by a fully isolated per-test database
+// cloned from a pre-migrated per-package template. Unlike Connect, it neither
+// truncates shared tables nor holds a test-lifetime advisory lock, so callers
+// may safely use t.Parallel. The clone name combines the process ID with an
+// atomic per-process counter, and the clone is dropped after the caller's own
+// cleanup functions finish.
+func ConnectParallel(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+
+	baseURL := os.Getenv("TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping integration test (see internal/dbtest doc comment)")
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("dbtest: resolving package working directory: %v", err)
+	}
+	packageDBName := packageTestDBName(wd)
+	templateName := suffixedTestDBName(packageDBName, "tmpl")
+	templateURL, err := rewriteDatabaseURL(baseURL, templateName)
+	if err != nil {
+		t.Fatalf("dbtest: rewriting TEST_DATABASE_URL for template DB: %v", err)
+	}
+
+	stateValue, _ := templateByURL.LoadOrStore(templateURL, &migrateOnce{})
+	state := stateValue.(*migrateOnce)
+	state.once.Do(func() {
+		state.err = ensureTemplateDatabase(context.Background(), baseURL, templateName, templateURL)
+	})
+	if state.err != nil {
+		t.Fatalf("dbtest: ensuring template database %s: %v", templateName, state.err)
+	}
+
+	suffix := fmt.Sprintf("%d_%d", os.Getpid(), parallelDBCounter.Add(1))
+	dbName := suffixedTestDBName(packageDBName, suffix)
+	ctx := context.Background()
+	if err := cloneTemplateDatabase(ctx, baseURL, dbName, templateName); err != nil {
+		t.Fatalf("dbtest: creating isolated database: %v", err)
+	}
+
+	var pool *pgxpool.Pool
+	t.Cleanup(func() {
+		if pool != nil {
+			pool.Close()
+		}
+		if err := dropTestDatabase(context.Background(), baseURL, dbName); err != nil {
+			t.Errorf("dbtest: dropping isolated database: %v", err)
+		}
+	})
+
+	databaseURL, err := rewriteDatabaseURL(baseURL, dbName)
+	if err != nil {
+		t.Fatalf("dbtest: rewriting TEST_DATABASE_URL for isolated DB: %v", err)
+	}
+	pool, err = db.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("dbtest: connecting to isolated database %s: %v", dbName, err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		t.Fatalf("dbtest: pinging isolated database %s: %v", dbName, err)
+	}
 	return pool
 }
 

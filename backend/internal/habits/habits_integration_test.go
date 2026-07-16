@@ -23,6 +23,7 @@ func newUserID(t *testing.T, suffix string) string {
 // --- POST /habits ---
 
 func TestCreateHabit_HappyPath_ReturnsCreatedWithFields(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000001"))
 
@@ -50,6 +51,7 @@ func TestCreateHabit_HappyPath_ReturnsCreatedWithFields(t *testing.T) {
 }
 
 func TestCreateHabit_EdgeCase_WeeklyWithCustomDaysPersists(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000002"))
 
@@ -70,6 +72,7 @@ func TestCreateHabit_EdgeCase_WeeklyWithCustomDaysPersists(t *testing.T) {
 }
 
 func TestCreateHabit_EdgeCase_WithoutMinimumDescriptionReturnsNull(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000003"))
 
@@ -80,6 +83,7 @@ func TestCreateHabit_EdgeCase_WithoutMinimumDescriptionReturnsNull(t *testing.T)
 }
 
 func TestCreateHabit_ErrorCase_MissingNameReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000004"))
 
@@ -97,6 +101,7 @@ func TestCreateHabit_ErrorCase_MissingNameReturns400(t *testing.T) {
 }
 
 func TestCreateHabit_ErrorCase_CustomFrequencyWithoutDaysReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000005"))
 
@@ -110,6 +115,7 @@ func TestCreateHabit_ErrorCase_CustomFrequencyWithoutDaysReturns400(t *testing.T
 }
 
 func TestCreateHabit_ErrorCase_MinimumDescriptionTooLongReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000006"))
 
@@ -124,6 +130,7 @@ func TestCreateHabit_ErrorCase_MinimumDescriptionTooLongReturns400(t *testing.T)
 }
 
 func TestCreateHabit_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000007"))
 
@@ -138,6 +145,7 @@ func TestCreateHabit_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 }
 
 func TestCreateHabit_ErrorCase_EmptyBodyReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000008"))
 
@@ -152,6 +160,7 @@ func TestCreateHabit_ErrorCase_EmptyBodyReturns400(t *testing.T) {
 }
 
 func TestCreateHabit_HappyPath_EmitsHabitCreated(t *testing.T) {
+	t.Parallel()
 	srv, tokens, registry := newTestServer(t)
 	userID := newUserID(t, "000000000009")
 	a := bearerFor(t, tokens, userID)
@@ -178,6 +187,7 @@ func TestCreateHabit_HappyPath_EmitsHabitCreated(t *testing.T) {
 // habit row too — no permanently-committed habit that a downstream module
 // (social) never got to react to.
 func TestCreateHabit_ErrorCase_FailingHabitCreatedHandlerAbortsCreation(t *testing.T) {
+	t.Parallel()
 	srv, tokens, registry := newTestServer(t)
 	userID := newUserID(t, "0000000000fe")
 	a := bearerFor(t, tokens, userID)
@@ -205,6 +215,7 @@ func TestCreateHabit_ErrorCase_FailingHabitCreatedHandlerAbortsCreation(t *testi
 // --- GET /habits ---
 
 func TestListHabits_HappyPath_ReturnsOwnHabitsOnly(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	userA := bearerFor(t, tokens, newUserID(t, "00000000000a"))
 	userB := bearerFor(t, tokens, newUserID(t, "00000000000b"))
@@ -223,6 +234,7 @@ func TestListHabits_HappyPath_ReturnsOwnHabitsOnly(t *testing.T) {
 }
 
 func TestListHabits_EdgeCase_ExcludesArchivedHabits(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "00000000000c"))
 
@@ -240,6 +252,7 @@ func TestListHabits_EdgeCase_ExcludesArchivedHabits(t *testing.T) {
 // --- GET /habits/{id} ---
 
 func TestGetHabit_HappyPath_ReturnsHabit(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "00000000000d"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -255,6 +268,7 @@ func TestGetHabit_HappyPath_ReturnsHabit(t *testing.T) {
 }
 
 func TestGetHabit_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	owner := bearerFor(t, tokens, newUserID(t, "00000000000e"))
 	other := bearerFor(t, tokens, newUserID(t, "00000000000f"))
@@ -267,6 +281,7 @@ func TestGetHabit_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
 }
 
 func TestGetHabit_ErrorCase_NonExistentIDReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000010"))
 
@@ -277,6 +292,7 @@ func TestGetHabit_ErrorCase_NonExistentIDReturns404(t *testing.T) {
 }
 
 func TestGetHabit_EdgeCase_MalformedIDReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000011"))
 
@@ -289,6 +305,7 @@ func TestGetHabit_EdgeCase_MalformedIDReturns404(t *testing.T) {
 // --- PUT /habits/{id} ---
 
 func TestUpdateHabit_HappyPath_UpdatesNameAndColor(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000012"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -307,6 +324,7 @@ func TestUpdateHabit_HappyPath_UpdatesNameAndColor(t *testing.T) {
 }
 
 func TestUpdateHabit_EdgeCase_ChangeToWeeklyWithDaysPersists(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000013"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -325,6 +343,7 @@ func TestUpdateHabit_EdgeCase_ChangeToWeeklyWithDaysPersists(t *testing.T) {
 }
 
 func TestUpdateHabit_ErrorCase_ChangeToWeeklyWithoutDaysReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000014"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
@@ -339,6 +358,7 @@ func TestUpdateHabit_ErrorCase_ChangeToWeeklyWithoutDaysReturns400(t *testing.T)
 }
 
 func TestUpdateHabit_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	owner := bearerFor(t, tokens, newUserID(t, "000000000015"))
 	attacker := bearerFor(t, tokens, newUserID(t, "000000000016"))
@@ -354,6 +374,7 @@ func TestUpdateHabit_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
 }
 
 func TestUpdateHabit_HappyPath_AddMinimumDescription(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000017"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Meditate"})
@@ -369,6 +390,7 @@ func TestUpdateHabit_HappyPath_AddMinimumDescription(t *testing.T) {
 }
 
 func TestUpdateHabit_EdgeCase_ClearMinimumDescriptionReturnsNull(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000018"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Meditate", MinimumDescription: strPtr("2 minutes")})
@@ -386,6 +408,7 @@ func TestUpdateHabit_EdgeCase_ClearMinimumDescriptionReturnsNull(t *testing.T) {
 // --- DELETE /habits/{id} ---
 
 func TestArchiveHabit_HappyPath_SoftArchivesAndHidesFromGet(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "000000000019"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Delete Me"})
@@ -402,6 +425,7 @@ func TestArchiveHabit_HappyPath_SoftArchivesAndHidesFromGet(t *testing.T) {
 }
 
 func TestArchiveHabit_EdgeCase_AlreadyArchivedIsIdempotent(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "00000000001a"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Archive Twice"})
@@ -417,6 +441,7 @@ func TestArchiveHabit_EdgeCase_AlreadyArchivedIsIdempotent(t *testing.T) {
 }
 
 func TestArchiveHabit_HappyPath_EmitsHabitArchived(t *testing.T) {
+	t.Parallel()
 	srv, tokens, registry := newTestServer(t)
 	userID := newUserID(t, "00000000001b")
 	a := bearerFor(t, tokens, userID)
@@ -440,6 +465,7 @@ func TestArchiveHabit_HappyPath_EmitsHabitArchived(t *testing.T) {
 // same transaction as the archive write, so a failing handler rolls back
 // the archive too, leaving the habit active.
 func TestArchiveHabit_ErrorCase_FailingHabitArchivedHandlerAbortsArchive(t *testing.T) {
+	t.Parallel()
 	srv, tokens, registry := newTestServer(t)
 	userID := newUserID(t, "0000000000fd")
 	a := bearerFor(t, tokens, userID)
@@ -463,6 +489,7 @@ func TestArchiveHabit_ErrorCase_FailingHabitArchivedHandlerAbortsArchive(t *test
 }
 
 func TestArchiveHabit_ErrorCase_NonExistentReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "00000000001c"))
 

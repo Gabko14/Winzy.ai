@@ -34,7 +34,7 @@ import (
 // real Postgres.
 func newServiceFixture(t *testing.T) *habits.Service {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return habits.NewService(pool, events.New(logger), export.New(logger), logger)
 }
@@ -45,6 +45,7 @@ func lazyResolutionBase() time.Time {
 }
 
 func TestGetPromise_HappyPath_LazyResolutionKeptWhenConsistencyMeetsTarget(t *testing.T) {
+	t.Parallel()
 	svc := newServiceFixture(t)
 	base := lazyResolutionBase()
 	svc.SetClock(func() time.Time { return base })
@@ -89,6 +90,7 @@ func TestGetPromise_HappyPath_LazyResolutionKeptWhenConsistencyMeetsTarget(t *te
 }
 
 func TestGetPromise_HappyPath_LazyResolutionEndedBelowWhenConsistencyMissesTarget(t *testing.T) {
+	t.Parallel()
 	svc := newServiceFixture(t)
 	base := lazyResolutionBase()
 	svc.SetClock(func() time.Time { return base })
@@ -126,6 +128,7 @@ func TestGetPromise_HappyPath_LazyResolutionEndedBelowWhenConsistencyMissesTarge
 // a promise whose EndDate is today is still within its promised period and
 // must stay Active.
 func TestGetPromise_EdgeCase_EndDateExactlyTodayDoesNotResolveYet(t *testing.T) {
+	t.Parallel()
 	svc := newServiceFixture(t)
 	base := lazyResolutionBase()
 	svc.SetClock(func() time.Time { return base })
@@ -164,6 +167,7 @@ func TestGetPromise_EdgeCase_EndDateExactlyTodayDoesNotResolveYet(t *testing.T) 
 // exactly on its EndDate (not yet past it) for an owner in Etc/GMT+12
 // (UTC-12 — local time is only base+2, midnight).
 func TestGetPromise_EdgeCase_OwnerTimezoneAffectsResolutionAcrossTheDateLine(t *testing.T) {
+	t.Parallel()
 	svc := newServiceFixture(t)
 	ctx := context.Background()
 	base := lazyResolutionBase()

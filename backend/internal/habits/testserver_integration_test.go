@@ -3,7 +3,7 @@
 // Package habits_test's integration suite follows the recipe documented in
 // internal/dbtest and the PM REVIEW ADDENDUM on winzy.ai-rdc7.1: point at
 // the compose "winzy-db" service via TEST_DATABASE_URL, migrations +
-// per-test truncation handled by dbtest.Connect. Run with:
+// per-test database clones handled by dbtest.ConnectParallel. Run with:
 //
 //	docker compose up -d winzy-db
 //	TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
@@ -34,7 +34,7 @@ const testJWTSecret = "integration-test-secret-that-is-at-least-32-chars!!"
 
 // newTestServer wires the same middleware stack cmd/api/main.go assembles
 // (JWT auth, then rate limiting) around the habits module's routes, backed
-// by a real Postgres via dbtest.Connect. habits.user_id/completions.user_id
+// by a real Postgres via dbtest.ConnectParallel. habits.user_id/completions.user_id
 // carry no foreign key to a users table (see migrations/0003_habits.up.sql's
 // doc comment), so tests mint an access token directly via TokenService
 // rather than registering a real user through /auth/register — the habits
@@ -58,7 +58,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *auth.TokenService, *events.
 // uses exportReg to assert the habits section's shape.
 func newTestServerWithAuth(t *testing.T) (*httptest.Server, *auth.TokenService, *events.Registry, *auth.Service, *export.Registry) {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tokens, err := auth.NewTokenService(testJWTSecret, 15, 7)

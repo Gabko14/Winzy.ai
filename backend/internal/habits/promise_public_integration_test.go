@@ -19,6 +19,7 @@ import (
 )
 
 func TestPublicFlameProfile_HappyPath_IncludesPromiseWhenPublic(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
 	username := "pubpromisepublic1"
 	reg := registerUserViaService(t, authService, "pubpromisepublic1@example.com", username)
@@ -50,6 +51,7 @@ func TestPublicFlameProfile_HappyPath_IncludesPromiseWhenPublic(t *testing.T) {
 }
 
 func TestPublicFlameProfile_HappyPath_ExcludesPromiseWhenNotPublic(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
 	username := "pubpromiseprivate1"
 	reg := registerUserViaService(t, authService, "pubpromiseprivate1@example.com", username)
@@ -80,6 +82,7 @@ func TestPublicFlameProfile_HappyPath_ExcludesPromiseWhenNotPublic(t *testing.T)
 // PublicPromiseResponse, which would silently succeed even if the server
 // leaked an extra "privateNote" key some client code never reads.
 func TestPublicFlameProfile_HappyPath_PrivateNoteNeverInRawJSON(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
 	username := "pubpromisenonote1"
 	reg := registerUserViaService(t, authService, "pubpromisenonote1@example.com", username)
@@ -113,6 +116,7 @@ func TestPublicFlameProfile_HappyPath_PrivateNoteNeverInRawJSON(t *testing.T) {
 }
 
 func TestPublicFlameProfile_ErrorCase_UnknownUsernameReturns404(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/public/no-such-user-ever-registered"})
@@ -127,6 +131,7 @@ func TestPublicFlameProfile_ErrorCase_UnknownUsernameReturns404(t *testing.T) {
 // this endpoint's output, since GetPublicFlameProfile never reads it —
 // consistency is always computed with time.UTC as "today".
 func TestPublicFlameProfile_HappyPath_IgnoresXTimezoneHeader(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
 	username := "pubpromisetzignore1"
 	reg := registerUserViaService(t, authService, "pubpromisetzignore1@example.com", username)
@@ -157,6 +162,7 @@ func TestPublicFlameProfile_HappyPath_IgnoresXTimezoneHeader(t *testing.T) {
 // --- flame.svg ---
 
 func TestFlameBadge_HappyPath_ReturnsSVGWithCacheAndContentTypeHeaders(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
 	username := "flamebadgehappy1"
 	reg := registerUserViaService(t, authService, "flamebadgehappy1@example.com", username)
@@ -182,6 +188,7 @@ func TestFlameBadge_HappyPath_ReturnsSVGWithCacheAndContentTypeHeaders(t *testin
 }
 
 func TestFlameBadge_HappyPath_NoHabitsReturnsNoneLevelBadge(t *testing.T) {
+	t.Parallel()
 	srv, _, _, authService, _ := newTestServerWithAuth(t)
 	username := "flamebadgenohabits1"
 	registerUserViaService(t, authService, "flamebadgenohabits1@example.com", username)
@@ -198,6 +205,7 @@ func TestFlameBadge_HappyPath_NoHabitsReturnsNoneLevelBadge(t *testing.T) {
 }
 
 func TestFlameBadge_ErrorCase_UnknownUsernameReturns404(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/public/no-such-user-ever-registered/flame.svg"})

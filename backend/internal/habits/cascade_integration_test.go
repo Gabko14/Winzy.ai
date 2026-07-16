@@ -23,7 +23,8 @@ import (
 )
 
 func TestHandleUserDeleted_EdgeCase_NoTransactionInContextFallsBackToPool(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	registry := events.New(logger)
 	svc := habits.NewService(pool, registry, export.New(logger), logger)

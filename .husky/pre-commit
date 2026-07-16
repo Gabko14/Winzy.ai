@@ -13,7 +13,7 @@ if [ "$WINZY_PM_COMMIT" != "1" ]; then
 fi
 
 # --- Frontend: ESLint on staged files via lint-staged ---
-npx lint-staged
+npx lint-staged || exit 1
 
 # --- Backend: gofmt on staged .go files ---
 STAGED_GO=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')

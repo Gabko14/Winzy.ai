@@ -19,7 +19,8 @@ import (
 )
 
 func TestResolvePromise_EdgeCase_StatusGuardPreventsOverwritingATerminalState(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	ctx := context.Background()
 	userID := "00000000-0000-4000-8000-000000000001"
 
@@ -73,7 +74,8 @@ func TestResolvePromise_EdgeCase_StatusGuardPreventsOverwritingATerminalState(t 
 // as Active, but by the time cancelPromiseRow's UPDATE runs, it has already
 // been resolved by something else.
 func TestCancelActivePromiseForArchive_EdgeCase_LostRaceIsANoOp(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	ctx := context.Background()
 	userID := "00000000-0000-4000-8000-000000000002"
 

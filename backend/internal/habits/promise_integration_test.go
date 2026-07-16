@@ -29,6 +29,7 @@ func futureDate(days int) string {
 // --- Happy path: CreatePromise ---
 
 func TestCreatePromise_HappyPath_ReturnsCreatedWithFields(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000001"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -59,6 +60,7 @@ func TestCreatePromise_HappyPath_ReturnsCreatedWithFields(t *testing.T) {
 }
 
 func TestCreatePromise_HappyPath_WithPrivateNotePersists(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000002"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -77,6 +79,7 @@ func TestCreatePromise_HappyPath_WithPrivateNotePersists(t *testing.T) {
 }
 
 func TestCreatePromise_HappyPath_WithIsPublicOnFlamePersistsValue(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000003"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -95,6 +98,7 @@ func TestCreatePromise_HappyPath_WithIsPublicOnFlamePersistsValue(t *testing.T) 
 }
 
 func TestCreatePromise_HappyPath_StatementIncludesTargetAndMonthName(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000004"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -118,6 +122,7 @@ func TestCreatePromise_HappyPath_StatementIncludesTargetAndMonthName(t *testing.
 }
 
 func TestCreatePromise_EdgeCase_Target1And100Accepted(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000005"))
 
@@ -134,6 +139,7 @@ func TestCreatePromise_EdgeCase_Target1And100Accepted(t *testing.T) {
 }
 
 func TestCreatePromise_HappyPath_DifferentHabitsBothSucceed(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000006"))
 	habit1 := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -155,6 +161,7 @@ func TestCreatePromise_HappyPath_DifferentHabitsBothSucceed(t *testing.T) {
 // --- Error conditions: CreatePromise validation ---
 
 func TestCreatePromise_ErrorCase_TargetTooLowReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000010"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -173,6 +180,7 @@ func TestCreatePromise_ErrorCase_TargetTooLowReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_TargetTooHighReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000011"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -187,6 +195,7 @@ func TestCreatePromise_ErrorCase_TargetTooHighReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_PastEndDateReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000012"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -205,6 +214,7 @@ func TestCreatePromise_ErrorCase_PastEndDateReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_EdgeCase_TodayEndDateReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000013"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -219,6 +229,7 @@ func TestCreatePromise_EdgeCase_TodayEndDateReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_InvalidDateFormatReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000014"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -233,6 +244,7 @@ func TestCreatePromise_ErrorCase_InvalidDateFormatReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_PrivateNoteTooLongReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000015"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -254,6 +266,7 @@ func TestCreatePromise_ErrorCase_PrivateNoteTooLongReturns400(t *testing.T) {
 // is one code unit over (rejected) — a byte-counting implementation would
 // wrongly reject the accepted case at 256 characters already.
 func TestCreatePromise_EdgeCase_PrivateNoteLengthCountsUTF16CodeUnitsNotBytes(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000018"))
 
@@ -278,6 +291,7 @@ func TestCreatePromise_EdgeCase_PrivateNoteLengthCountsUTF16CodeUnitsNotBytes(t 
 }
 
 func TestCreatePromise_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000016"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -293,6 +307,7 @@ func TestCreatePromise_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_EmptyBodyReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000017"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -310,6 +325,7 @@ func TestCreatePromise_ErrorCase_EmptyBodyReturns400(t *testing.T) {
 // BadRequest("Request body is required")` check in PromiseEndpoints.cs
 // then fires — a DIFFERENT message than "Invalid JSON in request body".
 func TestCreatePromise_EdgeCase_LiteralNullBodyReturnsBodyRequired(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000019"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -330,6 +346,7 @@ func TestCreatePromise_EdgeCase_LiteralNullBodyReturnsBodyRequired(t *testing.T)
 // body to be consumed) — Go's json.Decoder otherwise silently decodes the
 // first value and ignores whatever comes after it.
 func TestCreatePromise_EdgeCase_TrailingGarbageAfterValidJSONReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000029"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -346,6 +363,7 @@ func TestCreatePromise_EdgeCase_TrailingGarbageAfterValidJSONReturns400(t *testi
 }
 
 func TestCreatePromise_ErrorCase_UnauthenticatedReturns401(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -360,6 +378,7 @@ func TestCreatePromise_ErrorCase_UnauthenticatedReturns401(t *testing.T) {
 // --- Error conditions: CreatePromise ownership/existence ---
 
 func TestCreatePromise_ErrorCase_NonExistentHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000020"))
 
@@ -373,6 +392,7 @@ func TestCreatePromise_ErrorCase_NonExistentHabitReturns404(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_GarbageHabitIDReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000021"))
 
@@ -386,6 +406,7 @@ func TestCreatePromise_ErrorCase_GarbageHabitIDReturns404(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	other := bearerFor(t, tokens, newUserID(t, "300000000022"))
 	habit := createHabit(t, srv, other, habits.CreateHabitRequest{Name: "Reading"})
@@ -401,6 +422,7 @@ func TestCreatePromise_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_ArchivedHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000024"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -416,6 +438,7 @@ func TestCreatePromise_ErrorCase_ArchivedHabitReturns404(t *testing.T) {
 }
 
 func TestCreatePromise_ErrorCase_DuplicateActiveReturns409(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000025"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -440,6 +463,7 @@ func TestCreatePromise_ErrorCase_DuplicateActiveReturns409(t *testing.T) {
 // --- GetPromise ---
 
 func TestGetPromise_HappyPath_ActivePromiseReturnsOnTrackStatus(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000030"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -471,6 +495,7 @@ func TestGetPromise_HappyPath_ActivePromiseReturnsOnTrackStatus(t *testing.T) {
 }
 
 func TestGetPromise_HappyPath_NoActivePromiseReturnsNullActive(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000031"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -486,6 +511,7 @@ func TestGetPromise_HappyPath_NoActivePromiseReturnsNullActive(t *testing.T) {
 }
 
 func TestGetPromise_HappyPath_WithHistoryReturnsResolvedPromises(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000032"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -514,6 +540,7 @@ func TestGetPromise_HappyPath_WithHistoryReturnsResolvedPromises(t *testing.T) {
 }
 
 func TestGetPromise_HappyPath_IncludesIsPublicOnFlame(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000033"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -530,6 +557,7 @@ func TestGetPromise_HappyPath_IncludesIsPublicOnFlame(t *testing.T) {
 }
 
 func TestGetPromise_ErrorCase_DifferentUserReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	owner := bearerFor(t, tokens, newUserID(t, "300000000034"))
 	habit := createHabit(t, srv, owner, habits.CreateHabitRequest{Name: "Reading"})
@@ -546,6 +574,7 @@ func TestGetPromise_ErrorCase_DifferentUserReturns404(t *testing.T) {
 }
 
 func TestGetPromise_ErrorCase_GarbageHabitIDReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000036"))
 
@@ -558,6 +587,7 @@ func TestGetPromise_ErrorCase_GarbageHabitIDReturns404(t *testing.T) {
 // --- CancelPromise ---
 
 func TestCancelPromise_HappyPath_Returns204AndMarksCancelled(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000040"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -579,6 +609,7 @@ func TestCancelPromise_HappyPath_Returns204AndMarksCancelled(t *testing.T) {
 }
 
 func TestCancelPromise_HappyPath_ThenCreateNewSucceeds(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000041"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -598,6 +629,7 @@ func TestCancelPromise_HappyPath_ThenCreateNewSucceeds(t *testing.T) {
 }
 
 func TestCancelPromise_ErrorCase_NoActivePromiseReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000042"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -609,6 +641,7 @@ func TestCancelPromise_ErrorCase_NoActivePromiseReturns404(t *testing.T) {
 }
 
 func TestCancelPromise_ErrorCase_AlreadyCancelledReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000043"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -625,6 +658,7 @@ func TestCancelPromise_ErrorCase_AlreadyCancelledReturns404(t *testing.T) {
 }
 
 func TestCancelPromise_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	owner := bearerFor(t, tokens, newUserID(t, "300000000044"))
 	habit := createHabit(t, srv, owner, habits.CreateHabitRequest{Name: "Reading"})
@@ -643,6 +677,7 @@ func TestCancelPromise_ErrorCase_OtherUsersHabitReturns404(t *testing.T) {
 // --- ToggleVisibility ---
 
 func TestToggleVisibility_HappyPath_SetPublicReturnsOk(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000050"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -665,6 +700,7 @@ func TestToggleVisibility_HappyPath_SetPublicReturnsOk(t *testing.T) {
 }
 
 func TestToggleVisibility_HappyPath_SetPrivateReturnsOk(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000051"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -687,6 +723,7 @@ func TestToggleVisibility_HappyPath_SetPrivateReturnsOk(t *testing.T) {
 }
 
 func TestToggleVisibility_ErrorCase_NoActivePromiseReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000052"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -701,6 +738,7 @@ func TestToggleVisibility_ErrorCase_NoActivePromiseReturns404(t *testing.T) {
 }
 
 func TestToggleVisibility_ErrorCase_OtherUsersPromiseReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	owner := bearerFor(t, tokens, newUserID(t, "300000000053"))
 	habit := createHabit(t, srv, owner, habits.CreateHabitRequest{Name: "Reading"})
@@ -720,6 +758,7 @@ func TestToggleVisibility_ErrorCase_OtherUsersPromiseReturns404(t *testing.T) {
 }
 
 func TestToggleVisibility_ErrorCase_MissingBodyReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000055"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -735,6 +774,7 @@ func TestToggleVisibility_ErrorCase_MissingBodyReturns400(t *testing.T) {
 }
 
 func TestToggleVisibility_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000056"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})
@@ -760,6 +800,7 @@ func TestToggleVisibility_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 // which meant a null body on this endpoint returned 200 and silently
 // flipped visibility to false.
 func TestToggleVisibility_EdgeCase_LiteralNullBodyReturnsBodyRequiredWithoutMutation(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "300000000057"))
 	habit := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Reading"})

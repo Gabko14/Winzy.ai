@@ -14,6 +14,7 @@ import (
 // --- GET /habits/{id}/stats ---
 
 func TestStats_ErrorCase_MissingTimezoneHeaderReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000001"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -31,6 +32,7 @@ func TestStats_ErrorCase_MissingTimezoneHeaderReturns400(t *testing.T) {
 }
 
 func TestStats_ErrorCase_InvalidTimezoneReturns400(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000002"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
@@ -49,6 +51,7 @@ func TestStats_ErrorCase_InvalidTimezoneReturns400(t *testing.T) {
 }
 
 func TestStats_ErrorCase_NonExistentHabitReturns404(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000003"))
 
@@ -81,6 +84,7 @@ type statsResponse struct {
 }
 
 func TestStats_HappyPath_CreatedTodayCompletedTodayReturns100(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000004"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Meditate"})
@@ -135,6 +139,7 @@ func TestStats_HappyPath_CreatedTodayCompletedTodayReturns100(t *testing.T) {
 // habit created today gives 8 applicable days (backfill rule) with weight 0.5,
 // = 0.5/8*100 = 6.25, which rounds half away from zero to 6.3.
 func TestStats_BackfilledMinimum_RoundsHalfAwayFromZero(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000005"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{
@@ -189,6 +194,7 @@ func TestStats_BackfilledMinimum_RoundsHalfAwayFromZero(t *testing.T) {
 // date-line split actually being active at run time (it is whenever the UTC
 // clock is past ~10:00), so the test is deterministic in CI.
 func TestStats_EdgeCase_CompletionAheadOfUTC_KiritimatiDateLine(t *testing.T) {
+	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "200000000006"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "kiri"})

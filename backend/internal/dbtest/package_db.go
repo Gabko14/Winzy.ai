@@ -42,6 +42,20 @@ func packageTestDBName(wd string) string {
 	return testDBPrefix + sanitized + "_" + hash
 }
 
+// suffixedTestDBName appends a generated suffix while keeping the result
+// within Postgres's identifier limit. base is always generated internally.
+func suffixedTestDBName(base, suffix string) string {
+	maxBase := postgresIdentMax - 1 - len(suffix)
+	if len(base) > maxBase {
+		// packageTestDBName ends in _<path hash>. Preserve that tail when a
+		// long package name must be shortened, or same-basename packages could
+		// collapse onto one template database.
+		hashTailLen := 1 + pathHashHexLen
+		base = base[:maxBase-hashTailLen] + base[len(base)-hashTailLen:]
+	}
+	return base + "_" + suffix
+}
+
 func sanitizeIdent(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))

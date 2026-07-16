@@ -85,3 +85,26 @@ func TestMaintenanceDatabaseURL_HappyPath(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestSuffixedTestDBName_HappyPath_AppendsSuffix(t *testing.T) {
+	got := suffixedTestDBName("winzy_test_habits_deadbeef", "12345_7")
+	if got != "winzy_test_habits_deadbeef_12345_7" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSuffixedTestDBName_EdgeCase_TruncatesBaseNotSuffix(t *testing.T) {
+	suffix := "12345_999"
+	base := packageTestDBName("/repo/" + strings.Repeat("x", 80))
+	got := suffixedTestDBName(base, suffix)
+	if len(got) != postgresIdentMax {
+		t.Fatalf("len=%d want %d: %q", len(got), postgresIdentMax, got)
+	}
+	if !strings.HasSuffix(got, "_"+suffix) {
+		t.Fatalf("suffix lost: %q", got)
+	}
+	hashTail := base[len(base)-(pathHashHexLen+1):]
+	if !strings.HasSuffix(strings.TrimSuffix(got, "_"+suffix), hashTail) {
+		t.Fatalf("path hash lost: base=%q got=%q", base, got)
+	}
+}
