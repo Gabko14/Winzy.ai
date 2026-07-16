@@ -2,12 +2,15 @@
 // /auth/export orchestrator's HTTP fan-out to five services' own
 // /internal/export/{userId} endpoints (see PM REVIEW ADDENDUM on
 // winzy.ai-rdc7.2: "closes a feature gap found in review... without this,
-// data export would ship incomplete"). Each module registers a Section
-// under its own name at startup; GET /auth/export (internal/auth) is the
-// sole caller of Export, and assembles every registered section — its own
-// "auth" section plus whatever later module beads have registered — into
-// one document. A section erroring is reported as a warning, not a failed
-// request, matching the old orchestrator's partial-failure contract.
+// data export would ship incomplete"). Each module except auth registers a
+// Section under its own name at startup; GET /auth/export (internal/auth)
+// is the sole caller of Export, and prepends its own "auth" section —
+// built directly from the user row its existence gate already fetched,
+// never a registered Section, so it cannot race a concurrent account
+// deletion (winzy.ai-ibxb; see auth.Service.Export's doc comment) — to
+// every section registered here. A section erroring is reported as a
+// warning, not a failed request, matching the old orchestrator's
+// partial-failure contract.
 package export
 
 import (

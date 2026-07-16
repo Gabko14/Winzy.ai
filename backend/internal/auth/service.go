@@ -50,11 +50,12 @@ type Service struct {
 	logger        *slog.Logger
 }
 
-// NewService wires a Service and registers its export section into
-// exportReg under the name "auth" — see internal/export's doc comment for
-// why this replaces the old GET /auth/internal/export/{userId} endpoint.
+// NewService wires a Service. Unlike other modules, auth does NOT register
+// an export section into exportReg: Export assembles the "auth" section
+// itself from the user row its existence gate already fetched (see Export's
+// doc comment), and the registry holds only the other modules' sections.
 func NewService(pool *pgxpool.Pool, tokens *TokenService, registry *events.Registry, exportReg *export.Registry, logger *slog.Logger) *Service {
-	s := &Service{
+	return &Service{
 		pool:          pool,
 		tokens:        tokens,
 		registry:      registry,
@@ -62,8 +63,6 @@ func NewService(pool *pgxpool.Pool, tokens *TokenService, registry *events.Regis
 		exportLimiter: ratelimit.New(1, 60*time.Second),
 		logger:        logger,
 	}
-	exportReg.Register("auth", s.exportSection)
-	return s
 }
 
 // AuthResult is the outcome of Register, Login, and Refresh: a fresh access
@@ -368,15 +367,27 @@ func (s *Service) SearchUsers(ctx context.Context, query string) ([]UserSearchRe
 	return searchUsers(ctx, s.pool, trimmed, 20)
 }
 
-// Export assembles the full data export for userID: auth's own section
-// plus every section other modules have registered, subject to a 1/60s
-// per-user rate limit.
+// Export assembles the full data export for userID: auth's own section,
+// built directly from the user row the existence gate below fetched,
+// prepended to every section other modules have registered — subject to a
+// 1/60s per-user rate limit. Auth's section is deliberately NOT a
+// registered export.Section: it used to be, and its own fetch of the same
+// user row raced the gate's — if DELETE /auth/account landed between the
+// two queries, the gate had already passed (200, not 404) while the
+// section's fetch came back not-found, an error the registry can't
+// distinguish from a genuine module failure, so it degraded "auth" to a
+// warning instead of the whole export 404ing (winzy.ai-ibxb). Building the
+// section from the gate's single fetch closes that window by construction:
+// the same query result both gates existence and supplies the exported
+// data, so there is no second query left to race against a concurrent
+// delete. Prepending preserves the response order from when "auth" was the
+// registry's first registration.
 func (s *Service) Export(ctx context.Context, userID string) ([]export.ServiceExport, []string, error) {
 	if !s.exportLimiter.Allow(userID) {
 		return nil, nil, ErrRateLimited
 	}
 
-	_, found, err := findUserByID(ctx, s.pool, userID)
+	user, found, err := findUserByID(ctx, s.pool, userID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -384,7 +395,8 @@ func (s *Service) Export(ctx context.Context, userID string) ([]export.ServiceEx
 		return nil, nil, ErrNotFound
 	}
 
-	services, warnings := s.exportReg.Export(ctx, userID)
+	others, warnings := s.exportReg.Export(ctx, userID)
+	services := append([]export.ServiceExport{{Service: "auth", Data: newAuthExportData(user)}}, others...)
 	return services, warnings, nil
 }
 
@@ -401,14 +413,10 @@ type authExportData struct {
 	LastLoginAt *time.Time `json:"lastLoginAt"`
 }
 
-func (s *Service) exportSection(ctx context.Context, userID string) (any, error) {
-	user, found, err := findUserByID(ctx, s.pool, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return nil, ErrNotFound
-	}
+// newAuthExportData builds the "auth" section payload from an
+// already-fetched user — no ctx, no DB access, so it cannot race a
+// concurrent account deletion (see Export's doc comment).
+func newAuthExportData(user User) authExportData {
 	return authExportData{
 		UserID:      user.ID,
 		Email:       user.Email,
@@ -417,7 +425,7 @@ func (s *Service) exportSection(ctx context.Context, userID string) (any, error)
 		AvatarURL:   user.AvatarURL,
 		CreatedAt:   user.CreatedAt,
 		LastLoginAt: user.LastLoginAt,
-	}, nil
+	}
 }
 
 // ResolveUsername is the direct-call replacement for the old GET
