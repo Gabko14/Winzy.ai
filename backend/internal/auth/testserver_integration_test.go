@@ -3,7 +3,7 @@
 // Package auth_test's integration suite follows the recipe documented in
 // internal/dbtest and the PM REVIEW ADDENDUM on winzy.ai-rdc7.1: point at
 // the compose "winzy-db" service via TEST_DATABASE_URL, migrations +
-// per-test truncation handled by dbtest.Connect. Run with:
+// per-test database clones handled by dbtest.ConnectParallel. Run with:
 //
 //	docker compose up -d winzy-db
 //	TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
@@ -33,7 +33,7 @@ const testJWTSecret = "integration-test-secret-that-is-at-least-32-chars!!"
 
 // newTestServer wires the same middleware stack cmd/api/main.go assembles
 // (JWT auth, then rate limiting) around the auth module's routes, backed by
-// a real Postgres via dbtest.Connect. Its rate limits are deliberately
+// a real Postgres via dbtest.ConnectParallel. Its rate limits are deliberately
 // generous so ordinary tests never trip them; TestRateLimit_* builds its
 // own tightly-limited server.
 func newTestServer(t *testing.T) *httptest.Server {
@@ -47,7 +47,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 // (proving UserRegistered/UserDeleted actually fire) or export section.
 func newTestServerWithRegistries(t *testing.T, authPerMinute, generalPerMinute int) (*httptest.Server, *events.Registry, *export.Registry) {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tokens, err := auth.NewTokenService(testJWTSecret, 15, 7)

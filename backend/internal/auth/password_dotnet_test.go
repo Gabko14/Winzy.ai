@@ -10,6 +10,7 @@ import (
 )
 
 func TestVerifyPassword_HappyPath_DotNetHashFixtureVerifies(t *testing.T) {
+	t.Parallel()
 	// CRITICAL COMPATIBILITY FIXTURE (winzy.ai-rdc7.2 acceptance criterion):
 	// captured 2026-07-09 from a real, running .NET auth-service (image
 	// winzyai-auth-service, commit at HEAD of this bead) by registering a
@@ -33,6 +34,7 @@ func TestVerifyPassword_HappyPath_DotNetHashFixtureVerifies(t *testing.T) {
 }
 
 func TestVerifyPassword_ErrorCase_DotNetHashFixtureRejectsWrongPassword(t *testing.T) {
+	t.Parallel()
 	const dotNetHash = "D7aY9nV9OroRI/DSVjBW6w==:Ust5748ZwCat5YuaGkDi2d/XdSMnMh30hzHJpVRy1zo="
 
 	if verifyWithProductionParams("WrongPassword!", dotNetHash) {

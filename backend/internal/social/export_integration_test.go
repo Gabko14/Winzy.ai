@@ -15,6 +15,7 @@ import (
 // --- Happy path ---
 
 func TestExport_HappyPath_WithFriendsAndPreferencesReturnsFullData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -48,6 +49,7 @@ func TestExport_HappyPath_WithFriendsAndPreferencesReturnsFullData(t *testing.T)
 }
 
 func TestExport_HappyPath_PendingRequestsIncludeDirection(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, otherID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	third := "33333333-3333-3333-3333-333333333333"
@@ -76,6 +78,7 @@ func TestExport_HappyPath_PendingRequestsIncludeDirection(t *testing.T) {
 // --- Edge cases / error conditions ---
 
 func TestExport_ErrorCase_NoSocialDataOmitsSection(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	unknownUserID := "99999999-9999-9999-9999-999999999999"
 
@@ -91,6 +94,7 @@ func TestExport_ErrorCase_NoSocialDataOmitsSection(t *testing.T) {
 }
 
 func TestExport_EdgeCase_OnlyPreferencesStillIncluded(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -104,6 +108,7 @@ func TestExport_EdgeCase_OnlyPreferencesStillIncluded(t *testing.T) {
 }
 
 func TestExport_EdgeCase_OnlyWitnessLinksStillIncluded(t *testing.T) {
+	t.Parallel()
 	// witnessLinks is a genuine addition over the C# source (see export.go's
 	// witnessLinkExport doc comment) — a user with ONLY a witness link (no
 	// friends/preferences/visibility settings) must not be treated as

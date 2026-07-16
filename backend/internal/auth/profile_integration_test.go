@@ -10,6 +10,7 @@ import (
 )
 
 func TestGetProfile_HappyPath_ReturnsUserProfile(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	displayName := "My Name"
 	reg := registerUser(t, srv, "profile1@example.com", "profileuser1", "Password123!", &displayName)
@@ -36,6 +37,7 @@ func TestGetProfile_HappyPath_ReturnsUserProfile(t *testing.T) {
 }
 
 func TestGetProfile_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/auth/profile"})
@@ -46,6 +48,7 @@ func TestGetProfile_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestGetProfile_ErrorCase_AfterAccountDeletedReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	// A valid JWT for a user deleted after the token was issued: the
 	// middleware still accepts the (unexpired) token, but GetProfile must
 	// 404 since the row is gone.
@@ -72,6 +75,7 @@ func TestGetProfile_ErrorCase_AfterAccountDeletedReturnsNotFound(t *testing.T) {
 }
 
 func TestUpdateProfile_HappyPath_ChangesDisplayName(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	oldName := "Old Name"
 	reg := registerUser(t, srv, "profile2@example.com", "profileuser2", "Password123!", &oldName)
@@ -94,6 +98,7 @@ func TestUpdateProfile_HappyPath_ChangesDisplayName(t *testing.T) {
 }
 
 func TestUpdateProfile_EdgeCase_BlankDisplayNameClearsIt(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	oldName := "Old Name"
 	reg := registerUser(t, srv, "profileclear1@example.com", "profileclearuser1", "Password123!", &oldName)
@@ -116,6 +121,7 @@ func TestUpdateProfile_EdgeCase_BlankDisplayNameClearsIt(t *testing.T) {
 }
 
 func TestUpdateProfile_EdgeCase_ValidAvatarURLAccepted(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "avatar1@example.com", "avataruser1", "Password123!", nil)
 
@@ -137,6 +143,7 @@ func TestUpdateProfile_EdgeCase_ValidAvatarURLAccepted(t *testing.T) {
 }
 
 func TestUpdateProfile_ErrorCase_InvalidAvatarURLReturnsValidationError(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "avatar2@example.com", "avataruser2", "Password123!", nil)
 
@@ -158,6 +165,7 @@ func TestUpdateProfile_ErrorCase_InvalidAvatarURLReturnsValidationError(t *testi
 }
 
 func TestUpdateProfile_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	name := "Name"
 
@@ -173,6 +181,7 @@ func TestUpdateProfile_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestUpdateProfile_ErrorCase_LiteralNullBodyIsRequired(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "profilenull@example.com", "profilenull", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{
@@ -188,6 +197,7 @@ func TestUpdateProfile_ErrorCase_LiteralNullBodyIsRequired(t *testing.T) {
 }
 
 func TestUpdateProfile_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "profiletrail@example.com", "profiletrail", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{

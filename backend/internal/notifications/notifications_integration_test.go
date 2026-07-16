@@ -13,6 +13,7 @@ import (
 )
 
 func TestListNotifications_Empty(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "n1@example.com", "nuser1")
 	code, body := doRequest(t, stack.srv, testRequest{
@@ -28,6 +29,7 @@ func TestListNotifications_Empty(t *testing.T) {
 }
 
 func TestSettings_ReadUnread_DeviceParity(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "n2@example.com", "nuser2")
 	headers := bearerFor(t, stack.tokens, user.User.ID)
@@ -92,6 +94,7 @@ func TestSettings_ReadUnread_DeviceParity(t *testing.T) {
 }
 
 func TestVAPIDPublicKey_NotConfigured_404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	code, body := doRequest(t, stack.srv, testRequest{
 		method: "GET", path: "/notifications/vapid-public-key",
@@ -105,6 +108,7 @@ func TestVAPIDPublicKey_NotConfigured_404(t *testing.T) {
 }
 
 func TestHabitCompleted_FanOut_FiltersAndIdempotency(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	actor := registerUser(t, stack.authService, "actor@example.com", "actoruser")
 	friendOK := registerUser(t, stack.authService, "friendok@example.com", "friendok")
@@ -172,6 +176,7 @@ func countType(body map[string]any, typ string) int {
 }
 
 func TestMarkReadAndReadAll(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	actor := registerUser(t, stack.authService, "actor2@example.com", "actor2")
 	friend := registerUser(t, stack.authService, "friend2@example.com", "friend2")
@@ -239,6 +244,7 @@ func TestMarkReadAndReadAll(t *testing.T) {
 }
 
 func TestFriendRequestAndChallengeHandlers(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := registerUser(t, stack.authService, "a3@example.com", "auser3")
 	b := registerUser(t, stack.authService, "b3@example.com", "buser3")
@@ -296,6 +302,7 @@ func TestFriendRequestAndChallengeHandlers(t *testing.T) {
 }
 
 func TestUserDeleted_CleansNotificationData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := registerUser(t, stack.authService, "del@example.com", "deluser")
 	b := registerUser(t, stack.authService, "keep@example.com", "keepuser")
@@ -333,6 +340,7 @@ func TestUserDeleted_CleansNotificationData(t *testing.T) {
 }
 
 func TestExport_NoData_OmitsSection(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "exp@example.com", "expuser")
 	sections, warnings := stack.exportReg.Export(context.Background(), user.User.ID)
@@ -344,6 +352,7 @@ func TestExport_NoData_OmitsSection(t *testing.T) {
 }
 
 func TestExport_WithData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "exp2@example.com", "expuser2")
 	friend := registerUser(t, stack.authService, "exp3@example.com", "expuser3")
@@ -374,6 +383,7 @@ func TestExport_WithData(t *testing.T) {
 }
 
 func TestDeviceValidationErrors(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "dev@example.com", "devuser")
 	headers := bearerFor(t, stack.tokens, user.User.ID)

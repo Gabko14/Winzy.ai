@@ -88,14 +88,12 @@ jobs:
         run: go build ./...
 
       - name: go test (race, unit + integration) with timing
-        # Per-package databases (winzy.ai-edxi): dbtest.Connect rewrites
-        # TEST_DATABASE_URL to winzy_test_<pkg>_* so packages can run in
-        # parallel — no -p 1.
-        # Timing table + soft tripwire (winzy.ai-56ki): warn (do not fail)
-        # when wall-clock exceeds ~3x Phase A+B steady state (~13s → 40s).
-        # Phase C (zfa3 in-package t.Parallel) is deferred — refresh the
-        # threshold when that lands.
+        # Per-test template clones (winzy.ai-zfa3 / ConnectParallel): packages
+        # and tests within a package both run in parallel — no -p 1.
+        # Timing table + soft tripwire (winzy.ai-56ki, refreshed for Phase C):
+        # warn (do not fail) when wall-clock exceeds ~3x Phase C steady state
+        # (~11s → 33s).
         run: |
           set -o pipefail
           go test -tags=integration -race -json ./... \
-            | go run ./tools/testtiming -warn-after=40s
+            | go run ./tools/testtiming -warn-after=33s

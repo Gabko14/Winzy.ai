@@ -7,6 +7,7 @@ import (
 )
 
 func TestHashPassword_HappyPath_ProducesVerifiableHash(t *testing.T) {
+	t.Parallel()
 	hash, err := auth.HashPassword("correctpassword")
 	if err != nil {
 		t.Fatalf("HashPassword() returned unexpected error: %v", err)
@@ -18,6 +19,7 @@ func TestHashPassword_HappyPath_ProducesVerifiableHash(t *testing.T) {
 }
 
 func TestHashPassword_HappyPath_SaltsDifferentlyEachCall(t *testing.T) {
+	t.Parallel()
 	hash1, err := auth.HashPassword("password123")
 	if err != nil {
 		t.Fatalf("HashPassword() returned unexpected error: %v", err)
@@ -33,6 +35,7 @@ func TestHashPassword_HappyPath_SaltsDifferentlyEachCall(t *testing.T) {
 }
 
 func TestHashPassword_EdgeCase_ContainsExactlyOneColonSeparator(t *testing.T) {
+	t.Parallel()
 	hash, err := auth.HashPassword("password123")
 	if err != nil {
 		t.Fatalf("HashPassword() returned unexpected error: %v", err)
@@ -50,6 +53,7 @@ func TestHashPassword_EdgeCase_ContainsExactlyOneColonSeparator(t *testing.T) {
 }
 
 func TestHashPassword_EdgeCase_MinAndMaxLengthPasswords(t *testing.T) {
+	t.Parallel()
 	minPassword := "12345678" // 8 chars, the validation floor
 	hash, err := auth.HashPassword(minPassword)
 	if err != nil {
@@ -73,6 +77,7 @@ func TestHashPassword_EdgeCase_MinAndMaxLengthPasswords(t *testing.T) {
 }
 
 func TestVerifyPassword_ErrorCase_WrongPasswordRejected(t *testing.T) {
+	t.Parallel()
 	hash, err := auth.HashPassword("correctpassword")
 	if err != nil {
 		t.Fatalf("HashPassword() returned unexpected error: %v", err)
@@ -84,24 +89,28 @@ func TestVerifyPassword_ErrorCase_WrongPasswordRejected(t *testing.T) {
 }
 
 func TestVerifyPassword_ErrorCase_MalformedHashRejected(t *testing.T) {
+	t.Parallel()
 	if auth.VerifyPassword("password", "not-a-valid-hash") {
 		t.Error("VerifyPassword() accepted a malformed hash (no colon separator)")
 	}
 }
 
 func TestVerifyPassword_ErrorCase_EmptyHashRejected(t *testing.T) {
+	t.Parallel()
 	if auth.VerifyPassword("password", "") {
 		t.Error("VerifyPassword() accepted an empty hash")
 	}
 }
 
 func TestVerifyPassword_ErrorCase_NonBase64PartsRejected(t *testing.T) {
+	t.Parallel()
 	if auth.VerifyPassword("password", "not-base64!!!:also-not-base64!!!") {
 		t.Error("VerifyPassword() accepted a hash whose parts are not valid base64")
 	}
 }
 
 func TestVerifyPassword_ErrorCase_TooManyColonsRejected(t *testing.T) {
+	t.Parallel()
 	if auth.VerifyPassword("password", "YQ==:YQ==:YQ==") {
 		t.Error("VerifyPassword() accepted a hash with more than one colon separator")
 	}

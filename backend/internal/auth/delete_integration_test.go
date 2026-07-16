@@ -10,6 +10,7 @@ import (
 )
 
 func TestDeleteAccount_HappyPath_ReturnsNoContent(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "delete1@example.com", "deleteuser1", "Password123!", nil)
 
@@ -25,6 +26,7 @@ func TestDeleteAccount_HappyPath_ReturnsNoContent(t *testing.T) {
 }
 
 func TestDeleteAccount_HappyPath_CannotLoginAfterwards(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "delete2@example.com", "deleteuser2", "Password123!", nil)
 
@@ -48,6 +50,7 @@ func TestDeleteAccount_HappyPath_CannotLoginAfterwards(t *testing.T) {
 }
 
 func TestDeleteAccount_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodDelete, path: "/auth/account"})
@@ -58,6 +61,7 @@ func TestDeleteAccount_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestDeleteAccount_ErrorCase_DoubleDeleteReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "delete3@example.com", "deleteuser3", "Password123!", nil)
 

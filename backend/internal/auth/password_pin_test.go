@@ -11,6 +11,7 @@ import (
 )
 
 func TestProductionHashingParamsPinned(t *testing.T) {
+	t.Parallel()
 	if prodParallelism != 1 {
 		t.Fatalf("prodParallelism = %d, want 1", prodParallelism)
 	}

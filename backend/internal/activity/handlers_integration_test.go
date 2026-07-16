@@ -15,6 +15,7 @@ import (
 )
 
 func TestHandlers_HappyPath_IdempotentReplay(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "idem@example.com", "idemuser")
 	habitID := "11111111-1111-1111-1111-111111111111"
@@ -41,6 +42,7 @@ func TestHandlers_HappyPath_IdempotentReplay(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_FriendAcceptedPairAtomicUnderOwnTx(t *testing.T) {
+	t.Parallel()
 	// FriendRequestAccepted arrives post-commit (pool querier) — handler must
 	// open its own tx so both inserts commit together (REVIEW ROUND 1 FIX B).
 	stack := newTestStack(t)
@@ -71,6 +73,7 @@ func TestHandlers_HappyPath_FriendAcceptedPairAtomicUnderOwnTx(t *testing.T) {
 // after a historical crash left only entry1: re-emit must insert the missing
 // key2 instead of early-returning on the key1 duplicate.
 func TestHandlers_HappyPath_FriendAcceptedHealsOrphanKey2(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := registerUser(t, stack.authService, "heal1@example.com", "healone")
 	b := registerUser(t, stack.authService, "heal2@example.com", "healtwo")
@@ -109,6 +112,7 @@ func TestHandlers_HappyPath_FriendAcceptedHealsOrphanKey2(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_VisibilityNarrowingAndWidening(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "vis@example.com", "visuser")
 	habitID := createHabit(t, stack, user.User.ID, "Toggle")
@@ -172,6 +176,7 @@ func TestHandlers_HappyPath_VisibilityNarrowingAndWidening(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_FriendRemovedSoftDeletesAccepted(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := registerUser(t, stack.authService, "rm1@example.com", "rmone")
 	b := registerUser(t, stack.authService, "rm2@example.com", "rmtwo")
@@ -201,6 +206,7 @@ func TestHandlers_HappyPath_FriendRemovedSoftDeletesAccepted(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_UserDeletedHardDeletes(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := registerUser(t, stack.authService, "del1@example.com", "delone")
 	b := registerUser(t, stack.authService, "del2@example.com", "deltwo")
@@ -236,6 +242,7 @@ func TestHandlers_HappyPath_UserDeletedHardDeletes(t *testing.T) {
 }
 
 func TestHandlers_EdgeCase_SoftDeleteInvisibleOnAllReadPaths(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "soft@example.com", "softuser")
 	habitID := createHabit(t, stack, user.User.ID, "HideMe")
@@ -300,6 +307,7 @@ func TestHandlers_EdgeCase_SoftDeleteInvisibleOnAllReadPaths(t *testing.T) {
 }
 
 func TestExport_HappyPath_AndErrNoData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "exp@example.com", "expuser")
 
@@ -347,6 +355,7 @@ func TestExport_HappyPath_AndErrNoData(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_ChallengeAndCompletedPayloads(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "ch@example.com", "chuser")
 	friend := registerUser(t, stack.authService, "chf@example.com", "chfriend")
@@ -395,6 +404,7 @@ func TestHandlers_HappyPath_ChallengeAndCompletedPayloads(t *testing.T) {
 }
 
 func TestHandlers_HappyPath_HabitCompletedIdempotencyKeyUsesDate(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "hc@example.com", "hcuser")
 	habitID := "44444444-4444-4444-4444-444444444444"
@@ -426,6 +436,7 @@ func TestHandlers_HappyPath_HabitCompletedIdempotencyKeyUsesDate(t *testing.T) {
 }
 
 func TestHandlers_EdgeCase_InTxQuerierFrom(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "tx@example.com", "txuser")
 
@@ -459,6 +470,7 @@ func TestHandlers_EdgeCase_InTxQuerierFrom(t *testing.T) {
 }
 
 func TestExport_ErrorCase_ErrNoDataSentinel(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	orphan := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	sections, _ := stack.exportReg.Export(context.Background(), orphan)

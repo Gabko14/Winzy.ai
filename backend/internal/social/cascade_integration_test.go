@@ -23,6 +23,7 @@ import (
 // --- HabitCreated hook ---
 
 func TestHabitCreatedHook_HappyPath_InsertsDefaultVisibility(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	habit := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -40,6 +41,7 @@ func TestHabitCreatedHook_HappyPath_InsertsDefaultVisibility(t *testing.T) {
 }
 
 func TestHabitCreatedHook_HappyPath_UsesOwnerDefaultPreference(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	doRequest(t, stack.srv, testRequest{method: http.MethodPut, path: "/social/preferences", headers: a, body: map[string]string{"defaultHabitVisibility": "public"}})
@@ -55,6 +57,7 @@ func TestHabitCreatedHook_HappyPath_UsesOwnerDefaultPreference(t *testing.T) {
 }
 
 func TestHabitCreatedHook_EdgeCase_DoubleFireIsIdempotent(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, habitID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 
@@ -79,6 +82,7 @@ func TestHabitCreatedHook_EdgeCase_DoubleFireIsIdempotent(t *testing.T) {
 // --- HabitArchived hook ---
 
 func TestHabitArchivedHook_HappyPath_DeletesVisibilitySetting(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	habit := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -97,6 +101,7 @@ func TestHabitArchivedHook_HappyPath_DeletesVisibilitySetting(t *testing.T) {
 }
 
 func TestHabitArchivedHook_EdgeCase_NoSettingDoesNotFail(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	// Redelivery / a habit that never had a visibility row for some reason —
 	// deleting a non-existent row is a no-op, not an error.
@@ -110,6 +115,7 @@ func TestHabitArchivedHook_EdgeCase_NoSettingDoesNotFail(t *testing.T) {
 // --- UserDeleted hook (full cascade) ---
 
 func TestUserDeletedHook_HappyPath_RemovesEverySocialRow(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	owner := registerUserViaService(t, stack.authService, "cascadeowner@example.com", "cascadeowner")
 	friend := registerUserViaService(t, stack.authService, "cascadefriend@example.com", "cascadefriend")
@@ -147,6 +153,7 @@ func TestUserDeletedHook_HappyPath_RemovesEverySocialRow(t *testing.T) {
 // --- Extending the winzy.ai-rdc7.13 transactional cascade to auth+habits+social ---
 
 func TestDeleteAccount_ErrorCase_FailingHandlerRollsBackSocialToo(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	reg := registerUserViaService(t, stack.authService, "socialrollback@example.com", "socialrollback")
 
@@ -181,6 +188,7 @@ func TestDeleteAccount_ErrorCase_FailingHandlerRollsBackSocialToo(t *testing.T) 
 }
 
 func TestDeleteAccount_HappyPath_CommitRemovesSocialDataToo(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	reg := registerUserViaService(t, stack.authService, "socialcommit@example.com", "socialcommit")
 

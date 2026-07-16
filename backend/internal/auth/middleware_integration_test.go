@@ -14,6 +14,7 @@ import (
 )
 
 func TestMiddleware_HappyPath_PublicRoutesWorkWithoutAuthorizationHeader(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -28,6 +29,7 @@ func TestMiddleware_HappyPath_PublicRoutesWorkWithoutAuthorizationHeader(t *test
 }
 
 func TestMiddleware_ErrorCase_MissingTokenRejectsProtectedRoute(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/auth/profile"})
@@ -38,6 +40,7 @@ func TestMiddleware_ErrorCase_MissingTokenRejectsProtectedRoute(t *testing.T) {
 }
 
 func TestMiddleware_ErrorCase_GarbageTokenRejected(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -52,6 +55,7 @@ func TestMiddleware_ErrorCase_GarbageTokenRejected(t *testing.T) {
 }
 
 func TestMiddleware_ErrorCase_MalformedAuthorizationHeaderRejected(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -66,6 +70,7 @@ func TestMiddleware_ErrorCase_MalformedAuthorizationHeaderRejected(t *testing.T)
 }
 
 func TestMiddleware_ErrorCase_ExpiredTokenRejected(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	// A TokenService with a 0-minute access lifetime issues already-expired
@@ -92,6 +97,7 @@ func TestMiddleware_ErrorCase_ExpiredTokenRejected(t *testing.T) {
 }
 
 func TestMiddleware_ErrorCase_TokenSignedWithDifferentSecretRejected(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	otherTokens, err := auth.NewTokenService("a-completely-different-secret-value-32ch", 15, 7)
@@ -115,6 +121,7 @@ func TestMiddleware_ErrorCase_TokenSignedWithDifferentSecretRejected(t *testing.
 }
 
 func TestRateLimit_HappyPath_AuthEndpointAllowsUpToLimit(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServerWithRegistries(t, 2, 100000)
 
 	for i := 0; i < 2; i++ {
@@ -130,6 +137,7 @@ func TestRateLimit_HappyPath_AuthEndpointAllowsUpToLimit(t *testing.T) {
 }
 
 func TestRateLimit_ErrorCase_AuthEndpointRejectsOverLimit(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServerWithRegistries(t, 2, 100000)
 
 	for i := 0; i < 2; i++ {
@@ -151,6 +159,7 @@ func TestRateLimit_ErrorCase_AuthEndpointRejectsOverLimit(t *testing.T) {
 }
 
 func TestRateLimit_ErrorCase_GeneralLimitAppliesToNonAuthPaths(t *testing.T) {
+	t.Parallel()
 	// /auth/profile is itself under the auth prefix; use the general
 	// limiter's effect on a non-auth-prefixed request by hitting it via a
 	// tiny general limit while the auth limit stays generous — /auth/*
@@ -170,6 +179,7 @@ func TestRateLimit_ErrorCase_GeneralLimitAppliesToNonAuthPaths(t *testing.T) {
 }
 
 func TestEvents_HappyPath_RegisterEmitsUserRegistered(t *testing.T) {
+	t.Parallel()
 	srv, registry, _ := newTestServerWithRegistries(t, 100000, 100000)
 
 	var mu sync.Mutex
@@ -197,6 +207,7 @@ func TestEvents_HappyPath_RegisterEmitsUserRegistered(t *testing.T) {
 }
 
 func TestEvents_HappyPath_DeleteAccountEmitsUserDeleted(t *testing.T) {
+	t.Parallel()
 	srv, registry, _ := newTestServerWithRegistries(t, 100000, 100000)
 
 	var mu sync.Mutex
@@ -230,6 +241,7 @@ func TestEvents_HappyPath_DeleteAccountEmitsUserDeleted(t *testing.T) {
 }
 
 func TestEvents_ErrorCase_FailingUserDeletedHandlerRollsBackDelete(t *testing.T) {
+	t.Parallel()
 	srv, registry, _ := newTestServerWithRegistries(t, 100000, 100000)
 
 	events.Register(registry, events.Handler[events.UserDeleted](func(_ context.Context, _ events.UserDeleted) error {

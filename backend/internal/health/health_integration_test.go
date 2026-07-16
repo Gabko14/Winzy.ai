@@ -18,7 +18,8 @@ import (
 // proving the documented recipe actually works end-to-end. Every later
 // module bead's integration tests follow this same shape.
 func TestHandler_Integration_RealPostgres(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()

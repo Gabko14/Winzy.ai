@@ -23,6 +23,7 @@ import (
 // --- FriendIDs (replaces InternalFriendsCheck_*'s GetFriendIds coverage) ---
 
 func TestFriendIDs_HappyPath_ReturnsAcceptedFriends(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -37,6 +38,7 @@ func TestFriendIDs_HappyPath_ReturnsAcceptedFriends(t *testing.T) {
 }
 
 func TestFriendIDs_EdgeCase_EmptyWhenNoFriends(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	ids, err := stack.socialService.FriendIDs(t.Context(), "11111111-1111-1111-1111-111111111111")
 	if err != nil {
@@ -50,6 +52,7 @@ func TestFriendIDs_EdgeCase_EmptyWhenNoFriends(t *testing.T) {
 // --- AreFriends (replaces InternalFriendsCheck_*) ---
 
 func TestAreFriends_HappyPath_AcceptedReturnsTrue(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -64,6 +67,7 @@ func TestAreFriends_HappyPath_AcceptedReturnsTrue(t *testing.T) {
 }
 
 func TestAreFriends_ErrorCase_NoRelationshipReturnsFalse(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	areFriends, err := stack.socialService.AreFriends(t.Context(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
 	if err != nil {
@@ -75,6 +79,7 @@ func TestAreFriends_ErrorCase_NoRelationshipReturnsFalse(t *testing.T) {
 }
 
 func TestAreFriends_ErrorCase_PendingRequestReturnsFalse(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -92,6 +97,7 @@ func TestAreFriends_ErrorCase_PendingRequestReturnsFalse(t *testing.T) {
 // --- VisibleHabitIDsForViewer (replaces InternalVisibleHabits_*) ---
 
 func TestVisibleHabitIDsForViewer_HappyPath_PublicViewerReturnsPublicOnly(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -110,6 +116,7 @@ func TestVisibleHabitIDsForViewer_HappyPath_PublicViewerReturnsPublicOnly(t *tes
 }
 
 func TestVisibleHabitIDsForViewer_HappyPath_FriendViewerSeesFriendsAndPublic(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -129,6 +136,7 @@ func TestVisibleHabitIDsForViewer_HappyPath_FriendViewerSeesFriendsAndPublic(t *
 }
 
 func TestVisibleHabitIDsForViewer_ErrorCase_NonFriendViewerSeesPublicOnly(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, strangerID := "11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"
 	a := bearerFor(t, stack.tokens, userID)
@@ -147,6 +155,7 @@ func TestVisibleHabitIDsForViewer_ErrorCase_NonFriendViewerSeesPublicOnly(t *tes
 }
 
 func TestVisibleHabitIDsForViewer_EdgeCase_DefaultPublicExcludesExplicitNonPublic(t *testing.T) {
+	t.Parallel()
 	// The HabitCreated hook eagerly materializes a visibility_settings row
 	// at whatever the owner's default is AT CREATION TIME (see
 	// service.go's handleHabitCreated) — so once a real habit exists, it
@@ -178,6 +187,7 @@ func TestVisibleHabitIDsForViewer_EdgeCase_DefaultPublicExcludesExplicitNonPubli
 }
 
 func TestVisibleHabitIDsForViewer_HappyPath_FriendSeesAtLeastAsMuchAsPublic(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -207,6 +217,7 @@ func TestVisibleHabitIDsForViewer_HappyPath_FriendSeesAtLeastAsMuchAsPublic(t *t
 // (winzy.ai-rdc7.4's INTEGRATION POINT, now closed) ---
 
 func TestPublicFlameProfile_HappyPath_PublicHabitVisible(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	username := "pubvisiblehappy"
 	reg := registerUserViaService(t, stack.authService, "pubvisiblehappy@example.com", username)
@@ -225,6 +236,7 @@ func TestPublicFlameProfile_HappyPath_PublicHabitVisible(t *testing.T) {
 }
 
 func TestPublicFlameProfile_ErrorCase_PrivateHabitExcludedAfterVisibilityChange(t *testing.T) {
+	t.Parallel()
 	// The core winzy.ai-rdc7.4 regression test: before this bead, habits'
 	// public flame page showed every non-archived habit regardless of
 	// visibility (see promise_public.go's former INTEGRATION POINT comment).
@@ -248,6 +260,7 @@ func TestPublicFlameProfile_ErrorCase_PrivateHabitExcludedAfterVisibilityChange(
 }
 
 func TestPublicFlameProfile_HappyPath_BeforeAndAfterVisibilityChange(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	username := "pubbeforeafter"
 	reg := registerUserViaService(t, stack.authService, "pubbeforeafter@example.com", username)

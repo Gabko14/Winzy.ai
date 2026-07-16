@@ -14,6 +14,7 @@ import (
 )
 
 func TestCreateChallenge_HappyPath_Returns201(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator1@example.com", "creator1")
 	recipient := registerUser(t, stack.authService, "recip1@example.com", "recip1")
@@ -42,6 +43,7 @@ func TestCreateChallenge_HappyPath_Returns201(t *testing.T) {
 }
 
 func TestCreateChallenge_ErrorCase_NotFriends_Returns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator2@example.com", "creator2")
 	stranger := registerUser(t, stack.authService, "stranger2@example.com", "stranger2")
@@ -63,6 +65,7 @@ func TestCreateChallenge_ErrorCase_NotFriends_Returns400(t *testing.T) {
 }
 
 func TestCreateChallenge_ErrorCase_SelfChallenge_Returns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator3@example.com", "creator3")
 	habitID := createHabit(t, stack, creator.User.ID, "Run")
@@ -83,6 +86,7 @@ func TestCreateChallenge_ErrorCase_SelfChallenge_Returns400(t *testing.T) {
 }
 
 func TestCreateChallenge_ErrorCase_UniqueActiveConflict_Returns409(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator4@example.com", "creator4")
 	recipient := registerUser(t, stack.authService, "recip4@example.com", "recip4")
@@ -111,6 +115,7 @@ func TestCreateChallenge_ErrorCase_UniqueActiveConflict_Returns409(t *testing.T)
 }
 
 func TestCreateChallenge_ErrorCase_NullBody_Returns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator5@example.com", "creator5")
 	status, body := doRequest(t, stack.srv, testRequest{
@@ -124,6 +129,7 @@ func TestCreateChallenge_ErrorCase_NullBody_Returns400(t *testing.T) {
 }
 
 func TestCreateChallenge_ErrorCase_MalformedJSON_Returns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator6@example.com", "creator6")
 	status, body := doRequest(t, stack.srv, testRequest{
@@ -137,6 +143,7 @@ func TestCreateChallenge_ErrorCase_MalformedJSON_Returns400(t *testing.T) {
 }
 
 func TestListChallenges_DerivedExpiredFilter(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator7@example.com", "creator7")
 	recipient := registerUser(t, stack.authService, "recip7@example.com", "recip7")
@@ -171,6 +178,7 @@ func TestListChallenges_DerivedExpiredFilter(t *testing.T) {
 }
 
 func TestClaimAndCancel_Permissions(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator8@example.com", "creator8")
 	recipient := registerUser(t, stack.authService, "recip8@example.com", "recip8")
@@ -216,6 +224,7 @@ func TestClaimAndCancel_Permissions(t *testing.T) {
 }
 
 func TestProgressEngine_ProcessedDatesDedupe(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator9@example.com", "creator9")
 	recipient := registerUser(t, stack.authService, "recip9@example.com", "recip9")
@@ -254,6 +263,7 @@ func TestProgressEngine_ProcessedDatesDedupe(t *testing.T) {
 }
 
 func TestProgressEngine_ImprovementBaselineCapture(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator10@example.com", "creator10")
 	recipient := registerUser(t, stack.authService, "recip10@example.com", "recip10")
@@ -293,6 +303,7 @@ func TestProgressEngine_ImprovementBaselineCapture(t *testing.T) {
 }
 
 func TestProgressEngine_DaysInPeriod_SkipsPreCreationDate(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator14@example.com", "creator14")
 	recipient := registerUser(t, stack.authService, "recip14@example.com", "recip14")
@@ -324,6 +335,7 @@ func TestProgressEngine_DaysInPeriod_SkipsPreCreationDate(t *testing.T) {
 }
 
 func TestProgressEngine_ConsistencyTarget_NoDateGate(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator15@example.com", "creator15")
 	recipient := registerUser(t, stack.authService, "recip15@example.com", "recip15")
@@ -357,6 +369,7 @@ func TestProgressEngine_ConsistencyTarget_NoDateGate(t *testing.T) {
 }
 
 func TestUserDeleted_CascadesChallenges(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator11@example.com", "creator11")
 	recipient := registerUser(t, stack.authService, "recip11@example.com", "recip11")
@@ -389,6 +402,7 @@ func TestUserDeleted_CascadesChallenges(t *testing.T) {
 }
 
 func TestExportSection_ChallengeSingular(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator12@example.com", "creator12")
 	recipient := registerUser(t, stack.authService, "recip12@example.com", "recip12")
@@ -437,6 +451,7 @@ func TestExportSection_ChallengeSingular(t *testing.T) {
 }
 
 func TestProgressEngine_ConsistencyTargetCompletes(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "creator13@example.com", "creator13")
 	recipient := registerUser(t, stack.authService, "recip13@example.com", "recip13")
@@ -482,6 +497,7 @@ func TestProgressEngine_ConsistencyTargetCompletes(t *testing.T) {
 }
 
 func TestCreateChallenge_CreatesHabitViaComplete(t *testing.T) {
+	t.Parallel()
 	// Smoke: CompleteHabit still works with challenges handler registered.
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "completer@example.com", "completer")
@@ -495,6 +511,7 @@ func TestCreateChallenge_CreatesHabitViaComplete(t *testing.T) {
 }
 
 func TestCreateChallenge_CustomDateRange_ValidationErrors(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "cdra@example.com", "cdra")
 	recipient := registerUser(t, stack.authService, "cdrb@example.com", "cdrb")
@@ -548,6 +565,7 @@ func TestCreateChallenge_CustomDateRange_ValidationErrors(t *testing.T) {
 }
 
 func TestProgressEngine_CustomDateRange_RangeGateAndLiveConsistency(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "cdrc@example.com", "cdrc")
 	recipient := registerUser(t, stack.authService, "cdrd@example.com", "cdrd")
@@ -625,6 +643,7 @@ func TestProgressEngine_CustomDateRange_RangeGateAndLiveConsistency(t *testing.T
 }
 
 func TestClaim_SecondClaim_Returns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	creator := registerUser(t, stack.authService, "claim2a@example.com", "claim2a")
 	recipient := registerUser(t, stack.authService, "claim2b@example.com", "claim2b")

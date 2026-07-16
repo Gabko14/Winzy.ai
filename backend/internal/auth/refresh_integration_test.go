@@ -10,6 +10,7 @@ import (
 )
 
 func TestRefresh_HappyPath_ValidTokenReturnsNewRotatedTokens(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "refresh1@example.com", "refreshuser1", "Password123!", nil)
 
@@ -35,6 +36,7 @@ func TestRefresh_HappyPath_ValidTokenReturnsNewRotatedTokens(t *testing.T) {
 }
 
 func TestRefresh_HappyPath_SetsNewCookie(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "refresh3@example.com", "refreshuser3", "Password123!", nil)
 
@@ -53,6 +55,7 @@ func TestRefresh_HappyPath_SetsNewCookie(t *testing.T) {
 }
 
 func TestRefresh_HappyPath_ViaCookieForWebClients(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "refreshweb1@example.com", "refreshwebuser1", "Password123!", nil)
 
@@ -71,6 +74,7 @@ func TestRefresh_HappyPath_ViaCookieForWebClients(t *testing.T) {
 }
 
 func TestRefresh_ErrorCase_RevokedTokenReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "refresh2@example.com", "refreshuser2", "Password123!", nil)
 	original := reg.RefreshToken
@@ -95,6 +99,7 @@ func TestRefresh_ErrorCase_RevokedTokenReturnsUnauthorized(t *testing.T) {
 }
 
 func TestRefresh_ErrorCase_InvalidTokenReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	garbage := "completely-invalid-token"
 
@@ -110,6 +115,7 @@ func TestRefresh_ErrorCase_InvalidTokenReturnsUnauthorized(t *testing.T) {
 }
 
 func TestRefresh_ErrorCase_NoTokenReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -124,6 +130,7 @@ func TestRefresh_ErrorCase_NoTokenReturnsUnauthorized(t *testing.T) {
 }
 
 func TestRefresh_EdgeCase_LiteralNullBodyIsOptionalButHasNoToken(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", rawBody: rawBody("null")})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -132,6 +139,7 @@ func TestRefresh_EdgeCase_LiteralNullBodyIsOptionalButHasNoToken(t *testing.T) {
 }
 
 func TestRefresh_EdgeCase_MissingBodyIsOptionalButHasNoToken(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh"})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -145,6 +153,7 @@ func TestRefresh_EdgeCase_MissingBodyIsOptionalButHasNoToken(t *testing.T) {
 // ContentLength to decide emptiness — otherwise this 400s as malformed
 // instead of hitting the nullable-body path and 401ing for lack of a token.
 func TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", chunkedEmptyBody: true})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -153,6 +162,7 @@ func TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken(t *testing.T) 
 }
 
 func TestRefresh_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/refresh", rawBody: rawBody(`{} trailing`)})
 	if resp.StatusCode != http.StatusBadRequest {

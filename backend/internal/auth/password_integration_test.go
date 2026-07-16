@@ -10,6 +10,7 @@ import (
 )
 
 func TestChangePassword_HappyPath_WithCorrectCurrentReturnsNoContent(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw1@example.com", "pwuser1", "OldPassword1!", nil)
 
@@ -26,6 +27,7 @@ func TestChangePassword_HappyPath_WithCorrectCurrentReturnsNoContent(t *testing.
 }
 
 func TestChangePassword_HappyPath_CanLoginWithNewPassword(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw2@example.com", "pwuser2", "OldPassword1!", nil)
 
@@ -50,6 +52,7 @@ func TestChangePassword_HappyPath_CanLoginWithNewPassword(t *testing.T) {
 }
 
 func TestChangePassword_HappyPath_OldPasswordNoLongerWorks(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw3@example.com", "pwuser3", "OldPassword1!", nil)
 
@@ -71,6 +74,7 @@ func TestChangePassword_HappyPath_OldPasswordNoLongerWorks(t *testing.T) {
 }
 
 func TestChangePassword_HappyPath_RevokesAllRefreshTokens(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw5@example.com", "pwuser5", "Password123!", nil)
 
@@ -95,6 +99,7 @@ func TestChangePassword_HappyPath_RevokesAllRefreshTokens(t *testing.T) {
 }
 
 func TestChangePassword_ErrorCase_WrongCurrentPasswordReturnsValidationError(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw4@example.com", "pwuser4", "Password123!", nil)
 
@@ -115,6 +120,7 @@ func TestChangePassword_ErrorCase_WrongCurrentPasswordReturnsValidationError(t *
 }
 
 func TestChangePassword_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -129,6 +135,7 @@ func TestChangePassword_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestChangePassword_ErrorCase_TooShortNewPasswordReturnsValidationError(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pw6@example.com", "pwuser6", "Password123!", nil)
 
@@ -145,6 +152,7 @@ func TestChangePassword_ErrorCase_TooShortNewPasswordReturnsValidationError(t *t
 }
 
 func TestChangePassword_ErrorCase_LiteralNullUsesValidationShape(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pwnull@example.com", "pwnulluser", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{
@@ -160,6 +168,7 @@ func TestChangePassword_ErrorCase_LiteralNullUsesValidationShape(t *testing.T) {
 }
 
 func TestChangePassword_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "pwtrail@example.com", "pwtrailuser", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{

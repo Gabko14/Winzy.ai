@@ -36,6 +36,7 @@ func decodeLogLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
 }
 
 func TestRequestLogging_HappyPath_LogsRequestIDAndFields(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -79,6 +80,7 @@ func TestRequestLogging_HappyPath_LogsRequestIDAndFields(t *testing.T) {
 }
 
 func TestRequestLogging_EdgeCase_IncludesUserIDWhenAuthenticated(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -107,6 +109,7 @@ func TestRequestLogging_EdgeCase_IncludesUserIDWhenAuthenticated(t *testing.T) {
 }
 
 func TestRequestLogging_EdgeCase_RedactsSensitivePathPrefix(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -134,6 +137,7 @@ func TestRequestLogging_EdgeCase_RedactsSensitivePathPrefix(t *testing.T) {
 }
 
 func TestRequestLogging_EdgeCase_NonSensitivePathIsUnaffected(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -156,6 +160,7 @@ func TestRequestLogging_EdgeCase_NonSensitivePathIsUnaffected(t *testing.T) {
 }
 
 func TestRequestLogging_EdgeCase_NoSensitivePrefixesLeavesPathUnchanged(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -178,6 +183,7 @@ func TestRequestLogging_EdgeCase_NoSensitivePrefixesLeavesPathUnchanged(t *testi
 }
 
 func TestRequestLogging_EdgeCase_DefaultsStatusTo200WhenHandlerNeverCallsWriteHeader(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -200,6 +206,7 @@ func TestRequestLogging_EdgeCase_DefaultsStatusTo200WhenHandlerNeverCallsWriteHe
 }
 
 func TestRecovery_ErrorCase_PanicIsRecoveredAndLoggedWithRequestID(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -238,6 +245,7 @@ func TestRecovery_ErrorCase_PanicIsRecoveredAndLoggedWithRequestID(t *testing.T)
 // witness route must not leak the token into the panic log line either — a
 // crash is exactly the moment someone is reading logs.
 func TestRecovery_ErrorCase_RedactsSensitivePathOnPanic(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -272,6 +280,7 @@ func TestRecovery_ErrorCase_RedactsSensitivePathOnPanic(t *testing.T) {
 }
 
 func TestRecovery_HappyPath_SetsRequestIDResponseHeader(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 
@@ -292,6 +301,7 @@ func TestRecovery_HappyPath_SetsRequestIDResponseHeader(t *testing.T) {
 }
 
 func TestRecovery_ErrorCase_PanicStillEmitsCompleteRequestLog(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 	handler := Chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -322,6 +332,7 @@ func TestRecovery_ErrorCase_PanicStillEmitsCompleteRequestLog(t *testing.T) {
 }
 
 func TestRecovery_EdgeCase_PanicAfterWriteKeepsCommittedStatus(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	logger := testLogger(&buf)
 	handler := Chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -348,6 +359,7 @@ func TestRecovery_EdgeCase_PanicAfterWriteKeepsCommittedStatus(t *testing.T) {
 }
 
 func TestBodyLimit_HappyPath_ExactLimitReachesHandler(t *testing.T) {
+	t.Parallel()
 	called := false
 	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
@@ -362,6 +374,7 @@ func TestBodyLimit_HappyPath_ExactLimitReachesHandler(t *testing.T) {
 }
 
 func TestBodyLimit_ErrorCase_OversizedBodyReturnsEmpty413(t *testing.T) {
+	t.Parallel()
 	called := false
 	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(strings.Repeat("a", int(maxRequestBodyBytes+1))))
@@ -388,6 +401,7 @@ func (erroringBody) Close() error { return nil }
 // a JSON body in this API, so BodyLimit must only lazily wrap them in
 // http.MaxBytesReader instead of eagerly reading up to 1 MiB per request.
 func TestBodyLimit_HappyPath_NonBodyCarryingMethodIsNotEagerlyBuffered(t *testing.T) {
+	t.Parallel()
 	called := false
 	handler := BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
@@ -408,6 +422,7 @@ func TestBodyLimit_HappyPath_NonBodyCarryingMethodIsNotEagerlyBuffered(t *testin
 // cmd/api/main.go's wiring — CORS wraps the rate limiter which wraps
 // BodyLimit) so a 413 still carries CORS headers for the Expo-dev origin.
 func TestBodyLimit_ErrorCase_OversizedBodyKeepsCORSHeadersWhenInsideCORS(t *testing.T) {
+	t.Parallel()
 	handler := CORS("http://localhost:8081")(BodyLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be reached for an oversized body")
 	})))
@@ -425,6 +440,7 @@ func TestBodyLimit_ErrorCase_OversizedBodyKeepsCORSHeadersWhenInsideCORS(t *test
 }
 
 func TestNew_HappyPath_ConfiguresServerTimeouts(t *testing.T) {
+	t.Parallel()
 	srv := New(8080, "http://localhost:8081", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), testLogger(&bytes.Buffer{}))
 	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 30*time.Second || srv.WriteTimeout != 60*time.Second || srv.IdleTimeout != 120*time.Second {
 		t.Errorf("timeouts = header %v read %v write %v idle %v", srv.ReadHeaderTimeout, srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout)
@@ -432,6 +448,7 @@ func TestNew_HappyPath_ConfiguresServerTimeouts(t *testing.T) {
 }
 
 func TestCORS_HappyPath_AllowedOriginIsEchoedWithCredentials(t *testing.T) {
+	t.Parallel()
 	handler := CORS("http://localhost:8081")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -450,6 +467,7 @@ func TestCORS_HappyPath_AllowedOriginIsEchoedWithCredentials(t *testing.T) {
 }
 
 func TestCORS_EdgeCase_DisallowedOriginGetsNoAccessControlHeader(t *testing.T) {
+	t.Parallel()
 	handler := CORS("http://localhost:8081")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -465,6 +483,7 @@ func TestCORS_EdgeCase_DisallowedOriginGetsNoAccessControlHeader(t *testing.T) {
 }
 
 func TestCORS_EdgeCase_PreflightOptionsShortCircuits(t *testing.T) {
+	t.Parallel()
 	called := false
 	handler := CORS("http://localhost:8081")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true

@@ -23,7 +23,8 @@ import (
 // with no pre-check SELECT in between, guaranteeing the second call hits the
 // unique index rather than Service.Register's friendlier pre-check message.
 func TestCreateUser_ErrorCase_UniqueViolationReturnsRaceMessage(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	ctx := context.Background()
 
 	if _, err := createUser(ctx, pool, "race@example.com", "raceuser1", "irrelevant-hash", nil); err != nil {
@@ -46,7 +47,8 @@ func TestCreateUser_ErrorCase_UniqueViolationReturnsRaceMessage(t *testing.T) {
 }
 
 func TestCreateUser_ErrorCase_UniqueViolationOnUsernameAlsoReturnsRaceMessage(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	ctx := context.Background()
 
 	if _, err := createUser(ctx, pool, "raceuser-a@example.com", "raceusername", "irrelevant-hash", nil); err != nil {
@@ -81,7 +83,8 @@ func TestCreateUser_ErrorCase_UniqueViolationOnUsernameAlsoReturnsRaceMessage(t 
 // TestExport_ErrorCase_AfterAccountDeletedReturnsNotFound in
 // export_integration_test.go.
 func TestServiceExport_HappyPath_AuthSectionBuiltFromGateFetchComesFirst(t *testing.T) {
-	pool := dbtest.Connect(t)
+	t.Parallel()
+	pool := dbtest.ConnectParallel(t)
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 

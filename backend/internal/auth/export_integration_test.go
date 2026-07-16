@@ -18,6 +18,7 @@ type exportResponseBody struct {
 }
 
 func TestExport_HappyPath_OnlyAuthSectionUntilOtherModulesRegister(t *testing.T) {
+	t.Parallel()
 	srv, _, _ := newTestServerWithRegistries(t, 100000, 100000)
 	reg := registerUser(t, srv, "export1@example.com", "exportuser1", "Password123!", nil)
 
@@ -43,6 +44,7 @@ func TestExport_HappyPath_OnlyAuthSectionUntilOtherModulesRegister(t *testing.T)
 }
 
 func TestExport_HappyPath_AggregatesRegisteredSections(t *testing.T) {
+	t.Parallel()
 	srv, _, exportRegistry := newTestServerWithRegistries(t, 100000, 100000)
 	exportRegistry.Register("habits", func(_ context.Context, _ string) (any, error) {
 		return map[string]any{"habits": []any{}}, nil
@@ -65,6 +67,7 @@ func TestExport_HappyPath_AggregatesRegisteredSections(t *testing.T) {
 }
 
 func TestExport_HappyPath_FailingSectionBecomesAWarningNotAFailure(t *testing.T) {
+	t.Parallel()
 	srv, _, exportRegistry := newTestServerWithRegistries(t, 100000, 100000)
 	exportRegistry.Register("habits", func(_ context.Context, _ string) (any, error) {
 		return nil, errors.New("habits db unreachable")
@@ -90,6 +93,7 @@ func TestExport_HappyPath_FailingSectionBecomesAWarningNotAFailure(t *testing.T)
 }
 
 func TestExport_ErrorCase_SecondRequestWithinWindowIsRateLimited(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "export4@example.com", "exportuser4", "Password123!", nil)
 
@@ -113,6 +117,7 @@ func TestExport_ErrorCase_SecondRequestWithinWindowIsRateLimited(t *testing.T) {
 }
 
 func TestExport_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/auth/export"})
@@ -123,6 +128,7 @@ func TestExport_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestExport_ErrorCase_AfterAccountDeletedReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "export5@example.com", "exportuser5", "Password123!", nil)
 

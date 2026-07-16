@@ -6,6 +6,7 @@ import (
 )
 
 func TestUserID_HappyPath_SetIsVisibleThroughSharedState(t *testing.T) {
+	t.Parallel()
 	ctx, _ := withRequestState(context.Background())
 	SetUserID(ctx, "user-1")
 
@@ -15,6 +16,7 @@ func TestUserID_HappyPath_SetIsVisibleThroughSharedState(t *testing.T) {
 }
 
 func TestUserID_EdgeCase_MutationVisibleToOuterContextVariable(t *testing.T) {
+	t.Parallel()
 	// This is the property RequestLogging depends on: a context derived
 	// from ctx (as r.WithContext would produce deeper in the chain) can
 	// mutate the same state that ctx itself points to.
@@ -29,6 +31,7 @@ func TestUserID_EdgeCase_MutationVisibleToOuterContextVariable(t *testing.T) {
 }
 
 func TestUserID_ErrorCase_NoRequestStateIsNoOp(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	SetUserID(ctx, "user-3") // must not panic

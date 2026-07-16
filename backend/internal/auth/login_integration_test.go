@@ -10,6 +10,7 @@ import (
 )
 
 func TestLogin_HappyPath_WithEmailReturnsOK(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "login1@example.com", "loginuser1", "Password123!", nil)
 
@@ -32,6 +33,7 @@ func TestLogin_HappyPath_WithEmailReturnsOK(t *testing.T) {
 }
 
 func TestLogin_HappyPath_WithUsernameReturnsOK(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "login2@example.com", "loginuser2", "Password123!", nil)
 
@@ -51,6 +53,7 @@ func TestLogin_HappyPath_WithUsernameReturnsOK(t *testing.T) {
 }
 
 func TestLogin_HappyPath_IsCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "CaseTest@Example.COM", "caseuser1", "Password123!", nil)
 
@@ -66,6 +69,7 @@ func TestLogin_HappyPath_IsCaseInsensitive(t *testing.T) {
 }
 
 func TestLogin_HappyPath_SetsRefreshTokenCookie(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "login4@example.com", "loginuser4", "Password123!", nil)
 
@@ -84,6 +88,7 @@ func TestLogin_HappyPath_SetsRefreshTokenCookie(t *testing.T) {
 }
 
 func TestLogin_HappyPath_UpdatesLastLoginAt(t *testing.T) {
+	t.Parallel()
 	// UserProfile (the /auth/profile response shape) does not expose
 	// LastLoginAt — but the export section does, so that's what this test
 	// (per the PM REVIEW ADDENDUM: "Login updates User.LastLoginAt... easy
@@ -126,6 +131,7 @@ func TestLogin_HappyPath_UpdatesLastLoginAt(t *testing.T) {
 }
 
 func TestLogin_ErrorCase_WrongPasswordReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "login3@example.com", "loginuser3", "Password123!", nil)
 
@@ -141,6 +147,7 @@ func TestLogin_ErrorCase_WrongPasswordReturnsUnauthorized(t *testing.T) {
 }
 
 func TestLogin_ErrorCase_NonexistentUserReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -155,6 +162,7 @@ func TestLogin_ErrorCase_NonexistentUserReturnsUnauthorized(t *testing.T) {
 }
 
 func TestLogin_ErrorCase_MissingFieldsReturnsBadRequest(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -175,6 +183,7 @@ func TestLogin_ErrorCase_MissingFieldsReturnsBadRequest(t *testing.T) {
 }
 
 func TestLogin_ErrorCase_LiteralNullUsesMissingCredentialsShape(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/login", rawBody: rawBody("null")})
 	if resp.StatusCode != http.StatusBadRequest {

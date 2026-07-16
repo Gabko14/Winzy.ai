@@ -10,6 +10,7 @@ import (
 )
 
 func TestLogout_HappyPath_WithValidSessionReturnsNoContent(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "logout1@example.com", "logoutuser1", "Password123!", nil)
 
@@ -27,6 +28,7 @@ func TestLogout_HappyPath_WithValidSessionReturnsNoContent(t *testing.T) {
 }
 
 func TestLogout_HappyPath_InvalidatesRefreshToken(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "logout2@example.com", "logoutuser2", "Password123!", nil)
 
@@ -52,6 +54,7 @@ func TestLogout_HappyPath_InvalidatesRefreshToken(t *testing.T) {
 }
 
 func TestLogout_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -65,6 +68,7 @@ func TestLogout_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 }
 
 func TestLogout_EdgeCase_LiteralNullBodyIsOptional(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "logoutnull@example.com", "logoutnull", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{
@@ -80,6 +84,7 @@ func TestLogout_EdgeCase_LiteralNullBodyIsOptional(t *testing.T) {
 // TestRefresh_EdgeCase_ChunkedEmptyBodyIsOptionalButHasNoToken — a zero-byte
 // chunked logout body must still 204, not 400.
 func TestLogout_EdgeCase_ChunkedEmptyBodyIsOptional(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "logoutchunked@example.com", "logoutchunked", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{
@@ -91,6 +96,7 @@ func TestLogout_EdgeCase_ChunkedEmptyBodyIsOptional(t *testing.T) {
 }
 
 func TestLogout_ErrorCase_MalformedBodyIsNotIgnored(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	reg := registerUser(t, srv, "logoutbad@example.com", "logoutbad", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{

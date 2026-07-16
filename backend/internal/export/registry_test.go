@@ -15,6 +15,7 @@ func silentLogger() *slog.Logger {
 }
 
 func TestExport_HappyPath_AssemblesAllSectionsInRegistrationOrder(t *testing.T) {
+	t.Parallel()
 	r := export.New(silentLogger())
 	r.Register("auth", func(_ context.Context, userID string) (any, error) {
 		return map[string]string{"userId": userID}, nil
@@ -37,6 +38,7 @@ func TestExport_HappyPath_AssemblesAllSectionsInRegistrationOrder(t *testing.T) 
 }
 
 func TestExport_EdgeCase_NoSectionsRegisteredReturnsEmptyNotNilSlices(t *testing.T) {
+	t.Parallel()
 	r := export.New(silentLogger())
 
 	services, warnings := r.Export(context.Background(), "user-1")
@@ -53,6 +55,7 @@ func TestExport_EdgeCase_NoSectionsRegisteredReturnsEmptyNotNilSlices(t *testing
 }
 
 func TestExport_EdgeCase_ReRegisteringSameNameKeepsOriginalPosition(t *testing.T) {
+	t.Parallel()
 	r := export.New(silentLogger())
 	r.Register("auth", func(_ context.Context, _ string) (any, error) { return "v1", nil })
 	r.Register("habits", func(_ context.Context, _ string) (any, error) { return "habits-data", nil })
@@ -69,6 +72,7 @@ func TestExport_EdgeCase_ReRegisteringSameNameKeepsOriginalPosition(t *testing.T
 }
 
 func TestExport_ErrorCase_FailingSectionBecomesAWarningNotAFailure(t *testing.T) {
+	t.Parallel()
 	r := export.New(silentLogger())
 	r.Register("auth", func(_ context.Context, userID string) (any, error) {
 		return map[string]string{"userId": userID}, nil

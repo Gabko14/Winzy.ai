@@ -12,6 +12,7 @@ import (
 )
 
 func TestSearchUsers_HappyPath_ByUsernameReturnsMatches(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher1@example.com", "searcher1", "Password123!", nil)
 	registerUser(t, srv, "search1@example.com", "searchable1", "Password123!", nil)
@@ -38,6 +39,7 @@ func TestSearchUsers_HappyPath_ByUsernameReturnsMatches(t *testing.T) {
 }
 
 func TestSearchUsers_HappyPath_ByDisplayNameReturnsMatches(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher2@example.com", "searcher2", "Password123!", nil)
 	displayName := "FindableUser"
@@ -65,6 +67,7 @@ func TestSearchUsers_HappyPath_ByDisplayNameReturnsMatches(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_ShortQueryReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher3@example.com", "searcher3", "Password123!", nil)
 
@@ -84,6 +87,7 @@ func TestSearchUsers_EdgeCase_ShortQueryReturnsEmpty(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_LengthCheckHappensBeforeTrimming(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "spacesearcher@example.com", "spacesearcher", "Password123!", nil)
 	registerUser(t, srv, "singlea@example.com", "singleamatch", "Password123!", nil)
@@ -100,6 +104,7 @@ func TestSearchUsers_EdgeCase_LengthCheckHappensBeforeTrimming(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_OneUTF16CodeUnitStillReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "unicodesearcher@example.com", "unicodesearcher", "Password123!", nil)
 	resp := doRequest(t, srv, testRequest{
@@ -114,6 +119,7 @@ func TestSearchUsers_EdgeCase_OneUTF16CodeUnitStillReturnsEmpty(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_NoQueryReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher4@example.com", "searcher4", "Password123!", nil)
 
@@ -133,6 +139,7 @@ func TestSearchUsers_EdgeCase_NoQueryReturnsEmpty(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_LimitsResultsTo20(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher5@example.com", "searcher5", "Password123!", nil)
 
@@ -156,6 +163,7 @@ func TestSearchUsers_EdgeCase_LimitsResultsTo20(t *testing.T) {
 }
 
 func TestSearchUsers_ErrorCase_NoMatchReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "searcher6@example.com", "searcher6", "Password123!", nil)
 
@@ -175,6 +183,7 @@ func TestSearchUsers_ErrorCase_NoMatchReturnsEmpty(t *testing.T) {
 }
 
 func TestSearchUsers_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/auth/users/search?q=anything"})
@@ -192,6 +201,7 @@ func TestSearchUsers_ErrorCase_WithoutAuthReturnsUnauthorized(t *testing.T) {
 // instead, and the "_" case uses Username.
 
 func TestSearchUsers_EdgeCase_PercentSignMatchesLiterally(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "pctsearcher@example.com", "pctsearcher", "Password123!", nil)
 
@@ -228,6 +238,7 @@ func TestSearchUsers_EdgeCase_PercentSignMatchesLiterally(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_UnderscoreMatchesLiterally(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "usearcher@example.com", "usearcher", "Password123!", nil)
 
@@ -265,6 +276,7 @@ func TestSearchUsers_EdgeCase_UnderscoreMatchesLiterally(t *testing.T) {
 }
 
 func TestSearchUsers_EdgeCase_BackslashMatchesLiterally(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	searcher := registerUser(t, srv, "bslashsearcher@example.com", "bslashsearcher", "Password123!", nil)
 

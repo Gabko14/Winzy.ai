@@ -23,6 +23,7 @@ func silentLogger() *slog.Logger {
 }
 
 func TestEmit_HappyPath_InvokesRegisteredHandlerInOrder(t *testing.T) {
+	t.Parallel()
 	r := events.New(silentLogger())
 	var order []string
 
@@ -46,6 +47,7 @@ func TestEmit_HappyPath_InvokesRegisteredHandlerInOrder(t *testing.T) {
 }
 
 func TestEmit_EdgeCase_NoHandlersRegisteredIsANoOp(t *testing.T) {
+	t.Parallel()
 	r := events.New(silentLogger())
 
 	if err := events.Emit(context.Background(), r, widgetCreated{ID: "w1"}); err != nil {
@@ -54,6 +56,7 @@ func TestEmit_EdgeCase_NoHandlersRegisteredIsANoOp(t *testing.T) {
 }
 
 func TestEmit_EdgeCase_DifferentEventTypesDoNotCrossFire(t *testing.T) {
+	t.Parallel()
 	r := events.New(silentLogger())
 	var widgetCalls, gadgetCalls int
 
@@ -79,6 +82,7 @@ func TestEmit_EdgeCase_DifferentEventTypesDoNotCrossFire(t *testing.T) {
 }
 
 func TestEmit_ErrorCase_HandlerFailureStopsDispatchAndPropagates(t *testing.T) {
+	t.Parallel()
 	r := events.New(silentLogger())
 	var secondCalled bool
 	wantErr := errors.New("boom")
@@ -104,6 +108,7 @@ func TestEmit_ErrorCase_HandlerFailureStopsDispatchAndPropagates(t *testing.T) {
 }
 
 func TestEmit_ErrorCase_MultipleHandlersSameTypeAllRunUntilFailure(t *testing.T) {
+	t.Parallel()
 	r := events.New(silentLogger())
 	var calls []int
 

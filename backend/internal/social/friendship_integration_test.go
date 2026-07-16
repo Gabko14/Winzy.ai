@@ -41,6 +41,7 @@ func createFriendship(t *testing.T, stack testStack, a, b string) {
 // --- POST /social/friends/request ---
 
 func TestSendFriendRequest_HappyPath_Returns201(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -60,6 +61,7 @@ func TestSendFriendRequest_HappyPath_Returns201(t *testing.T) {
 }
 
 func TestSendFriendRequest_ErrorCase_MissingAuthReturns401(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	resp := doRequest(t, stack.srv, testRequest{
 		method: http.MethodPost, path: "/social/friends/request",
@@ -71,6 +73,7 @@ func TestSendFriendRequest_ErrorCase_MissingAuthReturns401(t *testing.T) {
 }
 
 func TestSendFriendRequest_ErrorCase_ToSelfReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -90,6 +93,7 @@ func TestSendFriendRequest_ErrorCase_ToSelfReturns400(t *testing.T) {
 }
 
 func TestSendFriendRequest_EdgeCase_EmptyFriendIdReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -103,6 +107,7 @@ func TestSendFriendRequest_EdgeCase_EmptyFriendIdReturns400(t *testing.T) {
 }
 
 func TestSendFriendRequest_ErrorCase_DuplicateReturns409(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -120,6 +125,7 @@ func TestSendFriendRequest_ErrorCase_DuplicateReturns409(t *testing.T) {
 }
 
 func TestSendFriendRequest_ErrorCase_AlreadyFriendsReturns409(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -137,6 +143,7 @@ func TestSendFriendRequest_ErrorCase_AlreadyFriendsReturns409(t *testing.T) {
 }
 
 func TestSendFriendRequest_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -153,6 +160,7 @@ func TestSendFriendRequest_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 // --- PUT /social/friends/request/{id}/accept ---
 
 func TestAcceptFriendRequest_HappyPath_CreatesBidirectionalFriendship(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -171,6 +179,7 @@ func TestAcceptFriendRequest_HappyPath_CreatesBidirectionalFriendship(t *testing
 }
 
 func TestAcceptFriendRequest_ErrorCase_WrongUserReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -187,6 +196,7 @@ func TestAcceptFriendRequest_ErrorCase_WrongUserReturns404(t *testing.T) {
 }
 
 func TestAcceptFriendRequest_ErrorCase_NonExistentReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "22222222-2222-2222-2222-222222222222")
 
@@ -203,6 +213,7 @@ func TestAcceptFriendRequest_ErrorCase_NonExistentReturns404(t *testing.T) {
 // accepts of the same pending request must resolve to exactly one 200 and
 // one 404 — never a 500 from either.
 func TestAcceptFriendRequest_EdgeCase_ConcurrentAcceptNeverProduces500(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -246,6 +257,7 @@ func TestAcceptFriendRequest_EdgeCase_ConcurrentAcceptNeverProduces500(t *testin
 // --- PUT /social/friends/request/{id}/decline ---
 
 func TestDeclineFriendRequest_HappyPath_Returns204(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -268,6 +280,7 @@ func TestDeclineFriendRequest_HappyPath_Returns204(t *testing.T) {
 }
 
 func TestDeclineFriendRequest_ErrorCase_SenderCannotDeclineReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -285,6 +298,7 @@ func TestDeclineFriendRequest_ErrorCase_SenderCannotDeclineReturns404(t *testing
 // --- DELETE /social/friends/{friendId} ---
 
 func TestRemoveFriend_HappyPath_RemovesBothDirections(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -309,6 +323,7 @@ func TestRemoveFriend_HappyPath_RemovesBothDirections(t *testing.T) {
 }
 
 func TestRemoveFriend_ErrorCase_NotFriendsReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -321,6 +336,7 @@ func TestRemoveFriend_ErrorCase_NotFriendsReturns404(t *testing.T) {
 // --- GET /social/friends ---
 
 func TestListFriends_HappyPath_ReturnsPaginatedFriends(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -341,6 +357,7 @@ func TestListFriends_HappyPath_ReturnsPaginatedFriends(t *testing.T) {
 }
 
 func TestListFriends_HappyPath_EnrichesWithProfileData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	friend := registerUserViaService(t, stack.authService, "alice@example.com", "alice")
@@ -356,6 +373,7 @@ func TestListFriends_HappyPath_EnrichesWithProfileData(t *testing.T) {
 }
 
 func TestListFriends_EdgeCase_GracefulDegradationWhenNoProfile(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -370,6 +388,7 @@ func TestListFriends_EdgeCase_GracefulDegradationWhenNoProfile(t *testing.T) {
 }
 
 func TestListFriends_EdgeCase_EmptyReturnsEmptyList(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -381,6 +400,7 @@ func TestListFriends_EdgeCase_EmptyReturnsEmptyList(t *testing.T) {
 }
 
 func TestListFriends_EdgeCase_PendingRequestNotIncluded(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -394,6 +414,7 @@ func TestListFriends_EdgeCase_PendingRequestNotIncluded(t *testing.T) {
 }
 
 func TestListFriends_HappyPath_EnrichesWithFlameData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -419,6 +440,7 @@ func TestListFriends_HappyPath_EnrichesWithFlameData(t *testing.T) {
 }
 
 func TestListFriends_EdgeCase_NoVisibleHabitsReturnsNoneFlame(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -442,6 +464,7 @@ func TestListFriends_EdgeCase_NoVisibleHabitsReturnsNoneFlame(t *testing.T) {
 // --- GET /social/friends/requests/count ---
 
 func TestPendingFriendCount_EdgeCase_NoPendingReturnsZero(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -453,6 +476,7 @@ func TestPendingFriendCount_EdgeCase_NoPendingReturnsZero(t *testing.T) {
 }
 
 func TestPendingFriendCount_HappyPath_WithIncomingReturnsCount(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -467,6 +491,7 @@ func TestPendingFriendCount_HappyPath_WithIncomingReturnsCount(t *testing.T) {
 }
 
 func TestPendingFriendCount_EdgeCase_OutgoingNotCounted(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -480,6 +505,7 @@ func TestPendingFriendCount_EdgeCase_OutgoingNotCounted(t *testing.T) {
 }
 
 func TestPendingFriendCount_EdgeCase_AcceptedNotCounted(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -493,6 +519,7 @@ func TestPendingFriendCount_EdgeCase_AcceptedNotCounted(t *testing.T) {
 }
 
 func TestPendingFriendCount_ErrorCase_MissingAuthReturns401(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	resp := doRequest(t, stack.srv, testRequest{method: http.MethodGet, path: "/social/friends/requests/count"})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -503,6 +530,7 @@ func TestPendingFriendCount_ErrorCase_MissingAuthReturns401(t *testing.T) {
 // --- GET /social/friends/requests ---
 
 func TestListFriendRequests_HappyPath_ShowsIncomingAndOutgoing(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	a := bearerFor(t, stack.tokens, userID)
@@ -523,6 +551,7 @@ func TestListFriendRequests_HappyPath_ShowsIncomingAndOutgoing(t *testing.T) {
 }
 
 func TestListFriendRequests_HappyPath_EnrichesWithProfileData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	sender := registerUserViaService(t, stack.authService, "sender@example.com", "sender")
 	receiver := registerUserViaService(t, stack.authService, "receiver@example.com", "receiver")
@@ -549,6 +578,7 @@ func TestListFriendRequests_HappyPath_EnrichesWithProfileData(t *testing.T) {
 // --- GET /social/friends/{id}/profile ---
 
 func TestFriendProfile_HappyPath_ReturnsVisibleHabits(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -570,6 +600,7 @@ func TestFriendProfile_HappyPath_ReturnsVisibleHabits(t *testing.T) {
 }
 
 func TestFriendProfile_EdgeCase_EmptyHabitsReturnsAvailable(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)
@@ -583,6 +614,7 @@ func TestFriendProfile_EdgeCase_EmptyHabitsReturnsAvailable(t *testing.T) {
 }
 
 func TestFriendProfile_ErrorCase_NotFriendsReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -593,6 +625,7 @@ func TestFriendProfile_ErrorCase_NotFriendsReturns404(t *testing.T) {
 }
 
 func TestFriendProfile_PerHabitOverridesDefault(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID, friendID := "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	createFriendship(t, stack, userID, friendID)

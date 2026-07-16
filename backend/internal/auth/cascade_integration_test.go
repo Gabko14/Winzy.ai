@@ -32,7 +32,7 @@ import (
 // after habits' cascade.
 func newCascadeFixture(t *testing.T) (*auth.Service, *habits.Service, *events.Registry, *pgxpool.Pool) {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tokens, err := auth.NewTokenService(testJWTSecret, 15, 7)
@@ -76,6 +76,7 @@ func completeHabitViaService(t *testing.T, svc *habits.Service, userID, habitID 
 }
 
 func TestDeleteAccount_ErrorCase_FailingCascadeHandlerRollsBackAccountAndHabitsTogether(t *testing.T) {
+	t.Parallel()
 	authSvc, habitsSvc, registry, pool := newCascadeFixture(t)
 
 	reg := registerViaService(t, authSvc, "cascade-rollback@example.com", "cascaderollback")
@@ -111,6 +112,7 @@ func TestDeleteAccount_ErrorCase_FailingCascadeHandlerRollsBackAccountAndHabitsT
 }
 
 func TestDeleteAccount_HappyPath_CommitDeletesAccountAndHabitsCascadeTogether(t *testing.T) {
+	t.Parallel()
 	authSvc, habitsSvc, _, pool := newCascadeFixture(t)
 
 	reg := registerViaService(t, authSvc, "cascade-commit@example.com", "cascadecommit")

@@ -30,6 +30,7 @@ func (f *fakeQuerier) Query(ctx context.Context, sql string, args ...any) (pgx.R
 }
 
 func TestQuerierFrom_HappyPath_ReturnsOverrideWhenSet(t *testing.T) {
+	t.Parallel()
 	fallback := &fakeQuerier{name: "fallback"}
 	override := &fakeQuerier{name: "override"}
 
@@ -42,6 +43,7 @@ func TestQuerierFrom_HappyPath_ReturnsOverrideWhenSet(t *testing.T) {
 }
 
 func TestQuerierFrom_EdgeCase_ReturnsFallbackWhenUnset(t *testing.T) {
+	t.Parallel()
 	fallback := &fakeQuerier{name: "fallback"}
 
 	got := db.QuerierFrom(context.Background(), fallback)
@@ -51,6 +53,7 @@ func TestQuerierFrom_EdgeCase_ReturnsFallbackWhenUnset(t *testing.T) {
 }
 
 func TestQuerierFrom_EdgeCase_NestedOverrideWinsOverOuter(t *testing.T) {
+	t.Parallel()
 	fallback := &fakeQuerier{name: "fallback"}
 	outer := &fakeQuerier{name: "outer"}
 	inner := &fakeQuerier{name: "inner"}

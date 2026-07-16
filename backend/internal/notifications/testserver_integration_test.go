@@ -41,7 +41,7 @@ type testStack struct {
 
 func newTestStack(t *testing.T) testStack {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tokens, err := auth.NewTokenService(testJWTSecret, 15, 7)

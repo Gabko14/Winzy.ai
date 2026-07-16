@@ -25,6 +25,7 @@ func createWitnessLink(t *testing.T, stack testStack, a map[string]string, label
 // --- POST /social/witness-links ---
 
 func TestCreateWitnessLink_HappyPath_WithLabelAndHabitsReturns201(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	ownerID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, ownerID)
@@ -47,6 +48,7 @@ func TestCreateWitnessLink_HappyPath_WithLabelAndHabitsReturns201(t *testing.T) 
 }
 
 func TestCreateWitnessLink_EdgeCase_NoLabelReturnsNullLabel(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	body := createWitnessLink(t, stack, a, nil, nil)
@@ -56,6 +58,7 @@ func TestCreateWitnessLink_EdgeCase_NoLabelReturnsNullLabel(t *testing.T) {
 }
 
 func TestCreateWitnessLink_EdgeCase_NoHabitsReturnsEmptyList(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	body := createWitnessLink(t, stack, a, nil, nil)
@@ -65,6 +68,7 @@ func TestCreateWitnessLink_EdgeCase_NoHabitsReturnsEmptyList(t *testing.T) {
 }
 
 func TestCreateWitnessLink_EdgeCase_DuplicateHabitIDsDeduplicated(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -76,6 +80,7 @@ func TestCreateWitnessLink_EdgeCase_DuplicateHabitIDsDeduplicated(t *testing.T) 
 }
 
 func TestCreateWitnessLink_ErrorCase_LabelTooLongReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -89,6 +94,7 @@ func TestCreateWitnessLink_ErrorCase_LabelTooLongReturns400(t *testing.T) {
 }
 
 func TestCreateWitnessLink_ErrorCase_MissingAuthReturns401(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	resp := doRequest(t, stack.srv, testRequest{method: http.MethodPost, path: "/social/witness-links", body: map[string]any{"label": "test"}})
 	if resp.StatusCode != http.StatusUnauthorized {
@@ -97,6 +103,7 @@ func TestCreateWitnessLink_ErrorCase_MissingAuthReturns401(t *testing.T) {
 }
 
 func TestCreateWitnessLink_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	resp := doRequest(t, stack.srv, testRequest{method: http.MethodPost, path: "/social/witness-links", headers: a, rawBody: "not valid json"})
@@ -108,6 +115,7 @@ func TestCreateWitnessLink_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 // FIX 4 (winzy.ai-rdc7.4 review): a non-UUID habitIds element must 400 at
 // decode time, not reach the database and 500.
 func TestCreateWitnessLink_ErrorCase_NonUUIDHabitIDReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -133,6 +141,7 @@ func TestCreateWitnessLink_ErrorCase_NonUUIDHabitIDReturns400(t *testing.T) {
 }
 
 func TestCreateWitnessLink_HappyPath_TokenIsHighEntropy(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -151,6 +160,7 @@ func TestCreateWitnessLink_HappyPath_TokenIsHighEntropy(t *testing.T) {
 // --- GET /social/witness-links ---
 
 func TestListWitnessLinks_HappyPath_ReturnsOwnedLinksOnly(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	ownerID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, ownerID)
@@ -171,6 +181,7 @@ func TestListWitnessLinks_HappyPath_ReturnsOwnedLinksOnly(t *testing.T) {
 }
 
 func TestListWitnessLinks_EdgeCase_ExcludesRevokedLinks(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Will revoke", nil)
@@ -193,6 +204,7 @@ func TestListWitnessLinks_EdgeCase_ExcludesRevokedLinks(t *testing.T) {
 // --- PUT /social/witness-links/{id} ---
 
 func TestUpdateWitnessLink_HappyPath_ChangeLabelReturns200(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -213,6 +225,7 @@ func TestUpdateWitnessLink_HappyPath_ChangeLabelReturns200(t *testing.T) {
 }
 
 func TestUpdateWitnessLink_HappyPath_ChangeHabitsReplacesAllowlist(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -230,6 +243,7 @@ func TestUpdateWitnessLink_HappyPath_ChangeHabitsReplacesAllowlist(t *testing.T)
 }
 
 func TestUpdateWitnessLink_ErrorCase_RevokedLinkReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -243,6 +257,7 @@ func TestUpdateWitnessLink_ErrorCase_RevokedLinkReturns404(t *testing.T) {
 }
 
 func TestUpdateWitnessLink_ErrorCase_OtherOwnerReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Mine", nil)
@@ -261,6 +276,7 @@ func TestUpdateWitnessLink_ErrorCase_OtherOwnerReturns404(t *testing.T) {
 // not 400 — the ownership check runs first and the count check is never
 // reached for a link this caller doesn't own.
 func TestUpdateWitnessLink_ErrorCase_ForeignLinkWithOverLimitHabitsReturns404NotBadRequest(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	owner := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, owner, "Mine", nil)
@@ -282,6 +298,7 @@ func TestUpdateWitnessLink_ErrorCase_ForeignLinkWithOverLimitHabitsReturns404Not
 }
 
 func TestUpdateWitnessLink_ErrorCase_LabelTooLongReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -296,6 +313,7 @@ func TestUpdateWitnessLink_ErrorCase_LabelTooLongReturns400(t *testing.T) {
 // --- DELETE /social/witness-links/{id} (revoke) ---
 
 func TestRevokeWitnessLink_HappyPath_Returns204(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -308,6 +326,7 @@ func TestRevokeWitnessLink_HappyPath_Returns204(t *testing.T) {
 }
 
 func TestRevokeWitnessLink_ErrorCase_AlreadyRevokedReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -321,6 +340,7 @@ func TestRevokeWitnessLink_ErrorCase_AlreadyRevokedReturns404(t *testing.T) {
 }
 
 func TestRevokeWitnessLink_ErrorCase_OtherOwnerReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -336,6 +356,7 @@ func TestRevokeWitnessLink_ErrorCase_OtherOwnerReturns404(t *testing.T) {
 // --- POST /social/witness-links/{id}/rotate ---
 
 func TestRotateToken_HappyPath_GeneratesNewToken(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -358,6 +379,7 @@ func TestRotateToken_HappyPath_GeneratesNewToken(t *testing.T) {
 }
 
 func TestRotateToken_HappyPath_OldTokenStopsWorking(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -384,6 +406,7 @@ func TestRotateToken_HappyPath_OldTokenStopsWorking(t *testing.T) {
 }
 
 func TestRotateToken_ErrorCase_RevokedLinkReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -399,6 +422,7 @@ func TestRotateToken_ErrorCase_RevokedLinkReturns404(t *testing.T) {
 // --- GET /social/witness/{token} (anonymous viewer) ---
 
 func TestViewWitnessLink_HappyPath_ShowsOnlySelectedHabits(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	ownerID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, ownerID)
@@ -431,6 +455,7 @@ func TestViewWitnessLink_HappyPath_ShowsOnlySelectedHabits(t *testing.T) {
 }
 
 func TestViewWitnessLink_HappyPath_IncludesFlameData(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -447,6 +472,7 @@ func TestViewWitnessLink_HappyPath_IncludesFlameData(t *testing.T) {
 }
 
 func TestViewWitnessLink_ErrorCase_RevokedTokenReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	created := createWitnessLink(t, stack, a, "Test", nil)
@@ -461,6 +487,7 @@ func TestViewWitnessLink_ErrorCase_RevokedTokenReturns404(t *testing.T) {
 }
 
 func TestViewWitnessLink_ErrorCase_InvalidTokenReturnsSafe404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	resp := doRequest(t, stack.srv, testRequest{method: http.MethodGet, path: "/social/witness/totally-invalid-token-that-does-not-exist"})
 	if resp.StatusCode != http.StatusNotFound {
@@ -473,6 +500,7 @@ func TestViewWitnessLink_ErrorCase_InvalidTokenReturnsSafe404(t *testing.T) {
 }
 
 func TestViewWitnessLink_EdgeCase_MalformedTokenLengthReturnsSafe404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 
 	resp1 := doRequest(t, stack.srv, testRequest{method: http.MethodGet, path: "/social/witness/abc"})
@@ -487,6 +515,7 @@ func TestViewWitnessLink_EdgeCase_MalformedTokenLengthReturnsSafe404(t *testing.
 }
 
 func TestViewWitnessLink_EdgeCase_SameResponseForRevokedAndUnknown(t *testing.T) {
+	t.Parallel()
 	// Constant-time-404: both branches run findWitnessLinkByToken then check
 	// RevokedAt in Go afterward (see witness_store.go's doc comment) — assert
 	// the responses are shape-identical, not just both 404.
@@ -510,6 +539,7 @@ func TestViewWitnessLink_EdgeCase_SameResponseForRevokedAndUnknown(t *testing.T)
 }
 
 func TestViewWitnessLink_EdgeCase_NoHabitsSelectedReturnsEmptyHabits(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -524,6 +554,7 @@ func TestViewWitnessLink_EdgeCase_NoHabitsSelectedReturnsEmptyHabits(t *testing.
 }
 
 func TestViewWitnessLink_EdgeCase_ArchivedHabitDisappearsFromPage(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -548,6 +579,7 @@ func TestViewWitnessLink_EdgeCase_ArchivedHabitDisappearsFromPage(t *testing.T) 
 }
 
 func TestMultipleWitnessLinks_DifferentHabitSelections(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -570,6 +602,7 @@ func TestMultipleWitnessLinks_DifferentHabitSelections(t *testing.T) {
 }
 
 func TestWitnessLink_EdgeCase_HabitRemovedFromAllowlistNoLongerVisible(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -594,6 +627,7 @@ func TestWitnessLink_EdgeCase_HabitRemovedFromAllowlistNoLongerVisible(t *testin
 }
 
 func TestViewWitnessLink_EdgeCase_UnregisteredOwnerStillReturnsHabits(t *testing.T) {
+	t.Parallel()
 	// The owner never called auth.Register (bearerFor mints a token without
 	// registering — see testserver's identical convention for habits), so
 	// auth.BatchProfiles returns nothing for them; the witness page must

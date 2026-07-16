@@ -12,6 +12,7 @@ import (
 // --- PUT /social/visibility/{habitId} ---
 
 func TestSetHabitVisibility_HappyPath_NewSettingReturns200(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -37,6 +38,7 @@ func TestSetHabitVisibility_HappyPath_NewSettingReturns200(t *testing.T) {
 // Enum.IsDefined — not the empty string the Go zero value previously
 // leaked into storage and into the emitted VisibilityChanged event.
 func TestSetHabitVisibility_EdgeCase_OmittedBodyDefaultsToPrivate(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -64,6 +66,7 @@ func TestSetHabitVisibility_EdgeCase_OmittedBodyDefaultsToPrivate(t *testing.T) 
 }
 
 func TestSetHabitVisibility_HappyPath_UpdateExistingReturns200(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	userID := "11111111-1111-1111-1111-111111111111"
 	a := bearerFor(t, stack.tokens, userID)
@@ -79,6 +82,7 @@ func TestSetHabitVisibility_HappyPath_UpdateExistingReturns200(t *testing.T) {
 }
 
 func TestSetHabitVisibility_ErrorCase_MissingAuthReturns401(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	resp := doRequest(t, stack.srv, testRequest{
 		method: http.MethodPut, path: "/social/visibility/11111111-1111-1111-1111-111111111111",
@@ -90,6 +94,7 @@ func TestSetHabitVisibility_ErrorCase_MissingAuthReturns401(t *testing.T) {
 }
 
 func TestSetHabitVisibility_ErrorCase_HabitNotOwnedReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -103,6 +108,7 @@ func TestSetHabitVisibility_ErrorCase_HabitNotOwnedReturns404(t *testing.T) {
 }
 
 func TestSetHabitVisibility_ErrorCase_AnotherUsersHabitReturns404(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	owner := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	stranger := bearerFor(t, stack.tokens, "22222222-2222-2222-2222-222222222222")
@@ -118,6 +124,7 @@ func TestSetHabitVisibility_ErrorCase_AnotherUsersHabitReturns404(t *testing.T) 
 }
 
 func TestSetHabitVisibility_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -128,6 +135,7 @@ func TestSetHabitVisibility_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 }
 
 func TestSetHabitVisibility_ErrorCase_EmptyBodyReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -140,6 +148,7 @@ func TestSetHabitVisibility_ErrorCase_EmptyBodyReturns400(t *testing.T) {
 // --- GET /social/visibility (batch) ---
 
 func TestGetBatchVisibility_HappyPath_ReturnsAllSettings(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	h1 := createHabit(t, stack.srv, a, habits.CreateHabitRequest{Name: "Workout"})
@@ -159,6 +168,7 @@ func TestGetBatchVisibility_HappyPath_ReturnsAllSettings(t *testing.T) {
 }
 
 func TestGetBatchVisibility_EdgeCase_EmptyWhenNoSettings(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -170,6 +180,7 @@ func TestGetBatchVisibility_EdgeCase_EmptyWhenNoSettings(t *testing.T) {
 }
 
 func TestGetBatchVisibility_HappyPath_ReflectsDefaultPreference(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 	doRequest(t, stack.srv, testRequest{method: http.MethodPut, path: "/social/preferences", headers: a, body: map[string]string{"defaultHabitVisibility": "friends"}})
@@ -184,6 +195,7 @@ func TestGetBatchVisibility_HappyPath_ReflectsDefaultPreference(t *testing.T) {
 // --- GET/PUT /social/preferences ---
 
 func TestGetPreferences_EdgeCase_NoPreferencesSetReturnsPrivateDefault(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -195,6 +207,7 @@ func TestGetPreferences_EdgeCase_NoPreferencesSetReturnsPrivateDefault(t *testin
 }
 
 func TestUpdatePreferences_HappyPath_ValidUpdateReturns200(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -215,6 +228,7 @@ func TestUpdatePreferences_HappyPath_ValidUpdateReturns200(t *testing.T) {
 // persist/return "private" — see the identical case for
 // PUT /social/visibility/{id} above.
 func TestUpdatePreferences_EdgeCase_OmittedBodyDefaultsToPrivate(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -239,6 +253,7 @@ func TestUpdatePreferences_EdgeCase_OmittedBodyDefaultsToPrivate(t *testing.T) {
 }
 
 func TestUpdatePreferences_HappyPath_UpdateExistingReturns200(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -252,6 +267,7 @@ func TestUpdatePreferences_HappyPath_UpdateExistingReturns200(t *testing.T) {
 }
 
 func TestUpdatePreferences_ErrorCase_MalformedJSONReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 
@@ -262,6 +278,7 @@ func TestUpdatePreferences_ErrorCase_MalformedJSONReturns400(t *testing.T) {
 }
 
 func TestUpdatePreferences_ErrorCase_EmptyBodyReturns400(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	a := bearerFor(t, stack.tokens, "11111111-1111-1111-1111-111111111111")
 

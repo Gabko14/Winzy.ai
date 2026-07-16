@@ -45,6 +45,7 @@ var testTokenServiceForRecorder = func() *TokenService {
 }()
 
 func TestIsPublicRoute_HappyPath_ExactMatchBypassesAuth(t *testing.T) {
+	t.Parallel()
 	rec := serveWithPublicRoutes(map[string]bool{"POST /auth/register": true}, http.MethodPost, "/auth/register")
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200 (exact public route)", rec.Code)
@@ -52,6 +53,7 @@ func TestIsPublicRoute_HappyPath_ExactMatchBypassesAuth(t *testing.T) {
 }
 
 func TestIsPublicRoute_HappyPath_PrefixMatchBypassesAuthForAnySuffix(t *testing.T) {
+	t.Parallel()
 	routes := map[string]bool{"GET /habits/public/*": true}
 	for _, path := range []string{"/habits/public/alice", "/habits/public/alice/flame.svg", "/habits/public/"} {
 		rec := serveWithPublicRoutes(routes, http.MethodGet, path)
@@ -62,6 +64,7 @@ func TestIsPublicRoute_HappyPath_PrefixMatchBypassesAuthForAnySuffix(t *testing.
 }
 
 func TestIsPublicRoute_EdgeCase_PrefixEntryDoesNotMatchADifferentMethod(t *testing.T) {
+	t.Parallel()
 	rec := serveWithPublicRoutes(map[string]bool{"GET /habits/public/*": true}, http.MethodPost, "/habits/public/alice")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("POST with a GET-only prefix entry: status = %d, want 401", rec.Code)
@@ -69,6 +72,7 @@ func TestIsPublicRoute_EdgeCase_PrefixEntryDoesNotMatchADifferentMethod(t *testi
 }
 
 func TestIsPublicRoute_EdgeCase_PrefixEntryDoesNotMatchAnUnrelatedPath(t *testing.T) {
+	t.Parallel()
 	rec := serveWithPublicRoutes(map[string]bool{"GET /habits/public/*": true}, http.MethodGet, "/habits/private/alice")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 (path does not start with the public prefix)", rec.Code)
@@ -76,6 +80,7 @@ func TestIsPublicRoute_EdgeCase_PrefixEntryDoesNotMatchAnUnrelatedPath(t *testin
 }
 
 func TestIsPublicRoute_EdgeCase_DisabledEntryIsNotPublic(t *testing.T) {
+	t.Parallel()
 	rec := serveWithPublicRoutes(map[string]bool{"GET /habits/public/*": false, "POST /auth/register": false}, http.MethodGet, "/habits/public/alice")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 (a false-valued entry is present-but-disabled)", rec.Code)
@@ -83,6 +88,7 @@ func TestIsPublicRoute_EdgeCase_DisabledEntryIsNotPublic(t *testing.T) {
 }
 
 func TestMiddleware_HappyPath_ValidTokenAllowsProtectedRoute(t *testing.T) {
+	t.Parallel()
 	tokens := testTokenService(t)
 	handler := Middleware(tokens, map[string]bool{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -104,6 +110,7 @@ func TestMiddleware_HappyPath_ValidTokenAllowsProtectedRoute(t *testing.T) {
 }
 
 func TestMiddleware_ErrorCase_NoAuthorizationHeaderRejected(t *testing.T) {
+	t.Parallel()
 	tokens := testTokenService(t)
 	handler := Middleware(tokens, map[string]bool{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -119,6 +126,7 @@ func TestMiddleware_ErrorCase_NoAuthorizationHeaderRejected(t *testing.T) {
 }
 
 func TestMiddleware_ErrorCase_StrictJWTFailuresUseUnauthorizedShape(t *testing.T) {
+	t.Parallel()
 	const secret = "unit-test-secret-that-is-at-least-32-chars!!"
 	tokens, err := NewTokenService(secret, 15, 7)
 	if err != nil {

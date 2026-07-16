@@ -14,6 +14,7 @@ import (
 )
 
 func TestFeed_HappyPath_EmptyFeed(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "empty@example.com", "emptyuser")
 
@@ -41,6 +42,7 @@ func TestFeed_HappyPath_EmptyFeed(t *testing.T) {
 }
 
 func TestFeed_HappyPath_KeysetPagination(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "page@example.com", "pageuser")
 
@@ -96,6 +98,7 @@ func TestFeed_HappyPath_KeysetPagination(t *testing.T) {
 }
 
 func TestFeed_ErrorCase_InvalidLimitAndCursor(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "badq@example.com", "badquser")
 	headers := bearerFor(t, stack.tokens, user.User.ID)
@@ -123,6 +126,7 @@ func TestFeed_ErrorCase_InvalidLimitAndCursor(t *testing.T) {
 }
 
 func TestFeed_HappyPath_NameJoinShape(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "names@example.com", "namesuser")
 
@@ -150,6 +154,7 @@ func TestFeed_HappyPath_NameJoinShape(t *testing.T) {
 }
 
 func TestFeed_HappyPath_PrivateHabitInvisibleToFriends(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	alice := registerUser(t, stack.authService, "alice@example.com", "alicefeed")
 	bob := registerUser(t, stack.authService, "bob@example.com", "bobfeed")
@@ -176,6 +181,7 @@ func TestFeed_HappyPath_PrivateHabitInvisibleToFriends(t *testing.T) {
 }
 
 func TestFeed_HappyPath_PublicHabitVisibleToFriends(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	alice := registerUser(t, stack.authService, "alice2@example.com", "alicepub")
 	bob := registerUser(t, stack.authService, "bob2@example.com", "bobpub")
@@ -205,6 +211,7 @@ func TestFeed_HappyPath_PublicHabitVisibleToFriends(t *testing.T) {
 }
 
 func TestFeed_EdgeCase_Unauthenticated(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	status, _ := doRequest(t, stack.srv, testRequest{
 		method: http.MethodGet, path: "/activity/feed",
@@ -215,6 +222,7 @@ func TestFeed_EdgeCase_Unauthenticated(t *testing.T) {
 }
 
 func TestFeed_HappyPath_SelfSeesOwnPrivateHabits(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "self@example.com", "selfuser")
 	habitID := createHabit(t, stack, user.User.ID, "Mine")
@@ -242,6 +250,7 @@ func TestFeed_HappyPath_SelfSeesOwnPrivateHabits(t *testing.T) {
 
 // Ensure friend.request.accepted from makeFriends shows for both (non-habit events).
 func TestFeed_HappyPath_NonHabitEventsAlwaysVisible(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	alice := registerUser(t, stack.authService, "alice3@example.com", "alicefr")
 	bob := registerUser(t, stack.authService, "bob3@example.com", "bobfr")
@@ -266,6 +275,7 @@ func TestFeed_HappyPath_NonHabitEventsAlwaysVisible(t *testing.T) {
 }
 
 func TestFeed_EdgeCase_LimitClampedTo100(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	user := registerUser(t, stack.authService, "clamp@example.com", "clampuser")
 	status, body := doRequest(t, stack.srv, testRequest{
@@ -283,6 +293,7 @@ func TestFeed_EdgeCase_LimitClampedTo100(t *testing.T) {
 // same friend. The per-(friend,habitID) cache must MERGE — a friend-level
 // cache would permanently hide the public habit (REVIEW ROUND 1 FIX A).
 func TestFeed_HappyPath_VisibilityCacheMergesAcrossBatches(t *testing.T) {
+	t.Parallel()
 	stack := newTestStack(t)
 	alice := registerUser(t, stack.authService, "cache-a@example.com", "cachealice")
 	bob := registerUser(t, stack.authService, "cache-b@example.com", "cachebob")

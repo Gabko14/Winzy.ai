@@ -41,6 +41,7 @@ var httpMethods = map[string]bool{
 var pathParamRE = regexp.MustCompile(`\{[^}]+\}`)
 
 func TestOpenAPIRoutes_BidirectionalDrift(t *testing.T) {
+	t.Parallel()
 	spec := loadOpenAPI(t)
 
 	rec := &recordingMux{inner: http.NewServeMux()}

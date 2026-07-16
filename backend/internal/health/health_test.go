@@ -33,6 +33,7 @@ func doRequest(t *testing.T, db Pinger) (*http.Response, response) {
 }
 
 func TestHandler_HappyPath_DBUpReturns200Healthy(t *testing.T) {
+	t.Parallel()
 	res, body := doRequest(t, fakePinger{})
 
 	if res.StatusCode != http.StatusOK {
@@ -44,6 +45,7 @@ func TestHandler_HappyPath_DBUpReturns200Healthy(t *testing.T) {
 }
 
 func TestHandler_ErrorCase_DBDownReturns503Unhealthy(t *testing.T) {
+	t.Parallel()
 	res, body := doRequest(t, fakePinger{err: errors.New("connection refused")})
 
 	if res.StatusCode != http.StatusServiceUnavailable {
@@ -55,6 +57,7 @@ func TestHandler_ErrorCase_DBDownReturns503Unhealthy(t *testing.T) {
 }
 
 func TestHandler_EdgeCase_ResponseIsJSONContentType(t *testing.T) {
+	t.Parallel()
 	res, _ := doRequest(t, fakePinger{})
 
 	if ct := res.Header.Get("Content-Type"); ct != "application/json" {

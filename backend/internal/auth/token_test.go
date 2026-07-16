@@ -15,12 +15,14 @@ const testSecret = "test-secret-key-that-is-at-least-32-characters-long!!"
 const testUserID = "11111111-1111-1111-1111-111111111111"
 
 func TestNewTokenService_HappyPath_AcceptsValidSecret(t *testing.T) {
+	t.Parallel()
 	if _, err := auth.NewTokenService(testSecret, 15, 7); err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
 	}
 }
 
 func TestNewTokenService_EdgeCase_AcceptsExactly32CharSecret(t *testing.T) {
+	t.Parallel()
 	secret := strings.Repeat("a", 32)
 	if _, err := auth.NewTokenService(secret, 15, 7); err != nil {
 		t.Errorf("NewTokenService() with exactly 32 chars returned unexpected error: %v", err)
@@ -28,6 +30,7 @@ func TestNewTokenService_EdgeCase_AcceptsExactly32CharSecret(t *testing.T) {
 }
 
 func TestNewTokenService_ErrorCase_RejectsMissingSecret(t *testing.T) {
+	t.Parallel()
 	_, err := auth.NewTokenService("", 15, 7)
 	if err == nil {
 		t.Fatal("NewTokenService(\"\", ...) should return an error")
@@ -38,6 +41,7 @@ func TestNewTokenService_ErrorCase_RejectsMissingSecret(t *testing.T) {
 }
 
 func TestNewTokenService_ErrorCase_RejectsWhitespaceOnlySecret(t *testing.T) {
+	t.Parallel()
 	for _, secret := range []string{" ", "\t", "   "} {
 		if _, err := auth.NewTokenService(secret, 15, 7); err == nil {
 			t.Errorf("NewTokenService(%q, ...) should return an error", secret)
@@ -46,6 +50,7 @@ func TestNewTokenService_ErrorCase_RejectsWhitespaceOnlySecret(t *testing.T) {
 }
 
 func TestNewTokenService_ErrorCase_RejectsTooShortSecret(t *testing.T) {
+	t.Parallel()
 	_, err := auth.NewTokenService(strings.Repeat("x", 31), 15, 7)
 	if err == nil {
 		t.Fatal("NewTokenService() with a 31-char secret should return an error")
@@ -56,6 +61,7 @@ func TestNewTokenService_ErrorCase_RejectsTooShortSecret(t *testing.T) {
 }
 
 func TestNewTokenService_ErrorCase_RejectsKnownPlaceholders(t *testing.T) {
+	t.Parallel()
 	for _, placeholder := range []string{"your-secret-key", "change-me", "secret", "placeholder", "your-jwt-secret"} {
 		if _, err := auth.NewTokenService(placeholder, 15, 7); err == nil {
 			t.Errorf("NewTokenService(%q, ...) should return an error (known placeholder)", placeholder)
@@ -64,6 +70,7 @@ func TestNewTokenService_ErrorCase_RejectsKnownPlaceholders(t *testing.T) {
 }
 
 func TestNewTokenService_ErrorCase_RejectsLongPlaceholderCaseInsensitively(t *testing.T) {
+	t.Parallel()
 	const legacy = "CHANGE-THIS-IN-PRODUCTION-minimum-32-characters-long"
 	if len(legacy) < 32 {
 		t.Fatal("test fixture assumption broken: legacy placeholder must be >= 32 chars")
@@ -80,6 +87,7 @@ func TestNewTokenService_ErrorCase_RejectsLongPlaceholderCaseInsensitively(t *te
 }
 
 func TestGenerateAccessToken_HappyPath_ContainsExpectedClaims(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -117,6 +125,7 @@ func TestGenerateAccessToken_HappyPath_ContainsExpectedClaims(t *testing.T) {
 }
 
 func TestGenerateAccessToken_HappyPath_ExpiresAtConfiguredLifetime(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -144,6 +153,7 @@ func TestGenerateAccessToken_HappyPath_ExpiresAtConfiguredLifetime(t *testing.T)
 }
 
 func TestGenerateRefreshToken_HappyPath_Returns64RandomBytesBase64Encoded(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -164,6 +174,7 @@ func TestGenerateRefreshToken_HappyPath_Returns64RandomBytesBase64Encoded(t *tes
 }
 
 func TestGenerateRefreshToken_HappyPath_ReturnsUniqueTokens(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -184,6 +195,7 @@ func TestGenerateRefreshToken_HappyPath_ReturnsUniqueTokens(t *testing.T) {
 }
 
 func TestRefreshTokenLifetime_HappyPath_ReturnsConfiguredDays(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 14)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -195,6 +207,7 @@ func TestRefreshTokenLifetime_HappyPath_ReturnsConfiguredDays(t *testing.T) {
 }
 
 func TestValidateAccessToken_HappyPath_ReturnsUserIDForValidToken(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -215,6 +228,7 @@ func TestValidateAccessToken_HappyPath_ReturnsUserIDForValidToken(t *testing.T) 
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsGarbageToken(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -226,6 +240,7 @@ func TestValidateAccessToken_ErrorCase_RejectsGarbageToken(t *testing.T) {
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsExpiredToken(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 0, 7) // 0-minute lifetime: expires immediately
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -244,6 +259,7 @@ func TestValidateAccessToken_ErrorCase_RejectsExpiredToken(t *testing.T) {
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsTokenSignedWithDifferentSecret(t *testing.T) {
+	t.Parallel()
 	svc1, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -264,6 +280,7 @@ func TestValidateAccessToken_ErrorCase_RejectsTokenSignedWithDifferentSecret(t *
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsEmptyToken(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -275,6 +292,7 @@ func TestValidateAccessToken_ErrorCase_RejectsEmptyToken(t *testing.T) {
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsHS512(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -293,6 +311,7 @@ func TestValidateAccessToken_ErrorCase_RejectsHS512(t *testing.T) {
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsMissingExpiration(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)
@@ -308,6 +327,7 @@ func TestValidateAccessToken_ErrorCase_RejectsMissingExpiration(t *testing.T) {
 }
 
 func TestValidateAccessToken_ErrorCase_RejectsMissingOrMalformedSubject(t *testing.T) {
+	t.Parallel()
 	svc, err := auth.NewTokenService(testSecret, 15, 7)
 	if err != nil {
 		t.Fatalf("NewTokenService() returned unexpected error: %v", err)

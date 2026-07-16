@@ -3,7 +3,7 @@
 // Package social_test's integration suite follows the recipe documented in
 // internal/dbtest and internal/habits' own testserver_integration_test.go:
 // point at the compose "winzy-db" service via TEST_DATABASE_URL, migrations
-// + per-test truncation handled by dbtest.Connect. Run with:
+// + per-test isolation handled by dbtest.ConnectParallel. Run with:
 //
 //	docker compose up -d winzy-db
 //	TEST_DATABASE_URL=postgres://winzy:winzy@localhost:5439/winzy?sslmode=disable \
@@ -49,7 +49,7 @@ type testStack struct {
 
 func newTestStack(t *testing.T) testStack {
 	t.Helper()
-	pool := dbtest.Connect(t)
+	pool := dbtest.ConnectParallel(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tokens, err := auth.NewTokenService(testJWTSecret, 15, 7)

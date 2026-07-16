@@ -13,6 +13,7 @@ import (
 )
 
 func TestRegister_HappyPath_ReturnsCreatedWithTokensAndProfile(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	displayName := "Test User"
 
@@ -48,6 +49,7 @@ func TestRegister_HappyPath_ReturnsCreatedWithTokensAndProfile(t *testing.T) {
 }
 
 func TestRegister_HappyPath_SetsRefreshTokenCookie(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -78,6 +80,7 @@ func TestRegister_HappyPath_SetsRefreshTokenCookie(t *testing.T) {
 }
 
 func TestRegister_HappyPath_WebClientOmitsRefreshTokenFromBody(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -101,6 +104,7 @@ func TestRegister_HappyPath_WebClientOmitsRefreshTokenFromBody(t *testing.T) {
 }
 
 func TestRegister_EdgeCase_EmptySecFetchSiteHeaderStillMeansWebClient(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{
 		method:  http.MethodPost,
@@ -117,6 +121,7 @@ func TestRegister_EdgeCase_EmptySecFetchSiteHeaderStillMeansWebClient(t *testing
 }
 
 func TestRegister_EdgeCase_NormalizesEmailAndUsername(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -138,6 +143,7 @@ func TestRegister_EdgeCase_NormalizesEmailAndUsername(t *testing.T) {
 }
 
 func TestRegister_EdgeCase_WithoutDisplayNameIsNull(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -156,6 +162,7 @@ func TestRegister_EdgeCase_WithoutDisplayNameIsNull(t *testing.T) {
 }
 
 func TestRegister_EdgeCase_BlankDisplayNameIsTrimmedToEmptyString(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	blank := "   "
 	resp := doRequest(t, srv, testRequest{
@@ -173,6 +180,7 @@ func TestRegister_EdgeCase_BlankDisplayNameIsTrimmedToEmptyString(t *testing.T) 
 }
 
 func TestRegister_ErrorCase_NullBodyUsesValidationShape(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: rawBody("null")})
 	if resp.StatusCode != http.StatusBadRequest {
@@ -185,6 +193,7 @@ func TestRegister_ErrorCase_NullBodyUsesValidationShape(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	body := `{"email":"trail@example.com","username":"trailuser","password":"Password123!"} garbage`
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: &body})
@@ -194,6 +203,7 @@ func TestRegister_ErrorCase_TrailingJSONReturnsBadRequest(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_OversizedBodyReturnsEmpty413(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	body := strings.Repeat("a", (1<<20)+1)
 	resp := doRequest(t, srv, testRequest{method: http.MethodPost, path: "/auth/register", rawBody: &body})
@@ -206,6 +216,7 @@ func TestRegister_ErrorCase_OversizedBodyReturnsEmpty413(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_DuplicateEmailReturnsConflict(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "dup1@example.com", "dupuser1", "Password123!", nil)
 
@@ -227,6 +238,7 @@ func TestRegister_ErrorCase_DuplicateEmailReturnsConflict(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_DuplicateUsernameReturnsConflict(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 	registerUser(t, srv, "unique1@example.com", "sameuser", "Password123!", nil)
 
@@ -247,6 +259,7 @@ func TestRegister_ErrorCase_DuplicateUsernameReturnsConflict(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_ConcurrentDuplicateRegistrationsResolveToExactlyOneWinner(t *testing.T) {
+	t.Parallel()
 	// Concurrent registrations for the same email race between
 	// Service.Register's pre-check SELECTs and the DB's unique index.
 	// Depending on scheduling, a loser can hit either the pre-check branch
@@ -304,6 +317,7 @@ func TestRegister_ErrorCase_ConcurrentDuplicateRegistrationsResolveToExactlyOneW
 }
 
 func TestRegister_ErrorCase_InvalidEmailReturnsValidationErrors(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -322,6 +336,7 @@ func TestRegister_ErrorCase_InvalidEmailReturnsValidationErrors(t *testing.T) {
 }
 
 func TestRegister_ErrorCase_InvalidUsernameReturnsValidationErrors(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
@@ -336,6 +351,7 @@ func TestRegister_ErrorCase_InvalidUsernameReturnsValidationErrors(t *testing.T)
 }
 
 func TestRegister_ErrorCase_ShortPasswordReturnsValidationErrors(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer(t)
 
 	resp := doRequest(t, srv, testRequest{
