@@ -150,6 +150,11 @@ func (s *Service) handleUserDeleted(ctx context.Context, event events.UserDelete
 // social.Service.SendFriendRequest and friends for the notification-class
 // split, where a failed handler logs and does not abort the request that
 // produced it.
+//
+// When ctx already carries a querier (db.WithQuerier — e.g. challenge-invite
+// claim), CreateHabit joins that transaction instead of opening its own:
+// the insert + HabitCreated visibility cascade commit/roll back with the
+// caller. Standing alone, behaviour is unchanged (own begin/commit).
 func (s *Service) CreateHabit(ctx context.Context, userID string, req CreateHabitRequest) (Habit, error) {
 	name, err := validateName(req.Name)
 	if err != nil {
@@ -174,25 +179,37 @@ func (s *Service) CreateHabit(ctx context.Context, userID string, req CreateHabi
 		return Habit{}, err
 	}
 
+	if db.HasQuerier(ctx) {
+		return s.createHabitOn(ctx, db.QuerierFrom(ctx, s.pool), userID, req, frequency, customDays)
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Habit{}, fmt.Errorf("habits: beginning create-habit transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	habit, err := createHabit(ctx, tx, userID, req, frequency, customDays)
+	habit, err := s.createHabitOn(db.WithQuerier(ctx, tx), tx, userID, req, frequency, customDays)
 	if err != nil {
 		return Habit{}, err
-	}
-
-	if err := events.Emit(db.WithQuerier(ctx, tx), s.registry, events.HabitCreated{UserID: userID, HabitID: habit.ID, Name: habit.Name}); err != nil {
-		return Habit{}, fmt.Errorf("habits: habit.created handler failed: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return Habit{}, fmt.Errorf("habits: committing create-habit transaction: %w", err)
 	}
 
+	return habit, nil
+}
+
+func (s *Service) createHabitOn(ctx context.Context, q db.Querier, userID string, req CreateHabitRequest, frequency Frequency, customDays []int) (Habit, error) {
+	habit, err := createHabit(ctx, q, userID, req, frequency, customDays)
+	if err != nil {
+		return Habit{}, err
+	}
+
+	if err := events.Emit(db.WithQuerier(ctx, q), s.registry, events.HabitCreated{UserID: userID, HabitID: habit.ID, Name: habit.Name}); err != nil {
+		return Habit{}, fmt.Errorf("habits: habit.created handler failed: %w", err)
+	}
 	return habit, nil
 }
 

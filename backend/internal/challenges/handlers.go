@@ -220,6 +220,19 @@ func (h *Handlers) ViewInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// ClaimInvite handles POST /challenges/invites/{token}/claim (authed).
+func (h *Handlers) ClaimInvite(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	token := r.PathValue("token")
+
+	challenge, err := h.service.ClaimInvite(r.Context(), userID, token)
+	if err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toChallengeResponse(challenge, h.service.now()))
+}
+
 func intQueryParam(r *http.Request, name string, fallback int) int {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {

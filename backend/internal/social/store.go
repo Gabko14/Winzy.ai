@@ -118,6 +118,23 @@ func insertFriendship(ctx context.Context, db querier, userID, friendID string, 
 	return f, nil
 }
 
+// upsertAcceptedFriendship inserts an Accepted row for (userID, friendID), or
+// upgrades an existing Pending (or already-Accepted) row on the unique
+// (user_id, friend_id) index. Uses ON CONFLICT DO UPDATE so a 23505 never
+// aborts the caller's transaction — critical for claim's EnsureFriendship.
+func upsertAcceptedFriendship(ctx context.Context, db querier, userID, friendID string) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO friendships (user_id, friend_id, status)
+		VALUES ($1::uuid, $2::uuid, 'Accepted')
+		ON CONFLICT (user_id, friend_id) DO UPDATE
+		SET status = 'Accepted', updated_at = now()`,
+		userID, friendID)
+	if err != nil {
+		return fmt.Errorf("social: upserting accepted friendship: %w", err)
+	}
+	return nil
+}
+
 // findPendingRequestForRecipient looks up a Pending friendship by id where
 // friendID is the recipient — the shape AcceptFriendRequest/
 // DeclineFriendRequest both query, so only the request's addressee can act

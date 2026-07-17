@@ -20,14 +20,15 @@ import (
 
 // Service is the challenges module's business logic.
 type Service struct {
-	pool          *pgxpool.Pool
-	registry      *events.Registry
-	logger        *slog.Logger
-	auth          *auth.Service
-	social        *social.Service
-	habits        *habits.Service
-	publicBaseURL string
-	now           func() time.Time
+	pool           *pgxpool.Pool
+	registry       *events.Registry
+	logger         *slog.Logger
+	auth           *auth.Service
+	social         *social.Service
+	habits         *habits.Service
+	publicBaseURL  string
+	now            func() time.Time
+	claimInterrupt func() error // tests only: fail mid-claim to assert rollback
 }
 
 // NewService wires a Service, registers HabitCompleted/UserDeleted handlers,
@@ -58,6 +59,13 @@ func NewService(
 // SetClock overrides the clock (tests).
 func (s *Service) SetClock(now func() time.Time) {
 	s.now = now
+}
+
+// SetClaimInterrupt injects a failure after the habit is created inside
+// ClaimInvite (tests) so the surrounding transaction must roll everything
+// back — friendship, habit, challenge, and the invite claim mark.
+func (s *Service) SetClaimInterrupt(fn func() error) {
+	s.claimInterrupt = fn
 }
 
 // Create creates a challenge from creatorID onto a friend's habit.

@@ -271,6 +271,24 @@ describe("NotificationScreen", () => {
     });
   });
 
+  it("calls onNotificationPress for challengeaccepted notifications (deep-linkable)", async () => {
+    const onNotificationPress = jest.fn();
+    const notification = makeNotification({ id: "n1", type: "challengeaccepted", readAt: null });
+    mockUseNotifications.items = [notification];
+    mockUseNotifications.total = 1;
+
+    const { getByTestId, getByText } = render(
+      <NotificationScreen onNotificationPress={onNotificationPress} />,
+    );
+
+    expect(getByText("Your challenge was accepted!")).toBeTruthy();
+    fireEvent.press(getByTestId("notification-row-n1"));
+
+    await waitFor(() => {
+      expect(onNotificationPress).toHaveBeenCalledWith(notification);
+    });
+  });
+
   it("does not call markRead for already-read notifications", () => {
     const notification = makeNotification({ id: "n1", readAt: "2026-01-01T00:00:00Z" });
     mockUseNotifications.items = [notification];

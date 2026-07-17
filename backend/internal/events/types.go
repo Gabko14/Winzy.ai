@@ -90,6 +90,17 @@ type ChallengeCreated struct {
 	HabitID     string
 }
 
+// ChallengeInviteClaimed is emitted after a challenge invite is claimed
+// (post-commit). Notifications notify the CREATOR — distinct from
+// ChallengeCreated, which notifies the recipient ("Someone challenged you").
+type ChallengeInviteClaimed struct {
+	InviteID    string
+	ChallengeID string
+	CreatorID   string
+	ClaimerID   string
+	HabitName   string
+}
+
 // ChallengeCompleted is emitted when a challenge's milestone is reached.
 type ChallengeCompleted struct {
 	ChallengeID string

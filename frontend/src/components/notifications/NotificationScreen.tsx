@@ -26,6 +26,7 @@ const DEEP_LINK_TYPES = new Set<NotificationType>([
   "friendrequestaccepted",
   "habitcompleted",
   "challengecreated",
+  "challengeaccepted",
   "challengecompleted",
 ]);
 

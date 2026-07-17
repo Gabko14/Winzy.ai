@@ -15,6 +15,7 @@ const (
 	TypeFriendRequestSent     NotificationType = "FriendRequestSent"
 	TypeFriendRequestAccepted NotificationType = "FriendRequestAccepted"
 	TypeChallengeCreated      NotificationType = "ChallengeCreated"
+	TypeChallengeAccepted     NotificationType = "ChallengeAccepted"
 	TypeChallengeCompleted    NotificationType = "ChallengeCompleted"
 	TypeHabitReminder         NotificationType = "HabitReminder"
 )

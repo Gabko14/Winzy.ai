@@ -71,3 +71,18 @@ func TestQuerierFrom_EdgeCase_NestedOverrideWinsOverOuter(t *testing.T) {
 		t.Errorf("QuerierFrom(outerCtx) = %v, want the outer override %v (untouched by the nested call)", got, outer)
 	}
 }
+
+func TestHasQuerier_HappyPath_TrueWhenSet(t *testing.T) {
+	t.Parallel()
+	ctx := db.WithQuerier(context.Background(), &fakeQuerier{name: "q"})
+	if !db.HasQuerier(ctx) {
+		t.Error("HasQuerier() = false, want true when WithQuerier was used")
+	}
+}
+
+func TestHasQuerier_EdgeCase_FalseWhenUnset(t *testing.T) {
+	t.Parallel()
+	if db.HasQuerier(context.Background()) {
+		t.Error("HasQuerier() = true, want false on a plain context")
+	}
+}

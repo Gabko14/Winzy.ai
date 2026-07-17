@@ -25,4 +25,5 @@ func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("GET /challenges/invites", h.ListInvites)
 	mux.HandleFunc("DELETE /challenges/invites/{id}", h.RevokeInvite)
 	mux.HandleFunc("GET /challenges/invites/{token}", h.ViewInvite)
+	mux.HandleFunc("POST /challenges/invites/{token}/claim", h.ClaimInvite)
 }

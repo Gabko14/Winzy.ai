@@ -1,6 +1,11 @@
 package social
 
-import "context"
+import (
+	"context"
+	"fmt"
+
+	"github.com/Gabko14/winzy/backend/internal/db"
+)
 
 // This file is social's export surface for other in-process modules — the
 // direct-call replacement for the old /social/internal/friends/{userId},
@@ -32,6 +37,42 @@ func (s *Service) FriendIDs(ctx context.Context, userID string) ([]string, error
 // Service.AcceptFriendRequest), so checking one direction is sufficient.
 func (s *Service) AreFriends(ctx context.Context, a, b string) (bool, error) {
 	return isAcceptedFriend(ctx, s.pool, a, b)
+}
+
+// EnsureFriendship makes sure a and b have an Accepted friendship in both
+// directions, joining whatever transaction db.WithQuerier put on ctx
+// (falls back to s.pool). Used by challenge-invite claim (winzy.ai-jc38.4).
+//
+// Implementation is a true upsert per direction
+// (`INSERT … ON CONFLICT (user_id, friend_id) DO UPDATE SET status='Accepted'`):
+// Pending rows upgrade, Accepted rows stay Accepted, and a unique-violation
+// never aborts the caller's Postgres transaction (swallowing 23505 after the
+// fact would leave the tx poisoned with 25P02).
+//
+// Lock order: always upsert (minUUID, maxUUID) before (maxUUID, minUUID),
+// regardless of who is creator/claimer. Opposite-direction concurrent claims
+// (A claims B's invite while B claims A's) would otherwise take row locks in
+// opposite order and deadlock (Postgres 40P01 → 500 on one side).
+//
+// Deliberately does NOT emit FriendRequestAccepted: claim fires
+// ChallengeInviteClaimed for the creator; a second friendship push for the
+// same tap is noise (bead winzy.ai-jc38.4).
+func (s *Service) EnsureFriendship(ctx context.Context, a, b string) error {
+	if a == "" || b == "" || a == b {
+		return fmt.Errorf("social: EnsureFriendship requires two distinct user ids")
+	}
+	q := db.QuerierFrom(ctx, s.pool)
+	first, second := a, b
+	if a > b {
+		first, second = b, a
+	}
+	if err := upsertAcceptedFriendship(ctx, q, first, second); err != nil {
+		return err
+	}
+	if err := upsertAcceptedFriendship(ctx, q, second, first); err != nil {
+		return err
+	}
+	return nil
 }
 
 // VisibleHabitIDsForViewer returns the subset of habitIDs (all owned by

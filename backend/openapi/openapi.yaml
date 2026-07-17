@@ -1104,6 +1104,30 @@ paths:
         "404":
           description: Not found
 
+  /challenges/invites/{token}/claim:
+    post:
+      tags: [challenges]
+      operationId: claimChallengeInvite
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Claimed — friendship, habit, and challenge materialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Challenge"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+        "409":
+          $ref: "#/components/responses/Error"
+
   /notifications:
     get:
       tags: [notifications]
@@ -2577,6 +2601,7 @@ components:
         - friendrequestsent
         - friendrequestaccepted
         - challengecreated
+        - challengeaccepted
         - challengecompleted
 
     NotificationItem:

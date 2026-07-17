@@ -82,6 +82,7 @@ func NewService(
 	events.Register(registry, s.handleFriendRequestSent)
 	events.Register(registry, s.handleFriendRequestAccepted)
 	events.Register(registry, s.handleChallengeCreated)
+	events.Register(registry, s.handleChallengeInviteClaimed)
 	events.Register(registry, s.handleChallengeCompleted)
 	events.Register(registry, s.handleUserDeleted)
 	exportReg.Register("notification", s.exportSection)
@@ -413,6 +414,44 @@ func (s *Service) handleChallengeCreated(ctx context.Context, event events.Chall
 	s.scheduleDelivery([]deliveryJob{{
 		NotificationID: n.ID, UserID: event.To,
 		Title: "New challenge!", Body: "Someone challenged you — check it out!", URL: "/challenges",
+	}})
+	return nil
+}
+
+func (s *Service) handleChallengeInviteClaimed(ctx context.Context, event events.ChallengeInviteClaimed) error {
+	q := db.QuerierFrom(ctx, s.pool)
+	settings, found, err := getSettings(ctx, q, event.CreatorID)
+	if err != nil {
+		return err
+	}
+	if found && !settings.ChallengeUpdates {
+		s.logger.InfoContext(ctx, "skipping challenge.invite.claimed — ChallengeUpdates disabled",
+			"user_id", event.CreatorID)
+		return nil
+	}
+
+	key := fmt.Sprintf("challenge_invite_claimed:%s", event.InviteID)
+	data, _ := json.Marshal(map[string]string{
+		"inviteId":    event.InviteID,
+		"challengeId": event.ChallengeID,
+		"claimerId":   event.ClaimerID,
+		"habitName":   event.HabitName,
+	})
+	keyCopy := key
+	n, inserted, err := insertNotificationIdempotent(ctx, q, Notification{
+		UserID: event.CreatorID, Type: TypeChallengeAccepted, Data: data, IdempotencyKey: &keyCopy,
+	})
+	if err != nil {
+		return err
+	}
+	if !inserted && n.PushDelivered {
+		return nil
+	}
+	s.scheduleDelivery([]deliveryJob{{
+		NotificationID: n.ID, UserID: event.CreatorID,
+		Title: "Challenge accepted!",
+		Body:  "Your challenge was accepted — time to hold up your end!",
+		URL:   "/challenges",
 	}})
 	return nil
 }

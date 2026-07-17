@@ -156,11 +156,45 @@ func findInviteByToken(ctx context.Context, db querier, token string) (Challenge
 	return scanOptionalInvite(row)
 }
 
-func revokeInvite(ctx context.Context, db querier, id, creatorID string, now time.Time) (bool, error) {
+// findInviteByTokenForUpdate locks the invite row for the claim transaction.
+func findInviteByTokenForUpdate(ctx context.Context, db querier, token string) (ChallengeInvite, bool, error) {
+	row := db.QueryRow(ctx, `
+		SELECT `+inviteColumns+` FROM challenge_invites
+		WHERE token = $1
+		FOR UPDATE`, token)
+	return scanOptionalInvite(row)
+}
+
+func markInviteClaimed(ctx context.Context, db querier, id, claimerID string, now time.Time) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE challenge_invites
+		SET status = 'claimed', claimed_by = $2::uuid, claimed_at = $3, updated_at = $3
+		WHERE id = $1::uuid AND status = 'pending'`,
+		id, claimerID, now)
+	if err != nil {
+		return fmt.Errorf("challenges: marking invite claimed: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrConflict
+	}
+	return nil
+}
+
+func findInviteByIDAndCreator(ctx context.Context, db querier, id, creatorID string) (ChallengeInvite, bool, error) {
+	row := db.QueryRow(ctx, `
+		SELECT `+inviteColumns+` FROM challenge_invites
+		WHERE id = $1::uuid AND creator_id = $2::uuid`,
+		id, creatorID)
+	return scanOptionalInvite(row)
+}
+
+// revokePendingInvite sets status=revoked only while still pending — a
+// concurrent claim that already flipped the row to claimed leaves it claimed.
+func revokePendingInvite(ctx context.Context, db querier, id, creatorID string, now time.Time) (bool, error) {
 	tag, err := db.Exec(ctx, `
 		UPDATE challenge_invites
 		SET status = 'revoked', updated_at = $3
-		WHERE id = $1::uuid AND creator_id = $2::uuid`,
+		WHERE id = $1::uuid AND creator_id = $2::uuid AND status = 'pending'`,
 		id, creatorID, now)
 	if err != nil {
 		return false, fmt.Errorf("challenges: revoking invite: %w", err)

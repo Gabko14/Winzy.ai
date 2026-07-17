@@ -202,6 +202,7 @@ export function RootNavigator() {
         }
         break;
       case "challengecreated":
+      case "challengeaccepted":
         overlay.push("challenges");
         break;
       case "challengecompleted":

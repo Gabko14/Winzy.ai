@@ -56,6 +56,7 @@ describe("NotificationRow", () => {
     { type: "friendrequestsent", expectedTitle: "New friend request" },
     { type: "friendrequestaccepted", expectedTitle: "Friend request accepted" },
     { type: "challengecreated", expectedTitle: "New challenge" },
+    { type: "challengeaccepted", expectedTitle: "Your challenge was accepted!" },
     { type: "challengecompleted", expectedTitle: "Challenge completed!" },
     { type: "habitcompleted", expectedTitle: "A friend logged a habit" },
   ];

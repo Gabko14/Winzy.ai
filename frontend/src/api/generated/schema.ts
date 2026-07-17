@@ -738,6 +738,22 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/challenges/invites/{token}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["claimChallengeInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications": {
         parameters: {
             query?: never;
@@ -1441,7 +1457,7 @@ export type components = {
             status: components["schemas"]["ChallengeInviteStatus"];
         };
         /** @enum {string} */
-        NotificationType: "habitcompleted" | "friendrequestsent" | "friendrequestaccepted" | "challengecreated" | "challengecompleted";
+        NotificationType: "habitcompleted" | "friendrequestsent" | "friendrequestaccepted" | "challengecreated" | "challengeaccepted" | "challengecompleted";
         NotificationItem: {
             /** Format: uuid */
             id: string;
@@ -3204,6 +3220,37 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    claimChallengeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Claimed — friendship, habit, and challenge materialized */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Challenge"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
         };
     };
     listNotifications: {

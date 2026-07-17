@@ -54,3 +54,12 @@ func QuerierFrom(ctx context.Context, fallback Querier) Querier {
 	}
 	return fallback
 }
+
+// HasQuerier reports whether ctx carries an override from WithQuerier.
+// Callers that own a multi-step transaction (e.g. challenge-invite claim)
+// use this so a callee like habits.CreateHabit can join the caller's tx
+// instead of opening a nested pool transaction on a different connection.
+func HasQuerier(ctx context.Context) bool {
+	_, ok := ctx.Value(querierCtxKey{}).(Querier)
+	return ok
+}

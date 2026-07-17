@@ -31,6 +31,11 @@ function getNotificationContent(type: NotificationType, data: Record<string, unk
         title: "New challenge",
         body: "A friend has set a challenge for you. Ready to take it on?",
       };
+    case "challengeaccepted":
+      return {
+        title: "Your challenge was accepted!",
+        body: "Someone took you up on it — time to hold up your end.",
+      };
     case "challengecompleted": {
       const reward = data.reward as string | undefined;
       return {
