@@ -1,15 +1,18 @@
 import { act, waitFor } from "@testing-library/react-native";
-import { useHabits, useCreateHabit, useUpdateHabit, useArchiveHabit } from "../useHabits";
+import { useHabits, useCreateHabit, useUpdateHabit, useArchiveHabit, useOrderHabits } from "../useHabits";
 import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
+import { queryKeys } from "../../api/queryKeys";
 
 jest.mock("../../api/habits", () => ({
   fetchHabits: jest.fn(),
   createHabit: jest.fn(),
   updateHabit: jest.fn(),
   archiveHabit: jest.fn(),
+  orderHabits: jest.fn(),
 }));
 
-const { fetchHabits, createHabit, updateHabit, archiveHabit } = jest.requireMock("../../api/habits");
+const { fetchHabits, createHabit, updateHabit, archiveHabit, orderHabits } =
+  jest.requireMock("../../api/habits");
 
 const mockHabit = {
   id: "h1",
@@ -212,5 +215,48 @@ describe("useArchiveHabit", () => {
     await waitFor(() => {
       expect(result.current.error).toEqual(apiError);
     });
+  });
+});
+
+// --- useOrderHabits ---
+
+describe("useOrderHabits", () => {
+  const h1 = { ...mockHabit, id: "h1", name: "A", position: 0 };
+  const h2 = { ...mockHabit, id: "h2", name: "B", position: 1 };
+
+  it("optimistically reorders then persists via orderHabits", async () => {
+    orderHabits.mockResolvedValue(undefined);
+    fetchHabits.mockResolvedValue([h1, h2]);
+
+    const { result, queryClient } = renderHookWithQueryClient(() => useOrderHabits());
+    queryClient.setQueryData(queryKeys.habits.list(), [h1, h2]);
+
+    await act(async () => {
+      await result.current.order(["h2", "h1"]);
+    });
+
+    expect(orderHabits).toHaveBeenCalledWith({ habitIds: ["h2", "h1"] });
+  });
+
+  it("reverts cache when orderHabits fails", async () => {
+    orderHabits.mockRejectedValue({
+      status: 400,
+      code: "validation_error",
+      message: "bad set",
+    });
+    fetchHabits.mockResolvedValue([h1, h2]);
+
+    const { result, queryClient } = renderHookWithQueryClient(() => useOrderHabits());
+    queryClient.setQueryData(queryKeys.habits.list(), [h1, h2]);
+
+    await act(async () => {
+      try {
+        await result.current.order(["h2", "h1"]);
+      } catch {
+        // expected
+      }
+    });
+
+    expect(queryClient.getQueryData(queryKeys.habits.list())).toEqual([h1, h2]);
   });
 });

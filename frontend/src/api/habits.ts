@@ -12,6 +12,7 @@ export type CompletionKind = Schemas["CompletionKind"];
 export type Habit = Schemas["Habit"];
 export type CreateHabitRequest = Schemas["CreateHabitRequest"];
 export type UpdateHabitRequest = Schemas["UpdateHabitRequest"];
+export type OrderHabitsRequest = Schemas["OrderHabitsRequest"];
 
 // --- API functions ---
 
@@ -33,6 +34,10 @@ export function updateHabit(id: string, request: UpdateHabitRequest): Promise<Ha
 
 export function archiveHabit(id: string): Promise<void> {
   return api.delete<void>(`/habits/${id}`);
+}
+
+export function orderHabits(request: OrderHabitsRequest): Promise<void> {
+  return api.put<void>("/habits/order", request);
 }
 
 // --- Stats & completions (habit detail screen) ---

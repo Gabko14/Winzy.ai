@@ -5,6 +5,7 @@ import {
   createHabit as apiCreateHabit,
   updateHabit as apiUpdateHabit,
   archiveHabit as apiArchiveHabit,
+  orderHabits as apiOrderHabits,
   type Habit,
   type CreateHabitRequest,
   type UpdateHabitRequest,
@@ -20,6 +21,16 @@ export function habitsListQueryOptions() {
   });
 }
 
+function applyLocalOrder(list: Habit[], orderedIds: string[]): Habit[] {
+  const byId = new Map(list.map((h) => [h.id, h]));
+  return orderedIds
+    .map((id, index) => {
+      const habit = byId.get(id);
+      return habit ? { ...habit, position: index } : null;
+    })
+    .filter((h): h is Habit => h != null);
+}
+
 export function useHabits() {
   const query = useQuery(habitsListQueryOptions());
 
@@ -33,6 +44,34 @@ export function useHabits() {
     error: (query.error as ApiError | null) ?? null,
     refresh,
   };
+}
+
+export function useOrderHabits() {
+  const queryClient = useQueryClient();
+
+  const order = useCallback(
+    async (habitIds: string[]) => {
+      const listKey = queryKeys.habits.list();
+      const previous = queryClient.getQueryData<Habit[]>(listKey);
+      queryClient.setQueryData<Habit[]>(listKey, (old) =>
+        old ? applyLocalOrder(old, habitIds) : old,
+      );
+      try {
+        await apiOrderHabits({ habitIds });
+        await queryClient.invalidateQueries({ queryKey: listKey });
+      } catch (err) {
+        if (previous !== undefined) {
+          queryClient.setQueryData(listKey, previous);
+        } else {
+          await queryClient.invalidateQueries({ queryKey: listKey });
+        }
+        throw err;
+      }
+    },
+    [queryClient],
+  );
+
+  return { order };
 }
 
 export function useCreateHabit(onSuccess?: (habit: Habit) => void) {

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { TodayScreen } from "../TodayScreen";
 import type { TodayHabit } from "../../hooks/useTodayHabits";
 import type { FlameLevel } from "../../api/habits";
@@ -8,6 +8,7 @@ import type { FlameLevel } from "../../api/habits";
 const mockUseTodayHabits = {
   items: [] as TodayHabit[],
   notTodayHabits: [] as import("../../api/habits").Habit[],
+  allHabits: [] as import("../../api/habits").Habit[],
   hasAnyHabits: false,
   loading: false,
   error: null as null | { status: number; code: string; message: string },
@@ -28,14 +29,28 @@ const mockUseTodayHabits = {
   dismissUndo: jest.fn(),
 };
 
+const mockOrder = jest.fn();
+
 jest.mock("../../hooks/useTodayHabits", () => ({
   useTodayHabits: () => ({
     ...mockUseTodayHabits,
     hasAnyHabits:
       mockUseTodayHabits.hasAnyHabits ||
       mockUseTodayHabits.items.length > 0 ||
-      mockUseTodayHabits.notTodayHabits.length > 0,
+      mockUseTodayHabits.notTodayHabits.length > 0 ||
+      mockUseTodayHabits.allHabits.length > 0,
+    allHabits:
+      mockUseTodayHabits.allHabits.length > 0
+        ? mockUseTodayHabits.allHabits
+        : [
+            ...mockUseTodayHabits.items.map((i) => i.habit),
+            ...mockUseTodayHabits.notTodayHabits,
+          ],
   }),
+}));
+
+jest.mock("../../hooks/useHabits", () => ({
+  useOrderHabits: () => ({ order: mockOrder }),
 }));
 
 jest.mock("../../components/TodayTodosSection", () => ({
@@ -70,6 +85,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUseTodayHabits.items = [];
   mockUseTodayHabits.notTodayHabits = [];
+  mockUseTodayHabits.allHabits = [];
   mockUseTodayHabits.hasAnyHabits = false;
   mockUseTodayHabits.loading = false;
   mockUseTodayHabits.error = null;
@@ -78,6 +94,7 @@ beforeEach(() => {
   mockUseTodayHabits.totalCount = 0;
   mockUseTodayHabits.today = "2026-03-09";
   mockUseTodayHabits.undo = null;
+  mockOrder.mockResolvedValue(undefined);
 });
 
 describe("TodayScreen", () => {
@@ -537,5 +554,114 @@ describe("TodayScreen", () => {
     expect(getByTestId("today-screen")).toBeTruthy();
     expect(queryByTestId("today-empty")).toBeNull();
     expect(getByTestId("not-today-section")).toBeTruthy();
+  });
+
+  // --- Reorder mode ---
+
+  function twoHabitsSetup() {
+    const h1 = makeHabit({ habit: { id: "h1", name: "Alpha", position: 0 } as TodayHabit["habit"] });
+    const h2 = makeHabit({ habit: { id: "h2", name: "Beta", position: 1 } as TodayHabit["habit"] });
+    mockUseTodayHabits.items = [h1, h2];
+    mockUseTodayHabits.allHabits = [h1.habit, h2.habit];
+    mockUseTodayHabits.totalCount = 2;
+    mockUseTodayHabits.completedCount = 0;
+    return { h1, h2 };
+  }
+
+  it("hides overflow when fewer than 2 habits", () => {
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Only" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { queryByTestId } = render(<TodayScreen />);
+    expect(queryByTestId("habits-overflow")).toBeNull();
+  });
+
+  it("enters reorder mode via overflow menu and merges due + not-today", () => {
+    const due = makeHabit({ habit: { id: "h1", name: "Daily", position: 0 } as TodayHabit["habit"] });
+    const notDue = {
+      id: "h2",
+      name: "Tuesday only",
+      icon: null,
+      color: null,
+      frequency: "custom" as const,
+      customDays: [2],
+      minimumDescription: null,
+      position: 1,
+      createdAt: "2026-01-01T00:00:00Z",
+      archivedAt: null,
+    };
+    mockUseTodayHabits.items = [due];
+    mockUseTodayHabits.notTodayHabits = [notDue];
+    mockUseTodayHabits.allHabits = [due.habit, notDue];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId, queryByTestId } = render(<TodayScreen />);
+    fireEvent.press(getByTestId("habits-overflow"));
+    fireEvent.press(getByTestId("habits-reorder-toggle"));
+
+    expect(getByTestId("habits-reorder-list")).toBeTruthy();
+    expect(getByTestId("habits-reorder-row-h1")).toBeTruthy();
+    expect(getByTestId("habits-reorder-row-h2")).toBeTruthy();
+    expect(queryByTestId("today-habits-list")).toBeNull();
+    expect(queryByTestId("not-today-section")).toBeNull();
+    expect(queryByTestId("create-habit-fab")).toBeNull();
+  });
+
+  it("moves a habit down and commits Done via order", async () => {
+    twoHabitsSetup();
+    const { getByTestId, queryByTestId } = render(<TodayScreen onCreateHabit={jest.fn()} />);
+
+    fireEvent.press(getByTestId("habits-overflow"));
+    fireEvent.press(getByTestId("habits-reorder-toggle"));
+    fireEvent.press(getByTestId("habits-move-down-h1"));
+    fireEvent.press(getByTestId("habits-reorder-done"));
+
+    await waitFor(() => {
+      expect(mockOrder).toHaveBeenCalledWith(["h2", "h1"]);
+    });
+    expect(queryByTestId("habits-reorder-list")).toBeNull();
+    expect(getByTestId("today-habits-list")).toBeTruthy();
+  });
+
+  it("Cancel restores pre-mode list without calling order", () => {
+    twoHabitsSetup();
+    const { getByTestId, queryByTestId } = render(<TodayScreen />);
+
+    fireEvent.press(getByTestId("habits-overflow"));
+    fireEvent.press(getByTestId("habits-reorder-toggle"));
+    fireEvent.press(getByTestId("habits-move-down-h1"));
+    fireEvent.press(getByTestId("habits-reorder-cancel"));
+
+    expect(mockOrder).not.toHaveBeenCalled();
+    expect(queryByTestId("habits-reorder-list")).toBeNull();
+    expect(getByTestId("today-habits-list")).toBeTruthy();
+  });
+
+  it("shows order error and refreshes when commit fails", async () => {
+    twoHabitsSetup();
+    mockOrder.mockRejectedValue({
+      status: 400,
+      code: "validation_error",
+      message: "habitIds must match the active set",
+    });
+
+    const { getByTestId } = render(<TodayScreen />);
+    fireEvent.press(getByTestId("habits-overflow"));
+    fireEvent.press(getByTestId("habits-reorder-toggle"));
+    fireEvent.press(getByTestId("habits-reorder-done"));
+
+    await waitFor(() => {
+      expect(getByTestId("habits-order-error")).toBeTruthy();
+      expect(mockUseTodayHabits.refresh).toHaveBeenCalled();
+    });
+  });
+
+  it("does not expose reorder controls outside reorder mode", () => {
+    twoHabitsSetup();
+    const { queryByTestId } = render(<TodayScreen />);
+    expect(queryByTestId("habits-move-up-h1")).toBeNull();
+    expect(queryByTestId("habits-reorder-done")).toBeNull();
   });
 });

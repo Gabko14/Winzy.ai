@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -14,12 +14,15 @@ import {
   ErrorState,
   Flame,
   Badge,
+  InlineError,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
+import { useOrderHabits } from "../hooks/useHabits";
 import { UnreadBadge } from "../components/notifications";
 import { WeekStrip } from "../components/WeekStrip";
 import { TodayTodosSection } from "../components/TodayTodosSection";
+import { isApiError } from "../api";
 import type { Habit, FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
@@ -41,6 +44,7 @@ export function TodayScreen({
   const {
     items,
     notTodayHabits,
+    allHabits,
     hasAnyHabits,
     loading,
     error,
@@ -55,6 +59,66 @@ export function TodayScreen({
     undoLast,
     dismissUndo,
   } = useTodayHabits();
+  const { order } = useOrderHabits();
+
+  const [reorderMode, setReorderMode] = useState(false);
+  const [draftIds, setDraftIds] = useState<string[]>([]);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [committingOrder, setCommittingOrder] = useState(false);
+
+  const reorderHabits = useMemo(() => {
+    if (!reorderMode) return [];
+    const byId = new Map(allHabits.map((h) => [h.id, h]));
+    return draftIds.map((id) => byId.get(id)).filter((h): h is Habit => !!h);
+  }, [reorderMode, allHabits, draftIds]);
+
+  const enterReorder = useCallback(() => {
+    setDraftIds(allHabits.map((h) => h.id));
+    setOrderError(null);
+    setOverflowOpen(false);
+    setReorderMode(true);
+  }, [allHabits]);
+
+  const cancelReorder = useCallback(() => {
+    setReorderMode(false);
+    setDraftIds([]);
+    setOrderError(null);
+  }, []);
+
+  const move = useCallback((id: string, dir: -1 | 1) => {
+    setDraftIds((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      const nextIdx = idx + dir;
+      if (nextIdx < 0 || nextIdx >= prev.length) return prev;
+      const next = [...prev];
+      const tmp = next[idx];
+      next[idx] = next[nextIdx];
+      next[nextIdx] = tmp;
+      return next;
+    });
+  }, []);
+
+  const commitReorder = useCallback(async () => {
+    setCommittingOrder(true);
+    setOrderError(null);
+    try {
+      await order(draftIds);
+      setReorderMode(false);
+      setDraftIds([]);
+    } catch (err) {
+      const message = isApiError(err)
+        ? err.message
+        : "Could not save order. The list was refreshed.";
+      setOrderError(message);
+      await refresh();
+      setReorderMode(false);
+      setDraftIds([]);
+    } finally {
+      setCommittingOrder(false);
+    }
+  }, [draftIds, order, refresh]);
 
   const handleToggle = useCallback(
     (habitId: string, kind?: CompletionKind) => {
@@ -84,7 +148,21 @@ export function TodayScreen({
     [today, completing, handleToggle, handleToggleDay, onHabitPress],
   );
 
+  const renderReorderHabit = useCallback(
+    ({ item, index }: { item: Habit; index: number }) => (
+      <ReorderHabitRow
+        habit={item}
+        index={index}
+        total={reorderHabits.length}
+        onMoveUp={() => move(item.id, -1)}
+        onMoveDown={() => move(item.id, 1)}
+      />
+    ),
+    [reorderHabits.length, move],
+  );
+
   const keyExtractor = useCallback((item: TodayHabit) => item.habit.id, []);
+  const reorderKeyExtractor = useCallback((item: Habit) => item.id, []);
 
   const listFooter = (
     <>
@@ -135,8 +213,8 @@ export function TodayScreen({
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-screen">
       <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
 
-      {/* Create habit FAB */}
-      {onCreateHabit && (
+      {/* Create habit FAB — hidden in reorder mode */}
+      {onCreateHabit && !reorderMode && (
         <Pressable
           onPress={onCreateHabit}
           style={[styles.fab, { backgroundColor: colors.brandPrimary }]}
@@ -148,34 +226,116 @@ export function TodayScreen({
         </Pressable>
       )}
 
-      {/* Progress summary */}
+      {/* Progress summary / reorder chrome */}
       <View style={styles.progressRow}>
-        <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-          {completedCount} of {totalCount} done today
-        </Text>
-        {completedCount === totalCount && totalCount > 0 && (
-          <Badge label="All done!" variant="success" />
+        {reorderMode ? (
+          <>
+            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
+              Reorder habits
+            </Text>
+            <View style={styles.headerActions}>
+              <Pressable onPress={cancelReorder} testID="habits-reorder-cancel" hitSlop={8}>
+                <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={commitReorder}
+                disabled={committingOrder}
+                testID="habits-reorder-done"
+                hitSlop={8}
+              >
+                <Text style={[styles.headerAction, { color: colors.brandPrimary }]}>
+                  {committingOrder ? "Saving…" : "Done"}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
+              {completedCount} of {totalCount} done today
+            </Text>
+            <View style={styles.progressTrailing}>
+              {completedCount === totalCount && totalCount > 0 && (
+                <Badge label="All done!" variant="success" />
+              )}
+              {allHabits.length >= 2 && (
+                <View style={styles.overflowWrap}>
+                  <Pressable
+                    onPress={() => setOverflowOpen((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Habit options"
+                    accessibilityState={{ expanded: overflowOpen }}
+                    testID="habits-overflow"
+                    hitSlop={8}
+                    style={styles.overflowBtn}
+                  >
+                    <Text style={[styles.overflowGlyph, { color: colors.textTertiary }]}>
+                      {"\u22EF"}
+                    </Text>
+                  </Pressable>
+                  {overflowOpen && (
+                    <View
+                      style={[
+                        styles.overflowMenu,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                      ]}
+                      testID="habits-overflow-menu"
+                    >
+                      <Pressable
+                        onPress={enterReorder}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reorder habits"
+                        testID="habits-reorder-toggle"
+                        style={styles.overflowItem}
+                      >
+                        <Text style={[styles.overflowItemText, { color: colors.textPrimary }]}>
+                          Reorder
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          </>
         )}
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={keyExtractor}
-        renderItem={renderHabit}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={listFooter}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={refresh}
-            tintColor={colors.brandPrimary}
-          />
-        }
-        testID="today-habits-list"
-      />
+      {orderError && (
+        <View style={styles.orderBanner} testID="habits-order-error">
+          <InlineError message={orderError} />
+        </View>
+      )}
 
-      {undo && (
+      {reorderMode ? (
+        <FlatList
+          data={reorderHabits}
+          keyExtractor={reorderKeyExtractor}
+          renderItem={renderReorderHabit}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          testID="habits-reorder-list"
+        />
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={keyExtractor}
+          renderItem={renderHabit}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListFooterComponent={listFooter}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={refresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          testID="today-habits-list"
+        />
+      )}
+
+      {undo && !reorderMode && (
         <View style={[styles.undoChip, { backgroundColor: colors.textPrimary }]} testID="undo-chip">
           <Text style={styles.undoMessage}>{undo.message} — </Text>
           <Pressable
@@ -301,6 +461,63 @@ function NotTodaySection({ habits, onPress }: NotTodaySectionProps) {
             </Text>
           </Pressable>
         ))}
+    </View>
+  );
+}
+
+// --- Reorder row ---
+
+type ReorderHabitRowProps = {
+  habit: Habit;
+  index: number;
+  total: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+};
+
+function ReorderHabitRow({ habit, index, total, onMoveUp, onMoveDown }: ReorderHabitRowProps) {
+  const colors = lightTheme;
+  return (
+    <View
+      style={[styles.reorderRow, { borderBottomColor: colors.border }]}
+      testID={`habits-reorder-row-${habit.id}`}
+    >
+      <View style={styles.reorderControls}>
+        <Pressable
+          onPress={onMoveUp}
+          disabled={index === 0}
+          accessibilityRole="button"
+          accessibilityLabel={`Move ${habit.name} up`}
+          testID={`habits-move-up-${habit.id}`}
+          style={styles.chevronBtn}
+        >
+          <Text style={{ color: index === 0 ? colors.textTertiary : colors.textPrimary }}>
+            {"\u25B2"}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onMoveDown}
+          disabled={index === total - 1}
+          accessibilityRole="button"
+          accessibilityLabel={`Move ${habit.name} down`}
+          testID={`habits-move-down-${habit.id}`}
+          style={styles.chevronBtn}
+        >
+          <Text
+            style={{
+              color: index === total - 1 ? colors.textTertiary : colors.textPrimary,
+            }}
+          >
+            {"\u25BC"}
+          </Text>
+        </Pressable>
+      </View>
+      <View style={[styles.habitIcon, { backgroundColor: habit.color ?? colors.brandMuted }]}>
+        <Text style={styles.habitIconText}>{habit.icon ?? "\u2B50"}</Text>
+      </View>
+      <Text style={[styles.habitName, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+        {habit.name}
+      </Text>
     </View>
   );
 }
@@ -524,6 +741,70 @@ const styles = StyleSheet.create({
   },
   progressText: {
     ...typography.bodySmall,
+  },
+  progressTrailing: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: spacing.base,
+    alignItems: "center",
+  },
+  headerAction: {
+    ...typography.bodySmall,
+    fontWeight: "600",
+  },
+  overflowWrap: {
+    position: "relative",
+  },
+  overflowBtn: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  overflowGlyph: {
+    fontSize: 20,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+  overflowMenu: {
+    position: "absolute",
+    top: 28,
+    right: 0,
+    minWidth: 120,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    ...shadows.sm,
+    zIndex: 20,
+    elevation: 6,
+  },
+  overflowItem: {
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+  },
+  overflowItemText: {
+    ...typography.bodySmall,
+    fontWeight: "600",
+  },
+  orderBanner: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm,
+  },
+  reorderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 52,
+  },
+  reorderControls: {
+    gap: 2,
+  },
+  chevronBtn: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
   },
   list: {
     paddingHorizontal: spacing.xl,
