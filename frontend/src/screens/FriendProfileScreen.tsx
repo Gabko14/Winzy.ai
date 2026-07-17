@@ -14,7 +14,10 @@ import { spacing, radii, typography, lightTheme, shadows } from "../design-syste
 import { useFriendProfile } from "../hooks/useFriendProfile";
 import { getInitials } from "../utils/getInitials";
 import { flameLevelFromConsistency, flameBackgroundColor, flameTextColor } from "../utils/flameHelpers";
-import type { FriendHabit } from "../api/social";
+import { resolveAvatarUrl, userAvatarPath } from "../utils/avatarUrl";
+import { queryKeys } from "../api/queryKeys";
+import type { FriendHabit, FriendsPage } from "../api/social";
+import { useQueryClient } from "@tanstack/react-query";
 
 type Props = {
   friendId: string;
@@ -38,6 +41,13 @@ export function FriendProfileScreen({
 }: Props) {
   const colors = lightTheme;
   const { data, loading, error, refresh } = useFriendProfile(friendId);
+  const queryClient = useQueryClient();
+  const cachedFriend = queryClient
+    .getQueryData<FriendsPage>(queryKeys.friends.list())
+    ?.items.find((f) => f.friendId === friendId);
+  const avatarImageUrl = cachedFriend
+    ? resolveAvatarUrl(cachedFriend.avatarUrl)
+    : resolveAvatarUrl(userAvatarPath(friendId));
 
   const name = displayName ?? (username ? `@${username}` : `User ${friendId.slice(0, 8)}`);
   const initials = getInitials(displayName, username, friendId);
@@ -92,7 +102,7 @@ export function FriendProfileScreen({
         {/* Profile header */}
         <View style={styles.profileHeader} testID="friend-profile-header">
           <View style={styles.avatarWrapper}>
-            <Avatar initials={initials} size="lg" />
+            <Avatar initials={initials} size="lg" imageUrl={avatarImageUrl} />
           </View>
           <Text style={[styles.profileName, { color: colors.textPrimary }]}>{name}</Text>
           {username && displayName && (

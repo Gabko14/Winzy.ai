@@ -1,4 +1,4 @@
-export { api, apiRequest, bootstrapSession, setBaseUrl, type RequestOptions } from "./client";
+export { api, apiRequest, bootstrapSession, setBaseUrl, getBaseUrl, type RequestOptions } from "./client";
 export { tokenStore } from "./token";
 export {
   type ApiError,
@@ -7,6 +7,12 @@ export {
   type UserProfile,
   isApiError,
 } from "./types";
+export {
+  uploadAvatar,
+  deleteAvatar,
+  fetchProfile,
+  type AvatarUploadResponse,
+} from "./avatar";
 export {
   type Habit,
   type CreateHabitRequest,

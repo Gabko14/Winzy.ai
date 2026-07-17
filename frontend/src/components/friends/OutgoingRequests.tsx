@@ -1,9 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Card, Badge, Button } from "../../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../../design-system";
+import { Avatar, Card, Badge, Button } from "../../design-system";
+import { spacing, typography, lightTheme, shadows } from "../../design-system";
 import type { OutgoingRequest } from "../../api/social";
 import { getInitials } from "../../utils/getInitials";
+import { resolveAvatarUrl, userAvatarPath } from "../../utils/avatarUrl";
 
 function outgoingDisplayName(request: OutgoingRequest): string {
   if (request.toDisplayName) return request.toDisplayName;
@@ -27,11 +28,11 @@ export function OutgoingRequestsList({
       {outgoing.map((request) => (
         <Card key={request.id} style={styles.requestCard}>
           <View style={styles.requestRow}>
-            <View style={styles.requestAvatar}>
-              <Text style={styles.requestAvatarText}>
-                {getInitials(request.toDisplayName, request.toUsername, request.toUserId)}
-              </Text>
-            </View>
+            <Avatar
+              initials={getInitials(request.toDisplayName, request.toUsername, request.toUserId)}
+              size="sm"
+              imageUrl={resolveAvatarUrl(userAvatarPath(request.toUserId))}
+            />
             <View style={styles.requestInfo}>
               <Text style={[styles.requestName, { color: lightTheme.textPrimary }]} numberOfLines={1}>
                 {outgoingDisplayName(request)}
@@ -62,19 +63,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.base,
     gap: spacing.md,
-  },
-  requestAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.full,
-    backgroundColor: lightTheme.brandMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  requestAvatarText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: lightTheme.brandPrimary,
   },
   requestInfo: {
     flex: 1,

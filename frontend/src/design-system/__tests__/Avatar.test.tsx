@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Avatar } from "../components/Avatar";
 
 describe("Avatar", () => {
@@ -91,5 +91,44 @@ describe("Avatar", () => {
       ? container.props.style.find((s: Record<string, unknown>) => s.borderRadius !== undefined)
       : container.props.style;
     expect(flatStyle?.borderRadius).toBe(9999);
+  });
+
+  // --- Image + fallback ---
+
+  it("shows initials while image is loading", () => {
+    render(
+      <Avatar
+        initials="AL"
+        imageUrl="https://example.com/avatar.jpg"
+        testID="img-avatar"
+      />,
+    );
+    expect(screen.getByText("AL")).toBeTruthy();
+    expect(screen.getByTestId("img-avatar-image")).toBeTruthy();
+  });
+
+  it("falls back to initials when image errors", () => {
+    render(
+      <Avatar
+        initials="AL"
+        imageUrl="https://example.com/missing.jpg"
+        testID="err-avatar"
+      />,
+    );
+    const image = screen.getByTestId("err-avatar-image");
+    fireEvent(image, "error");
+    expect(screen.getByText("AL")).toBeTruthy();
+    expect(screen.queryByTestId("err-avatar-image")).toBeNull();
+  });
+
+  it("keeps fixed container size when imageUrl is null", () => {
+    render(<Avatar initials="XX" imageUrl={null} testID="null-url-avatar" />);
+    const container = screen.getByTestId("null-url-avatar");
+    expect(container.props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ width: 44, height: 44 }),
+      ]),
+    );
+    expect(screen.queryByTestId("null-url-avatar-image")).toBeNull();
   });
 });

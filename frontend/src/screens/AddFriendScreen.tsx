@@ -24,6 +24,7 @@ import { useMutation } from "@tanstack/react-query";
 import { sendFriendRequest } from "../api/social";
 import { queryKeys } from "../api/queryKeys";
 import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 import type { UserSearchResult } from "../api/social";
 import type { ApiError } from "../api/types";
 
@@ -83,7 +84,11 @@ export function AddFriendScreen({ currentUserId, onBack, onChallengeInvite }: Pr
       return (
         <Card style={styles.userCard}>
           <View style={styles.userRow}>
-            <Avatar initials={getInitials(item.displayName, item.username)} size="md" />
+            <Avatar
+              initials={getInitials(item.displayName, item.username)}
+              size="md"
+              imageUrl={resolveAvatarUrl(item.avatarUrl)}
+            />
 
             <View style={styles.userInfo}>
               {item.displayName && (

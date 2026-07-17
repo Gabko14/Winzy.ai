@@ -13,12 +13,14 @@ import {
   EmptyState,
   LoadingState,
   ErrorState,
+  Avatar,
 } from "../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
+import { spacing, typography, lightTheme, shadows } from "../design-system";
 import { useFeed } from "../hooks/useFeed";
 import { useFriends } from "../hooks/useFriends";
 import type { FeedEntry, FeedEventType } from "../api/feed";
 import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl, userAvatarPath } from "../utils/avatarUrl";
 
 // --- Event type display config ---
 
@@ -268,11 +270,11 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
         accessibilityLabel={`View profile of ${name}`}
         testID={`feed-avatar-${entry.id}`}
       >
-        <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-          <Text style={[styles.avatarText, { color: colors.brandPrimary }]}>
-            {initials}
-          </Text>
-        </View>
+        <Avatar
+          initials={initials}
+          size="md"
+          imageUrl={resolveAvatarUrl(userAvatarPath(entry.actorId))}
+        />
       </Pressable>
 
       <View style={styles.entryContent}>
@@ -353,17 +355,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.base,
     gap: spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "600",
   },
   entryContent: {
     flex: 1,

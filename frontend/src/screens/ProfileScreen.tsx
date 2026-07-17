@@ -1,9 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { Button } from "../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
+import { Avatar, Button } from "../design-system";
+import { spacing, typography, lightTheme } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
 import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 
 type Props = {
   onEditProfile: () => void;
@@ -24,14 +25,13 @@ export function ProfileScreen({ onEditProfile, onSettings, onChallenges, onWitne
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="profile-screen">
       <View style={styles.content}>
-        {/* Avatar / Initials */}
-        <View
-          style={[styles.avatar, { backgroundColor: colors.brandMuted }]}
-          testID="profile-avatar"
-        >
-          <Text style={[styles.avatarText, { color: colors.brandPrimary }]}>
-            {initials}
-          </Text>
+        <View style={styles.avatarWrap}>
+          <Avatar
+            initials={initials}
+            size="xl"
+            imageUrl={resolveAvatarUrl(user.avatarUrl)}
+            testID="profile-avatar"
+          />
         </View>
 
         {/* Display name */}
@@ -120,17 +120,8 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
+  avatarWrap: {
     marginBottom: spacing.base,
-    ...shadows.md,
-  },
-  avatarText: {
-    ...typography.h2,
   },
   displayName: {
     ...typography.h3,

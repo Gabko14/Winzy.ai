@@ -1,9 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Card, Button } from "../../design-system";
-import { spacing, radii, typography, lightTheme, shadows } from "../../design-system";
+import { Avatar, Card, Button } from "../../design-system";
+import { spacing, typography, lightTheme, shadows } from "../../design-system";
 import type { IncomingRequest } from "../../api/social";
 import { getInitials } from "../../utils/getInitials";
+import { resolveAvatarUrl, userAvatarPath } from "../../utils/avatarUrl";
 
 function incomingDisplayName(request: IncomingRequest): string {
   if (request.fromDisplayName) return request.fromDisplayName;
@@ -29,11 +30,11 @@ export function IncomingRequestsList({
       {incoming.map((request) => (
         <Card key={request.id} style={styles.requestCard}>
           <View style={styles.requestRow}>
-            <View style={styles.requestAvatar}>
-              <Text style={styles.requestAvatarText}>
-                {getInitials(request.fromDisplayName, request.fromUsername, request.fromUserId)}
-              </Text>
-            </View>
+            <Avatar
+              initials={getInitials(request.fromDisplayName, request.fromUsername, request.fromUserId)}
+              size="sm"
+              imageUrl={resolveAvatarUrl(userAvatarPath(request.fromUserId))}
+            />
             <View style={styles.requestInfo}>
               <Text style={[styles.requestName, { color: lightTheme.textPrimary }]} numberOfLines={1}>
                 {incomingDisplayName(request)}
@@ -76,19 +77,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.base,
     gap: spacing.md,
-  },
-  requestAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.full,
-    backgroundColor: lightTheme.brandMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  requestAvatarText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: lightTheme.brandPrimary,
   },
   requestInfo: {
     flex: 1,

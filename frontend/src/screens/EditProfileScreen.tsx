@@ -6,11 +6,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Pressable,
 } from "react-native";
-import { Button, TextInput } from "../design-system";
+import { Avatar, Button, TextInput } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
+import { useAvatarUpload } from "../hooks/useAvatarUpload";
 import { isApiError } from "../api";
+import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 
 type Props = {
   onBack: () => void;
@@ -19,6 +23,8 @@ type Props = {
 export function EditProfileScreen({ onBack }: Props) {
   const auth = useAuth();
   const colors = lightTheme;
+  const { pickAndUpload, remove, busy: avatarBusy, error: avatarError, clearError: clearAvatarError } =
+    useAvatarUpload();
 
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +32,6 @@ export function EditProfileScreen({ onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const seeded = useRef(false);
 
-  // Seed the display name once auth is ready
   useEffect(() => {
     if (!seeded.current && auth.status === "authenticated") {
       setDisplayName(auth.user.displayName ?? "");
@@ -50,7 +55,6 @@ export function EditProfileScreen({ onBack }: Props) {
       return;
     }
 
-    // No change — skip API call
     if (trimmed === auth.user.displayName) {
       onBack();
       return;
@@ -77,6 +81,12 @@ export function EditProfileScreen({ onBack }: Props) {
     }
   }, [auth, displayName, onBack]);
 
+  const busy = loading || avatarBusy;
+  const bannerError = error ?? avatarError;
+  const user = auth.status === "authenticated" ? auth.user : null;
+  const initials = user ? getInitials(user.displayName, user.username) : "??";
+  const imageUrl = user ? resolveAvatarUrl(user.avatarUrl) : undefined;
+
   return (
     <KeyboardAvoidingView
       style={[styles.flex, { backgroundColor: colors.background }]}
@@ -91,13 +101,13 @@ export function EditProfileScreen({ onBack }: Props) {
             <Text style={[styles.title, { color: colors.textPrimary }]}>Edit profile</Text>
           </View>
 
-          {error && (
+          {bannerError && (
             <View
               style={[styles.errorBanner, { backgroundColor: colors.errorBackground }]}
               accessibilityRole="alert"
               testID="edit-error"
             >
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{bannerError}</Text>
             </View>
           )}
 
@@ -112,6 +122,49 @@ export function EditProfileScreen({ onBack }: Props) {
               </Text>
             </View>
           )}
+
+          <View style={styles.avatarSection}>
+            <Pressable
+              onPress={() => {
+                clearAvatarError();
+                void pickAndUpload();
+              }}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Change photo"
+              testID="edit-avatar-pressable"
+            >
+              <Avatar
+                initials={initials}
+                size="xl"
+                imageUrl={imageUrl}
+                testID="edit-avatar"
+              />
+            </Pressable>
+            <Button
+              title="Change photo"
+              onPress={() => {
+                clearAvatarError();
+                void pickAndUpload();
+              }}
+              variant="secondary"
+              size="sm"
+              loading={avatarBusy}
+              disabled={busy}
+            />
+            {user?.avatarUrl ? (
+              <Button
+                title="Remove photo"
+                onPress={() => {
+                  clearAvatarError();
+                  void remove();
+                }}
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+              />
+            ) : null}
+          </View>
 
           <View style={styles.form}>
             <TextInput
@@ -136,7 +189,7 @@ export function EditProfileScreen({ onBack }: Props) {
               title="Save changes"
               onPress={handleSave}
               loading={loading}
-              disabled={loading}
+              disabled={busy}
               size="lg"
             />
 
@@ -145,7 +198,7 @@ export function EditProfileScreen({ onBack }: Props) {
               onPress={onBack}
               variant="ghost"
               size="sm"
-              disabled={loading}
+              disabled={busy}
             />
           </View>
         </View>
@@ -191,7 +244,12 @@ const styles = StyleSheet.create({
   },
   successText: {
     ...typography.bodySmall,
-    fontWeight: "500",
+    fontWeight: "600",
+  },
+  avatarSection: {
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing["2xl"],
   },
   form: {
     gap: spacing.base,

@@ -23,6 +23,7 @@ import { queryKeys } from "../api/queryKeys";
 import { exportMyData } from "../api/account";
 import { isApiError } from "../api";
 import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 
 const APP_VERSION = "1.0.0";
 
@@ -210,7 +211,11 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Account</Text>
           <Card>
             <View style={styles.accountRow}>
-              <Avatar initials={getInitials(user.displayName, user.username)} size="base" />
+              <Avatar
+                initials={getInitials(user.displayName, user.username)}
+                size="base"
+                imageUrl={resolveAvatarUrl(user.avatarUrl)}
+              />
               <View style={styles.accountInfo}>
                 <Text style={[styles.accountName, { color: colors.textPrimary }]} testID="settings-display-name">
                   {user.displayName || user.username}

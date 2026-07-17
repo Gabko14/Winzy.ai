@@ -21,6 +21,10 @@ export function setBaseUrl(url: string) {
   baseUrl = url;
 }
 
+export function getBaseUrl(): string {
+  return baseUrl;
+}
+
 // --- Refresh lock: queue requests while a token refresh is in flight ---
 
 let refreshPromise: Promise<boolean> | null = null;
@@ -165,6 +169,14 @@ export type RequestOptions = {
   timeout?: number;
 };
 
+function isRawBody(body: unknown): body is BodyInit {
+  if (body == null || typeof body === "string") return false;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return true;
+  if (typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer) return true;
+  if (typeof Uint8Array !== "undefined" && body instanceof Uint8Array) return true;
+  return false;
+}
+
 /**
  * Central API client.
  *
@@ -179,8 +191,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const url = `${baseUrl}${path}`;
   const reqHeaders: Record<string, string> = { ...headers };
+  const rawBody = body !== undefined && isRawBody(body);
 
-  if (body !== undefined && !reqHeaders["Content-Type"]) {
+  if (body !== undefined && !rawBody && !reqHeaders["Content-Type"]) {
     reqHeaders["Content-Type"] = "application/json";
   }
 
@@ -195,7 +208,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     method,
     headers: reqHeaders,
     credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : rawBody ? body : JSON.stringify(body),
   };
 
   const attempt = async (retriesLeft: number, isRetryAfterRefresh: boolean): Promise<T> => {

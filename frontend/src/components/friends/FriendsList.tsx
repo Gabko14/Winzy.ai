@@ -1,9 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { Card, Flame } from "../../design-system";
+import { Avatar, Card, Flame } from "../../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../../design-system";
 import type { Friend } from "../../api/social";
 import { getInitials } from "../../utils/getInitials";
+import { resolveAvatarUrl } from "../../utils/avatarUrl";
 
 export function friendDisplayName(friend: Friend): string {
   if (friend.displayName) return friend.displayName;
@@ -36,11 +37,11 @@ export function FriendRow({ friend, onPress, onOptions, processing }: FriendRowP
         testID={`friend-${friend.friendId}`}
         disabled={processing}
       >
-        <View style={[styles.avatar, { backgroundColor: colors.brandMuted }]}>
-          <Text style={styles.avatarText}>
-            {initials}
-          </Text>
-        </View>
+        <Avatar
+          initials={initials}
+          size="md"
+          imageUrl={resolveAvatarUrl(friend.avatarUrl)}
+        />
 
         <View style={styles.friendInfo}>
           <Text style={[styles.friendName, { color: colors.textPrimary }]} numberOfLines={1}>
@@ -101,18 +102,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: spacing.base,
     gap: spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: lightTheme.brandPrimary,
   },
   friendInfo: {
     flex: 1,

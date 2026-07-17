@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, bootstrapSession, tokenStore } from "../api";
-import type { AuthResponse, UpdateProfileRequest, UserProfile } from "../api";
+import { api, bootstrapSession, tokenStore, uploadAvatar as apiUploadAvatar, deleteAvatar as apiDeleteAvatar } from "../api";
+import type { AuthResponse, AvatarUploadResponse, UpdateProfileRequest, UserProfile } from "../api";
 
 type AuthState =
   | { status: "loading" }
@@ -14,10 +14,17 @@ type AuthContextValue = AuthState & {
   register: (email: string, username: string, password: string, displayName?: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   updateProfile: (request: UpdateProfileRequest) => Promise<UserProfile>;
+  uploadAvatar: (body: ArrayBuffer | Blob | Uint8Array, contentType: string) => Promise<AvatarUploadResponse>;
+  deleteAvatar: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function withCacheBust(avatarUrl: string, updatedAt: string): string {
+  const sep = avatarUrl.includes("?") ? "&" : "?";
+  return `${avatarUrl}${sep}v=${encodeURIComponent(updatedAt)}`;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
@@ -74,6 +81,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return profile;
   }, []);
 
+  const uploadAvatar = useCallback(async (body: ArrayBuffer | Blob | Uint8Array, contentType: string) => {
+    const result = await apiUploadAvatar(body, contentType);
+    setState((prev) => {
+      if (prev.status !== "authenticated") return prev;
+      return {
+        status: "authenticated",
+        user: {
+          ...prev.user,
+          avatarUrl: withCacheBust(result.avatarUrl, result.updatedAt),
+        },
+      };
+    });
+    return result;
+  }, []);
+
+  const deleteAvatar = useCallback(async () => {
+    await apiDeleteAvatar();
+    setState((prev) => {
+      if (prev.status !== "authenticated") return prev;
+      return {
+        status: "authenticated",
+        user: { ...prev.user, avatarUrl: null },
+      };
+    });
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout", undefined);
@@ -100,8 +133,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
 
   const value = useMemo(
-    () => ({ ...state, login, register, logout, updateProfile, deleteAccount }),
-    [state, login, register, logout, updateProfile, deleteAccount],
+    () => ({
+      ...state,
+      login,
+      register,
+      logout,
+      updateProfile,
+      uploadAvatar,
+      deleteAvatar,
+      deleteAccount,
+    }),
+    [state, login, register, logout, updateProfile, uploadAvatar, deleteAvatar, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

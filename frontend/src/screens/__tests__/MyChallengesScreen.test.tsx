@@ -1,10 +1,12 @@
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react-native";
+import { screen, waitFor, fireEvent } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { MyChallengesScreen } from "../MyChallengesScreen";
 
 const mockFetchChallenges = jest.fn();
 
 jest.mock("../../api/challenges", () => ({
+  ...jest.requireActual("../../api/challenges"),
   fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
 }));
 
@@ -40,7 +42,7 @@ beforeEach(() => {
 describe("MyChallengesScreen", () => {
   it("shows loading state initially", () => {
     mockFetchChallenges.mockReturnValue(new Promise(() => {}));
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     expect(screen.getByTestId("challenges-loading")).toBeTruthy();
     expect(screen.getByText("Loading your challenges...")).toBeTruthy();
   });
@@ -51,7 +53,7 @@ describe("MyChallengesScreen", () => {
       code: "server_error",
       message: "Something went wrong on our end. Please try again.",
     });
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("challenges-error")).toBeTruthy();
     });
@@ -65,7 +67,7 @@ describe("MyChallengesScreen", () => {
       pageSize: 100,
       total: 0,
     });
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("my-challenges-screen")).toBeTruthy();
     });
@@ -80,7 +82,7 @@ describe("MyChallengesScreen", () => {
       total: 1,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
     });
@@ -95,7 +97,7 @@ describe("MyChallengesScreen", () => {
       total: 1,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("completed-challenges-list")).toBeTruthy();
     });
@@ -110,7 +112,7 @@ describe("MyChallengesScreen", () => {
       total: 1,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("expired-challenges-list")).toBeTruthy();
     });
@@ -121,7 +123,7 @@ describe("MyChallengesScreen", () => {
     const onBack = jest.fn();
     mockFetchChallenges.mockResolvedValue({ items: [], page: 1, pageSize: 100, total: 0 });
 
-    render(<MyChallengesScreen onBack={onBack} />);
+    renderWithQueryClient(<MyChallengesScreen onBack={onBack} />);
     await waitFor(() => {
       expect(screen.getByTestId("back-button")).toBeTruthy();
     });
@@ -132,7 +134,7 @@ describe("MyChallengesScreen", () => {
   it("does not render back button when onBack is not provided", async () => {
     mockFetchChallenges.mockResolvedValue({ items: [], page: 1, pageSize: 100, total: 0 });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("my-challenges-screen")).toBeTruthy();
     });
@@ -142,7 +144,7 @@ describe("MyChallengesScreen", () => {
   it("renders My Challenges title", async () => {
     mockFetchChallenges.mockResolvedValue({ items: [], page: 1, pageSize: 100, total: 0 });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByText("My Challenges")).toBeTruthy();
     });
@@ -159,7 +161,7 @@ describe("MyChallengesScreen", () => {
       total: 2,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
     });
@@ -175,7 +177,7 @@ describe("MyChallengesScreen", () => {
       total: 1,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
     });
@@ -193,7 +195,7 @@ describe("MyChallengesScreen", () => {
       total: 2,
     });
 
-    render(<MyChallengesScreen />);
+    renderWithQueryClient(<MyChallengesScreen />);
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-list")).toBeTruthy();
     });
