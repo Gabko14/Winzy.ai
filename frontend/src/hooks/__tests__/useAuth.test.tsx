@@ -2,6 +2,7 @@ import React from "react";
 import { Text } from "react-native";
 import { render, waitFor, act } from "@testing-library/react-native";
 import { AuthProvider, useAuth } from "../useAuth";
+import { createQueryWrapper } from "../../test/renderWithQueryClient";
 
 // Mock the API module
 jest.mock("../../api", () => {
@@ -29,6 +30,10 @@ function TestConsumer() {
   return <Text testID="status">{auth.status}</Text>;
 }
 
+function renderWithAuth(ui: React.ReactElement) {
+  return render(ui, { wrapper: createQueryWrapper() });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 });
@@ -37,7 +42,7 @@ describe("AuthProvider", () => {
   it("starts in loading state and transitions to unauthenticated when no session", async () => {
     bootstrapSession.mockResolvedValue(null);
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <TestConsumer />
       </AuthProvider>,
@@ -59,7 +64,7 @@ describe("AuthProvider", () => {
       user: { id: "1", email: "a@b.com", username: "test" },
     });
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <TestConsumer />
       </AuthProvider>,
@@ -93,7 +98,7 @@ describe("AuthProvider", () => {
       );
     }
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <LoginConsumer />
       </AuthProvider>,
@@ -132,7 +137,7 @@ describe("AuthProvider", () => {
       );
     }
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <LogoutConsumer />
       </AuthProvider>,
@@ -180,7 +185,7 @@ describe("AuthProvider", () => {
       );
     }
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <LogoutConsumer />
       </AuthProvider>,
@@ -235,7 +240,7 @@ describe("AuthProvider", () => {
       );
     }
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <LogoutConsumer />
       </AuthProvider>,
@@ -271,7 +276,7 @@ describe("legacy token migration", () => {
       user: { id: "1", email: "a@b.com", username: "test" },
     });
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <TestConsumer />
       </AuthProvider>,
@@ -309,7 +314,7 @@ describe("legacy token migration", () => {
       );
     }
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithAuth(
       <AuthProvider>
         <LoginConsumer />
       </AuthProvider>,

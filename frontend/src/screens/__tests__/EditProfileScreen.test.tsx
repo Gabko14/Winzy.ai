@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { EditProfileScreen } from "../EditProfileScreen";
 import { AuthProvider } from "../../hooks/useAuth";
 
@@ -41,7 +42,7 @@ const { api } = jest.requireMock("../../api");
 const onBack = jest.fn();
 
 async function renderEditProfile() {
-  const result = render(
+  const result = renderWithQueryClient(
     <AuthProvider>
       <EditProfileScreen onBack={onBack} />
     </AuthProvider>,

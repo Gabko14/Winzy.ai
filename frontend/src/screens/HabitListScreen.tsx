@@ -28,7 +28,7 @@ export function HabitListScreen({ onHabitCreated, onBack }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const [editHabit, setEditHabit] = useState<Habit | undefined>(undefined);
 
-  const { archive } = useArchiveHabit(refresh);
+  const { archive } = useArchiveHabit();
 
   const handleCreate = useCallback(() => {
     setEditHabit(undefined);
@@ -69,13 +69,12 @@ export function HabitListScreen({ onHabitCreated, onBack }: Props) {
   );
 
   const handleSaved = useCallback(() => {
-    refresh();
     refreshVisibility();
     setShowCreate(false);
     if (!editHabit) {
       onHabitCreated?.();
     }
-  }, [refresh, refreshVisibility, editHabit, onHabitCreated]);
+  }, [refreshVisibility, editHabit, onHabitCreated]);
 
   const handleCloseModal = useCallback(() => {
     setShowCreate(false);

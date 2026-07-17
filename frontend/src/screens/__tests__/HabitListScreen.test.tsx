@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { HabitListScreen } from "../HabitListScreen";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/habits", () => ({
   fetchHabits: jest.fn(),
@@ -31,6 +32,7 @@ const mockHabits = [
     frequency: "daily",
     customDays: null,
     minimumDescription: null,
+    position: 0,
     createdAt: "2026-01-01T00:00:00Z",
     archivedAt: null,
   },
@@ -42,6 +44,7 @@ const mockHabits = [
     frequency: "weekly",
     customDays: null,
     minimumDescription: null,
+    position: 0,
     createdAt: "2026-01-02T00:00:00Z",
     archivedAt: null,
   },
@@ -60,13 +63,13 @@ describe("HabitListScreen", () => {
 
   it("renders loading state initially", () => {
     fetchHabits.mockReturnValue(new Promise(() => {})); // never resolves
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
     expect(screen.getByTestId("habits-loading")).toBeTruthy();
   });
 
   it("renders habits list after loading", async () => {
     fetchHabits.mockResolvedValue(mockHabits);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("habit-list-screen")).toBeTruthy();
@@ -79,7 +82,7 @@ describe("HabitListScreen", () => {
 
   it("renders empty state when no habits", async () => {
     fetchHabits.mockResolvedValue([]);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("No habits yet")).toBeTruthy();
@@ -90,7 +93,7 @@ describe("HabitListScreen", () => {
 
   it("shows frequency label for each habit", async () => {
     fetchHabits.mockResolvedValue(mockHabits);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("Every day")).toBeTruthy();
@@ -106,7 +109,7 @@ describe("HabitListScreen", () => {
         customDays: [1, 3, 5],
       },
     ]);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("Mon, Wed, Fri")).toBeTruthy();
@@ -125,7 +128,7 @@ describe("HabitListScreen", () => {
       ],
     });
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("visibility-badge-h1")).toBeTruthy();
@@ -144,7 +147,7 @@ describe("HabitListScreen", () => {
       habits: [],
     });
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("visibility-badge-h1")).toBeTruthy();
@@ -159,7 +162,7 @@ describe("HabitListScreen", () => {
       message: "Server error",
     });
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("Morning run")).toBeTruthy();
@@ -173,7 +176,7 @@ describe("HabitListScreen", () => {
 
   it("opens create modal from empty state action", async () => {
     fetchHabits.mockResolvedValue([]);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("Create your first habit")).toBeTruthy();
@@ -188,7 +191,7 @@ describe("HabitListScreen", () => {
 
   it("opens create modal from header button", async () => {
     fetchHabits.mockResolvedValue(mockHabits);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByText("+ New")).toBeTruthy();
@@ -205,7 +208,7 @@ describe("HabitListScreen", () => {
 
   it("opens edit modal when habit is tapped", async () => {
     fetchHabits.mockResolvedValue(mockHabits);
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("habit-h1")).toBeTruthy();
@@ -231,7 +234,7 @@ describe("HabitListScreen", () => {
     fetchHabits.mockResolvedValue(mockHabits);
     archiveHabit.mockResolvedValue(undefined);
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("archive-h1")).toBeTruthy();
@@ -259,7 +262,7 @@ describe("HabitListScreen", () => {
       message: "Server error",
     });
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("habits-error")).toBeTruthy();
@@ -273,7 +276,7 @@ describe("HabitListScreen", () => {
       message: "Server error",
     });
 
-    render(<HabitListScreen />);
+    renderWithQueryClient(<HabitListScreen />);
 
     await waitFor(() => {
       expect(screen.getByTestId("habits-error")).toBeTruthy();

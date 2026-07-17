@@ -1,7 +1,8 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { Alert, Platform } from "react-native";
 import { HabitDetailScreen } from "../HabitDetailScreen";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 
 // --- Mocks ---
 
@@ -71,7 +72,7 @@ beforeEach(() => {
 });
 
 function renderDetail(props: Partial<React.ComponentProps<typeof HabitDetailScreen>> = {}) {
-  return render(<HabitDetailScreen habitId="habit-1" {...props} />);
+  return renderWithQueryClient(<HabitDetailScreen habitId="habit-1" {...props} />);
 }
 
 describe("HabitDetailScreen", () => {

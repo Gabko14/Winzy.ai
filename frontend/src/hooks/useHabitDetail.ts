@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchHabit,
   fetchHabitStats,
@@ -6,17 +7,9 @@ import {
   deleteCompletion as apiDeleteCompletion,
   updateCompletion as apiUpdateCompletion,
   type CompletionKind,
-  type Habit,
-  type HabitStats,
 } from "../api/habits";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
-
-type HabitDetailState = {
-  habit: Habit | null;
-  stats: HabitStats | null;
-  loading: boolean;
-  error: ApiError | null;
-};
 
 function getUserTimezone(): string {
   try {
@@ -27,94 +20,102 @@ function getUserTimezone(): string {
 }
 
 export function useHabitDetail(habitId: string) {
-  const [state, setState] = useState<HabitDetailState>({
-    habit: null,
-    stats: null,
-    loading: true,
-    error: null,
-  });
-
+  const queryClient = useQueryClient();
   const timezone = getUserTimezone();
 
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const [habit, stats] = await Promise.all([
-        fetchHabit(habitId),
-        fetchHabitStats(habitId, timezone),
-      ]);
-      setState({ habit, stats, loading: false, error: null });
-    } catch (err) {
-      setState((s) => ({ ...s, loading: false, error: err as ApiError }));
-    }
-  }, [habitId, timezone]);
+  const habitQuery = useQuery({
+    queryKey: queryKeys.habits.detail(habitId),
+    queryFn: () => fetchHabit(habitId),
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const statsQuery = useQuery({
+    queryKey: queryKeys.habits.stats(habitId, timezone),
+    queryFn: () => fetchHabitStats(habitId, timezone),
+    enabled: habitQuery.isSuccess,
+  });
 
-  return { ...state, refresh: load, timezone };
+  const loading =
+    habitQuery.isPending || (habitQuery.isSuccess && statsQuery.isPending);
+  const error = (habitQuery.error ?? statsQuery.error) as ApiError | null;
+
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.habits.detail(habitId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId, timezone) }),
+    ]);
+  }, [queryClient, habitId, timezone]);
+
+  return {
+    habit: habitQuery.data ?? null,
+    stats: statsQuery.data ?? null,
+    loading,
+    error: error ?? null,
+    refresh,
+    timezone,
+  };
 }
-
-type CompletionMutationState = {
-  loading: boolean;
-  error: ApiError | null;
-};
 
 export function useToggleCompletion(
   habitId: string,
   timezone: string,
   onSuccess?: () => void,
 ) {
-  const [state, setState] = useState<CompletionMutationState>({
-    loading: false,
-    error: null,
+  const queryClient = useQueryClient();
+
+  const invalidateRelated = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId, timezone) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.habits.detail(habitId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() }),
+    ]);
+  }, [queryClient, habitId, timezone]);
+
+  const completeMutation = useMutation({
+    mutationFn: (date: string) => apiCompleteHabit(habitId, { date, timezone }),
+    onSuccess: async () => {
+      await invalidateRelated();
+      onSuccess?.();
+    },
+  });
+
+  const uncompleteMutation = useMutation({
+    mutationFn: (date: string) => apiDeleteCompletion(habitId, date),
+    onSuccess: async () => {
+      await invalidateRelated();
+      onSuccess?.();
+    },
+  });
+
+  const updateKindMutation = useMutation({
+    mutationFn: ({ date, completionKind }: { date: string; completionKind: CompletionKind }) =>
+      apiUpdateCompletion(habitId, date, completionKind),
+    onSuccess: async () => {
+      await invalidateRelated();
+      onSuccess?.();
+    },
   });
 
   const complete = useCallback(
-    async (date: string) => {
-      setState({ loading: true, error: null });
-      try {
-        await apiCompleteHabit(habitId, { date, timezone });
-        setState({ loading: false, error: null });
-        onSuccess?.();
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
-    },
-    [habitId, timezone, onSuccess],
+    async (date: string) => completeMutation.mutateAsync(date),
+    [completeMutation],
   );
 
   const uncomplete = useCallback(
-    async (date: string) => {
-      setState({ loading: true, error: null });
-      try {
-        await apiDeleteCompletion(habitId, date);
-        setState({ loading: false, error: null });
-        onSuccess?.();
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
-    },
-    [habitId, onSuccess],
+    async (date: string) => uncompleteMutation.mutateAsync(date),
+    [uncompleteMutation],
   );
 
   const updateKind = useCallback(
-    async (date: string, completionKind: CompletionKind) => {
-      setState({ loading: true, error: null });
-      try {
-        await apiUpdateCompletion(habitId, date, completionKind);
-        setState({ loading: false, error: null });
-        onSuccess?.();
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
-    },
-    [habitId, onSuccess],
+    async (date: string, completionKind: CompletionKind) =>
+      updateKindMutation.mutateAsync({ date, completionKind }),
+    [updateKindMutation],
   );
 
-  return { ...state, complete, uncomplete, updateKind };
+  const loading =
+    completeMutation.isPending || uncompleteMutation.isPending || updateKindMutation.isPending;
+  const error = (completeMutation.error ??
+    uncompleteMutation.error ??
+    updateKindMutation.error) as ApiError | null;
+
+  return { loading, error: error ?? null, complete, uncomplete, updateKind };
 }

@@ -1,11 +1,13 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import { useHabitDetail, useToggleCompletion } from "../useHabitDetail";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/habits", () => ({
   fetchHabit: jest.fn(),
   fetchHabitStats: jest.fn(),
   completeHabit: jest.fn(),
   deleteCompletion: jest.fn(),
+  updateCompletion: jest.fn(),
 }));
 
 const { fetchHabit, fetchHabitStats, completeHabit, deleteCompletion } =
@@ -19,15 +21,23 @@ const mockHabit = {
   frequency: "daily" as const,
   customDays: null,
   minimumDescription: null,
+  position: 0,
   createdAt: "2026-01-01T00:00:00Z",
   archivedAt: null,
 };
 
 const mockStats = {
+  habitId: "h1",
+  consistency: 0.7,
+  flameLevel: "steady" as const,
   totalCompletions: 42,
-  currentStreak: 7,
-  longestStreak: 14,
-  completionsByDay: {},
+  completionsInWindow: 20,
+  completedToday: false,
+  completedTodayKind: null,
+  windowDays: 60,
+  windowStart: "2026-01-14",
+  today: "2026-03-20",
+  completedDates: [],
 };
 
 beforeEach(() => {
@@ -41,7 +51,7 @@ describe("useHabitDetail", () => {
     fetchHabit.mockResolvedValue(mockHabit);
     fetchHabitStats.mockResolvedValue(mockStats);
 
-    const { result } = renderHook(() => useHabitDetail("h1"));
+    const { result } = renderHookWithQueryClient(() => useHabitDetail("h1"));
 
     expect(result.current.loading).toBe(true);
 
@@ -60,7 +70,7 @@ describe("useHabitDetail", () => {
     fetchHabit.mockRejectedValue(apiError);
     fetchHabitStats.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useHabitDetail("h1"));
+    const { result } = renderHookWithQueryClient(() => useHabitDetail("h1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -74,7 +84,7 @@ describe("useHabitDetail", () => {
     fetchHabit.mockResolvedValue(mockHabit);
     fetchHabitStats.mockResolvedValue(mockStats);
 
-    const { result } = renderHook(() => useHabitDetail("h1"));
+    const { result } = renderHookWithQueryClient(() => useHabitDetail("h1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -86,14 +96,16 @@ describe("useHabitDetail", () => {
       await result.current.refresh();
     });
 
-    expect(fetchHabit).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(fetchHabit).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("re-fetches when habitId changes", async () => {
     fetchHabit.mockResolvedValue(mockHabit);
     fetchHabitStats.mockResolvedValue(mockStats);
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = renderHookWithQueryClient(
       ({ id }: { id: string }) => useHabitDetail(id),
       { initialProps: { id: "h1" } },
     );
@@ -117,7 +129,7 @@ describe("useToggleCompletion", () => {
     completeHabit.mockResolvedValue(undefined);
     const onSuccess = jest.fn();
 
-    const { result } = renderHook(() =>
+    const { result } = renderHookWithQueryClient(() =>
       useToggleCompletion("h1", "America/New_York", onSuccess),
     );
 
@@ -140,7 +152,7 @@ describe("useToggleCompletion", () => {
     deleteCompletion.mockResolvedValue(undefined);
     const onSuccess = jest.fn();
 
-    const { result } = renderHook(() =>
+    const { result } = renderHookWithQueryClient(() =>
       useToggleCompletion("h1", "UTC", onSuccess),
     );
 
@@ -156,7 +168,7 @@ describe("useToggleCompletion", () => {
     const apiError = { status: 500, code: "server_error", message: "Failed" };
     completeHabit.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() =>
+    const { result } = renderHookWithQueryClient(() =>
       useToggleCompletion("h1", "UTC"),
     );
 
@@ -168,7 +180,9 @@ describe("useToggleCompletion", () => {
       }
     });
 
-    expect(result.current.error).toEqual(apiError);
+    await waitFor(() => {
+      expect(result.current.error).toEqual(apiError);
+    });
     expect(result.current.loading).toBe(false);
   });
 
@@ -176,7 +190,7 @@ describe("useToggleCompletion", () => {
     const apiError = { status: 404, code: "not_found", message: "Not found" };
     deleteCompletion.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() =>
+    const { result } = renderHookWithQueryClient(() =>
       useToggleCompletion("h1", "UTC"),
     );
 
@@ -188,6 +202,8 @@ describe("useToggleCompletion", () => {
       }
     });
 
-    expect(result.current.error).toEqual(apiError);
+    await waitFor(() => {
+      expect(result.current.error).toEqual(apiError);
+    });
   });
 });

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, bootstrapSession, tokenStore } from "../api";
 import type { AuthResponse, UpdateProfileRequest, UserProfile } from "../api";
 
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const queryClient = useQueryClient();
 
   // Bootstrap session on mount
   useEffect(() => {
@@ -80,19 +82,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // On native, we own the tokens and can clear them regardless of server state.
       if (Platform.OS !== "web") {
         await tokenStore.clear();
+        queryClient.clear();
         setState({ status: "unauthenticated" });
       }
       throw err;
     }
     await tokenStore.clear();
+    queryClient.clear();
     setState({ status: "unauthenticated" });
-  }, []);
+  }, [queryClient]);
 
   const deleteAccount = useCallback(async () => {
     await api.delete("/auth/account");
     await tokenStore.clear();
+    queryClient.clear();
     setState({ status: "unauthenticated" });
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo(
     () => ({ ...state, login, register, logout, updateProfile, deleteAccount }),

@@ -1,6 +1,7 @@
 import React from "react";
 import { Platform } from "react-native";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { SettingsScreen } from "../SettingsScreen";
 import { AuthProvider } from "../../hooks/useAuth";
 
@@ -76,7 +77,7 @@ const onBack = jest.fn();
 const onEditProfile = jest.fn();
 
 function renderSettings() {
-  return render(
+  return renderWithQueryClient(
     <AuthProvider>
       <SettingsScreen onBack={onBack} onEditProfile={onEditProfile} />
     </AuthProvider>,

@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchHabits,
   fetchHabitStats,
   completeHabit,
   deleteCompletion,
   type Habit,
+  type HabitStats,
   type FlameLevel,
   type CompletionKind,
 } from "../api/habits";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
-import { isApiError } from "../api/types";
+import { habitsListQueryOptions } from "./useHabits";
 
 export type TodayHabit = {
   habit: Habit;
@@ -17,12 +19,6 @@ export type TodayHabit = {
   completedTodayKind: CompletionKind | null;
   flameLevel: FlameLevel;
   consistency: number;
-};
-
-type TodayState = {
-  items: TodayHabit[];
-  loading: boolean;
-  error: ApiError | null;
 };
 
 function getUserTimezone(): string {
@@ -35,6 +31,14 @@ function getTodayDate(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function errorCode(err: unknown): string | null {
+  if (typeof err === "object" && err !== null && "code" in err) {
+    const code = (err as { code: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+  return null;
 }
 
 /**
@@ -50,174 +54,201 @@ function isDueToday(habit: Habit): boolean {
   return habit.customDays.includes(todayDow);
 }
 
+function toTodayHabit(habit: Habit, stats: HabitStats | null | undefined): TodayHabit {
+  return {
+    habit,
+    completedToday: stats?.completedToday ?? false,
+    completedTodayKind: stats?.completedTodayKind ?? null,
+    flameLevel: (stats?.flameLevel ?? "none") as FlameLevel,
+    consistency: stats?.consistency ?? 0,
+  };
+}
+
+type ToggleVariables = {
+  habitId: string;
+  wasCompleted: boolean;
+  previousKind: CompletionKind | null;
+  targetKind: CompletionKind;
+  timezone: string;
+  today: string;
+};
+
 export function useTodayHabits() {
-  const [state, setState] = useState<TodayState>({
-    items: [],
-    loading: true,
-    error: null,
+  const queryClient = useQueryClient();
+  const timezone = getUserTimezone();
+
+  const habitsQuery = useQuery(habitsListQueryOptions());
+
+  const dueHabits = useMemo(
+    () => (habitsQuery.data ?? []).filter(isDueToday),
+    [habitsQuery.data],
+  );
+
+  const statsQueries = useQueries({
+    queries: dueHabits.map((habit) => ({
+      queryKey: queryKeys.habits.stats(habit.id, timezone),
+      queryFn: () => fetchHabitStats(habit.id, timezone),
+      enabled: habitsQuery.isSuccess,
+    })),
   });
-  const [completing, setCompleting] = useState<Set<string>>(new Set());
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const items = useMemo(
+    () =>
+      dueHabits.map((habit, i) => {
+        const statsQuery = statsQueries[i];
+        const stats = statsQuery?.isSuccess ? statsQuery.data : null;
+        return toTodayHabit(habit, stats);
+      }),
+    [dueHabits, statsQueries],
+  );
 
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    const tz = getUserTimezone();
+  const statsLoading =
+    habitsQuery.isSuccess &&
+    dueHabits.length > 0 &&
+    (statsQueries.length < dueHabits.length || statsQueries.some((q) => !q.isFetched));
+  const loading = habitsQuery.isPending || statsLoading;
 
-    try {
-      const allHabits = await fetchHabits();
-      if (!mountedRef.current) return;
+  const toggleMutation = useMutation({
+    mutationFn: async (vars: ToggleVariables) => {
+      if (vars.wasCompleted) {
+        await deleteCompletion(vars.habitId, vars.today);
+      } else {
+        await completeHabit(vars.habitId, {
+          timezone: vars.timezone,
+          date: vars.today,
+          completionKind: vars.targetKind,
+        });
+      }
+    },
+    onMutate: async (vars, { client }) => {
+      const statsKey = queryKeys.habits.stats(vars.habitId, vars.timezone);
+      await client.cancelQueries({ queryKey: statsKey });
+      const previousStats = client.getQueryData<HabitStats>(statsKey);
 
-      // Filter to only habits that are due today based on frequency schedule
-      const habits = allHabits.filter(isDueToday);
-
-      // Fetch stats for all habits in parallel (for flame levels)
-      const statsResults = await Promise.allSettled(
-        habits.map((h) => fetchHabitStats(h.id, tz)),
-      );
-      if (!mountedRef.current) return;
-
-      const items: TodayHabit[] = habits.map((habit, i) => {
-        const statsResult = statsResults[i];
-        const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
-
+      client.setQueryData<HabitStats>(statsKey, (old) => {
+        const base = old ?? previousStats;
+        if (!base) {
+          return {
+            habitId: vars.habitId,
+            consistency: 0,
+            flameLevel: "none",
+            totalCompletions: 0,
+            completionsInWindow: 0,
+            completedToday: !vars.wasCompleted,
+            completedTodayKind: vars.wasCompleted ? null : vars.targetKind,
+            windowDays: 60,
+            windowStart: vars.today,
+            today: vars.today,
+            completedDates: [],
+          };
+        }
         return {
-          habit,
-          completedToday: stats?.completedToday ?? false,
-          completedTodayKind: stats?.completedTodayKind ?? null,
-          flameLevel: (stats?.flameLevel ?? "none") as FlameLevel,
-          consistency: stats?.consistency ?? 0,
+          ...base,
+          completedToday: !vars.wasCompleted,
+          completedTodayKind: vars.wasCompleted ? null : vars.targetKind,
         };
       });
 
-      setState({ items, loading: false, error: null });
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setState((s) => ({ ...s, loading: false, error: err as ApiError }));
-    }
-  }, []);
+      return { previousStats, statsKey };
+    },
+    onError: (err, vars, onMutateResult, { client }) => {
+      if (!onMutateResult) return;
+      const code = errorCode(err);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+      if (!vars.wasCompleted && code === "conflict") {
+        const current = client.getQueryData<HabitStats>(onMutateResult.statsKey);
+        if (current) {
+          client.setQueryData<HabitStats>(onMutateResult.statsKey, {
+            ...current,
+            completedToday: true,
+          });
+        }
+        return;
+      }
+
+      if (vars.wasCompleted && code === "not_found") {
+        const current = client.getQueryData<HabitStats>(onMutateResult.statsKey);
+        if (current) {
+          client.setQueryData<HabitStats>(onMutateResult.statsKey, {
+            ...current,
+            completedToday: false,
+            completedTodayKind: null,
+          });
+        }
+        return;
+      }
+
+      if (onMutateResult.previousStats !== undefined) {
+        client.setQueryData(onMutateResult.statsKey, onMutateResult.previousStats);
+      }
+    },
+    onSettled: (_data, error, vars, _onMutateResult, { client }) => {
+      const code = errorCode(error);
+      if (code === "conflict" || code === "not_found") {
+        return;
+      }
+      void client.invalidateQueries({
+        queryKey: queryKeys.habits.stats(vars.habitId, vars.timezone),
+      });
+    },
+  });
+
+  const completing = useMemo(() => {
+    const set = new Set<string>();
+    if (toggleMutation.isPending && toggleMutation.variables) {
+      set.add(toggleMutation.variables.habitId);
+    }
+    return set;
+  }, [toggleMutation.isPending, toggleMutation.variables]);
 
   const toggleCompletion = useCallback(
     async (habitId: string, kind?: CompletionKind) => {
-      const tz = getUserTimezone();
-      const today = getTodayDate();
-      const currentItem = state.items.find((i) => i.habit.id === habitId);
+      const currentItem = items.find((i) => i.habit.id === habitId);
       if (!currentItem) return;
-
-      const wasCompleted = currentItem.completedToday;
-      const targetKind: CompletionKind = kind ?? "full";
-
-      // Prevent double-taps while a completion is in flight
       if (completing.has(habitId)) return;
-      setCompleting((s) => new Set(s).add(habitId));
-
-      // Optimistic update
-      setState((s) => ({
-        ...s,
-        items: s.items.map((i) =>
-          i.habit.id === habitId
-            ? { ...i, completedToday: !wasCompleted, completedTodayKind: wasCompleted ? null : targetKind }
-            : i,
-        ),
-      }));
 
       try {
-        if (wasCompleted) {
-          await deleteCompletion(habitId, today);
-        } else {
-          await completeHabit(habitId, { timezone: tz, date: today, completionKind: targetKind });
-        }
-
-        if (!mountedRef.current) return;
-
-        // Refresh stats for updated flame level
-        try {
-          const updatedStats = await fetchHabitStats(habitId, tz);
-          if (!mountedRef.current) return;
-          setState((s) => ({
-            ...s,
-            items: s.items.map((i) =>
-              i.habit.id === habitId
-                ? {
-                    ...i,
-                    completedToday: updatedStats.completedToday,
-                    completedTodayKind: updatedStats.completedTodayKind,
-                    flameLevel: updatedStats.flameLevel as FlameLevel,
-                    consistency: updatedStats.consistency,
-                  }
-                : i,
-            ),
-          }));
-        } catch {
-          // Stats refresh failure is non-critical
-        }
-      } catch (err) {
-        if (!mountedRef.current) return;
-
-        // 409 on complete = already completed today. Update state to reflect reality.
-        if (!wasCompleted && isApiError(err) && err.code === "conflict") {
-          setState((s) => ({
-            ...s,
-            items: s.items.map((i) =>
-              i.habit.id === habitId ? { ...i, completedToday: true } : i,
-            ),
-          }));
-          return;
-        }
-        // 404 on uncomplete = already uncompleted. Update state to reflect reality.
-        if (wasCompleted && isApiError(err) && err.code === "not_found") {
-          setState((s) => ({
-            ...s,
-            items: s.items.map((i) =>
-              i.habit.id === habitId ? { ...i, completedToday: false, completedTodayKind: null } : i,
-            ),
-          }));
-          return;
-        }
-
-        // Revert optimistic update for other errors
-        setState((s) => ({
-          ...s,
-          items: s.items.map((i) =>
-            i.habit.id === habitId
-              ? { ...i, completedToday: wasCompleted, completedTodayKind: wasCompleted ? currentItem.completedTodayKind : null }
-              : i,
-          ),
-        }));
-      } finally {
-        if (mountedRef.current) {
-          setCompleting((s) => {
-            const next = new Set(s);
-            next.delete(habitId);
-            return next;
-          });
-        }
+        await toggleMutation.mutateAsync({
+          habitId,
+          wasCompleted: currentItem.completedToday,
+          previousKind: currentItem.completedTodayKind,
+          targetKind: kind ?? "full",
+          timezone,
+          today: getTodayDate(),
+        });
+      } catch {
+        // Errors are handled in onError (rollback / conflict / not_found).
       }
     },
-    [state.items, completing],
+    [items, completing, toggleMutation, timezone],
   );
 
-  const completedCount = state.items.filter((i) => i.completedToday).length;
-  const totalCount = state.items.length;
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() });
+    await queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return (
+          Array.isArray(key) &&
+          key[0] === "habit" &&
+          key[2] === "stats" &&
+          key[3] === timezone
+        );
+      },
+    });
+  }, [queryClient, timezone]);
+
+  const completedCount = items.filter((i) => i.completedToday).length;
+  const totalCount = items.length;
 
   return {
-    items: state.items,
-    loading: state.loading,
-    error: state.error,
+    items,
+    loading,
+    error: (habitsQuery.error as ApiError | null) ?? null,
     completing,
     completedCount,
     totalCount,
-    refresh: load,
+    refresh,
     toggleCompletion,
   };
 }

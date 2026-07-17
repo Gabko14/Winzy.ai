@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { screen, waitFor } from "@testing-library/react-native";
 import { StatsScreen } from "../StatsScreen";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 
 // --- Mocks ---
 
@@ -76,7 +77,7 @@ beforeEach(() => {
 });
 
 function renderStats(props: Partial<React.ComponentProps<typeof StatsScreen>> = {}) {
-  return render(<StatsScreen habitId="habit-1" {...props} />);
+  return renderWithQueryClient(<StatsScreen habitId="habit-1" {...props} />);
 }
 
 describe("StatsScreen", () => {

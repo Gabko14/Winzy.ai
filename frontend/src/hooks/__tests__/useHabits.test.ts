@@ -1,5 +1,6 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import { useHabits, useCreateHabit, useUpdateHabit, useArchiveHabit } from "../useHabits";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/habits", () => ({
   fetchHabits: jest.fn(),
@@ -18,6 +19,7 @@ const mockHabit = {
   frequency: "daily" as const,
   customDays: null,
   minimumDescription: null,
+  position: 0,
   createdAt: "2026-01-01T00:00:00Z",
   archivedAt: null,
 };
@@ -32,7 +34,7 @@ describe("useHabits", () => {
   it("fetches habits on mount", async () => {
     fetchHabits.mockResolvedValue([mockHabit]);
 
-    const { result } = renderHook(() => useHabits());
+    const { result } = renderHookWithQueryClient(() => useHabits());
 
     expect(result.current.loading).toBe(true);
 
@@ -48,7 +50,7 @@ describe("useHabits", () => {
     const apiError = { status: 500, code: "server_error", message: "Server error" };
     fetchHabits.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useHabits());
+    const { result } = renderHookWithQueryClient(() => useHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -61,7 +63,7 @@ describe("useHabits", () => {
   it("can refresh habits", async () => {
     fetchHabits.mockResolvedValue([mockHabit]);
 
-    const { result } = renderHook(() => useHabits());
+    const { result } = renderHookWithQueryClient(() => useHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -74,13 +76,15 @@ describe("useHabits", () => {
       await result.current.refresh();
     });
 
-    expect(result.current.habits).toEqual([updated]);
+    await waitFor(() => {
+      expect(result.current.habits).toEqual([updated]);
+    });
   });
 
   it("handles empty habits list", async () => {
     fetchHabits.mockResolvedValue([]);
 
-    const { result } = renderHook(() => useHabits());
+    const { result } = renderHookWithQueryClient(() => useHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -97,8 +101,9 @@ describe("useCreateHabit", () => {
   it("creates a habit and calls onSuccess", async () => {
     const onSuccess = jest.fn();
     createHabit.mockResolvedValue(mockHabit);
+    fetchHabits.mockResolvedValue([mockHabit]);
 
-    const { result } = renderHook(() => useCreateHabit(onSuccess));
+    const { result } = renderHookWithQueryClient(() => useCreateHabit(onSuccess));
 
     expect(result.current.loading).toBe(false);
 
@@ -116,7 +121,7 @@ describe("useCreateHabit", () => {
     const apiError = { status: 400, code: "validation", message: "Name is required" };
     createHabit.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useCreateHabit());
+    const { result } = renderHookWithQueryClient(() => useCreateHabit());
 
     await act(async () => {
       try {
@@ -126,7 +131,9 @@ describe("useCreateHabit", () => {
       }
     });
 
-    expect(result.current.error).toEqual(apiError);
+    await waitFor(() => {
+      expect(result.current.error).toEqual(apiError);
+    });
     expect(result.current.loading).toBe(false);
   });
 });
@@ -138,8 +145,9 @@ describe("useUpdateHabit", () => {
     const onSuccess = jest.fn();
     const updated = { ...mockHabit, name: "Evening run" };
     updateHabit.mockResolvedValue(updated);
+    fetchHabits.mockResolvedValue([updated]);
 
-    const { result } = renderHook(() => useUpdateHabit(onSuccess));
+    const { result } = renderHookWithQueryClient(() => useUpdateHabit(onSuccess));
 
     await act(async () => {
       await result.current.update("h1", { name: "Evening run" });
@@ -153,7 +161,7 @@ describe("useUpdateHabit", () => {
     const apiError = { status: 404, code: "not_found", message: "Not found" };
     updateHabit.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useUpdateHabit());
+    const { result } = renderHookWithQueryClient(() => useUpdateHabit());
 
     await act(async () => {
       try {
@@ -163,7 +171,9 @@ describe("useUpdateHabit", () => {
       }
     });
 
-    expect(result.current.error).toEqual(apiError);
+    await waitFor(() => {
+      expect(result.current.error).toEqual(apiError);
+    });
   });
 });
 
@@ -173,8 +183,9 @@ describe("useArchiveHabit", () => {
   it("archives a habit and calls onSuccess", async () => {
     const onSuccess = jest.fn();
     archiveHabit.mockResolvedValue(undefined);
+    fetchHabits.mockResolvedValue([]);
 
-    const { result } = renderHook(() => useArchiveHabit(onSuccess));
+    const { result } = renderHookWithQueryClient(() => useArchiveHabit(onSuccess));
 
     await act(async () => {
       await result.current.archive("h1");
@@ -188,7 +199,7 @@ describe("useArchiveHabit", () => {
     const apiError = { status: 0, code: "network", message: "Network error" };
     archiveHabit.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useArchiveHabit());
+    const { result } = renderHookWithQueryClient(() => useArchiveHabit());
 
     await act(async () => {
       try {
@@ -198,6 +209,8 @@ describe("useArchiveHabit", () => {
       }
     });
 
-    expect(result.current.error).toEqual(apiError);
+    await waitFor(() => {
+      expect(result.current.error).toEqual(apiError);
+    });
   });
 });

@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { SignInScreen } from "../SignInScreen";
 import { AuthProvider } from "../../hooks/useAuth";
 
@@ -29,7 +30,7 @@ const { api } = jest.requireMock("../../api");
 const navigateToSignUp = jest.fn();
 
 function renderSignIn() {
-  return render(
+  return renderWithQueryClient(
     <AuthProvider>
       <SignInScreen onNavigateToSignUp={navigateToSignUp} />
     </AuthProvider>,

@@ -1,6 +1,7 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import { useTodayHabits } from "../useTodayHabits";
 import type { Habit, HabitStats } from "../../api/habits";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/habits", () => ({
   fetchHabits: jest.fn(),
@@ -34,6 +35,7 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
     frequency: "daily",
     customDays: null,
     minimumDescription: null,
+    position: 0,
     createdAt: "2026-01-01T00:00:00Z",
     archivedAt: null,
     ...overrides,
@@ -59,19 +61,34 @@ function makeStats(overrides: Partial<HabitStats> = {}): HabitStats {
 
 // Helper to set the day of week returned by new Date().getDay()
 // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+const RealDate = global.Date;
+
 function mockDayOfWeek(dow: number) {
-  const realDate = global.Date;
-  const mockDate = new realDate(2026, 2, 8 + dow); // March 8 2026 is a Sunday
-  jest.spyOn(global, "Date").mockImplementation((...args: unknown[]) => {
-    if (args.length === 0) return mockDate;
+  const fixed = new RealDate(2026, 2, 8 + dow); // March 8 2026 is a Sunday
+  const MockDate = function (this: Date, ...args: unknown[]) {
+    if (args.length === 0) {
+      return new RealDate(fixed.getTime());
+    }
     // @ts-expect-error -- constructor spread
-    return new realDate(...args);
+    return new RealDate(...args);
+  } as unknown as DateConstructor;
+  MockDate.now = RealDate.now.bind(RealDate);
+  MockDate.UTC = RealDate.UTC.bind(RealDate);
+  MockDate.parse = RealDate.parse.bind(RealDate);
+  Object.defineProperty(MockDate, "prototype", {
+    value: RealDate.prototype,
+    writable: false,
   });
+  global.Date = MockDate;
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.restoreAllMocks();
+  global.Date = RealDate;
+});
+
+afterEach(() => {
+  global.Date = RealDate;
 });
 
 // --- isDueToday (tested through the hook's filtering behavior) ---
@@ -83,7 +100,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     fetchHabits.mockResolvedValue([daily]);
     fetchHabitStats.mockResolvedValue(makeStats({ habitId: "h1" }));
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -103,7 +120,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     fetchHabits.mockResolvedValue([weekly]);
     fetchHabitStats.mockResolvedValue(makeStats({ habitId: "h2" }));
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -121,7 +138,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     });
     fetchHabits.mockResolvedValue([weekly]);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -142,7 +159,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     fetchHabits.mockResolvedValue([custom]);
     fetchHabitStats.mockResolvedValue(makeStats({ habitId: "h3" }));
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -160,7 +177,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     });
     fetchHabits.mockResolvedValue([weekly]);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -178,7 +195,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
     });
     fetchHabits.mockResolvedValue([custom]);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -211,7 +228,7 @@ describe("useTodayHabits — isDueToday filtering", () => {
       Promise.resolve(makeStats({ habitId: id })),
     );
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -241,7 +258,7 @@ describe("useTodayHabits — loading and stats", () => {
     fetchHabits.mockResolvedValue([habit]);
     fetchHabitStats.mockResolvedValue(stats);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     expect(result.current.loading).toBe(true);
 
@@ -275,7 +292,7 @@ describe("useTodayHabits — loading and stats", () => {
       return Promise.resolve(makeStats({ habitId: id, completedToday: false }));
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -290,7 +307,7 @@ describe("useTodayHabits — loading and stats", () => {
     fetchHabits.mockResolvedValue([makeHabit({ id: "h1", frequency: "daily" })]);
     fetchHabitStats.mockResolvedValue(makeStats({ habitId: "h1" }));
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -311,7 +328,9 @@ describe("useTodayHabits — loading and stats", () => {
       await result.current.refresh();
     });
 
-    expect(result.current.items).toHaveLength(2);
+    await waitFor(() => {
+      expect(result.current.items).toHaveLength(2);
+    });
   });
 });
 
@@ -333,7 +352,7 @@ describe("useTodayHabits — toggleCompletion", () => {
       consistency: 0.9,
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -363,7 +382,7 @@ describe("useTodayHabits — toggleCompletion", () => {
     );
     deleteCompletion.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -380,7 +399,9 @@ describe("useTodayHabits — toggleCompletion", () => {
     });
 
     expect(deleteCompletion).toHaveBeenCalled();
-    expect(result.current.items[0].completedToday).toBe(false);
+    await waitFor(() => {
+      expect(result.current.items[0].completedToday).toBe(false);
+    });
   });
 
   it("reverts optimistic update on API failure", async () => {
@@ -396,7 +417,7 @@ describe("useTodayHabits — toggleCompletion", () => {
       message: "Server error",
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -423,7 +444,7 @@ describe("useTodayHabits — toggleCompletion", () => {
       message: "Already completed",
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -434,7 +455,9 @@ describe("useTodayHabits — toggleCompletion", () => {
     });
 
     // 409 means already completed — state should be true (not reverted)
-    expect(result.current.items[0].completedToday).toBe(true);
+    await waitFor(() => {
+      expect(result.current.items[0].completedToday).toBe(true);
+    });
   });
 
   it("handles 404 on uncomplete — keeps completedToday false", async () => {
@@ -450,7 +473,7 @@ describe("useTodayHabits — toggleCompletion", () => {
       message: "Not found",
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -461,7 +484,9 @@ describe("useTodayHabits — toggleCompletion", () => {
     });
 
     // 404 means already uncompleted — state should be false (not reverted)
-    expect(result.current.items[0].completedToday).toBe(false);
+    await waitFor(() => {
+      expect(result.current.items[0].completedToday).toBe(false);
+    });
   });
 
   it("does nothing for unknown habitId", async () => {
@@ -469,7 +494,7 @@ describe("useTodayHabits — toggleCompletion", () => {
     fetchHabits.mockResolvedValue([makeHabit({ id: "h1", frequency: "daily" })]);
     fetchHabitStats.mockResolvedValue(makeStats({ habitId: "h1" }));
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -491,7 +516,7 @@ describe("useTodayHabits — error conditions", () => {
     const apiError = { status: 500, code: "server_error", message: "Internal error" };
     fetchHabits.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -513,7 +538,7 @@ describe("useTodayHabits — error conditions", () => {
       return Promise.reject({ status: 500, code: "server_error", message: "Stats error" });
     });
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -533,7 +558,7 @@ describe("useTodayHabits — error conditions", () => {
   it("handles empty habits list", async () => {
     fetchHabits.mockResolvedValue([]);
 
-    const { result } = renderHook(() => useTodayHabits());
+    const { result } = renderHookWithQueryClient(() => useTodayHabits());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

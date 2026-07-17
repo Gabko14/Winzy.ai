@@ -31,6 +31,7 @@ function makeHabit(overrides: Partial<TodayHabit> = {}): TodayHabit {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
       ...overrides.habit,

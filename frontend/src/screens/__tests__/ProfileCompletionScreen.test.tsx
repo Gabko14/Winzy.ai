@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { ProfileCompletionScreen } from "../ProfileCompletionScreen";
 import { AuthProvider } from "../../hooks/useAuth";
 
@@ -34,7 +35,7 @@ const { api } = jest.requireMock("../../api");
 const onComplete = jest.fn();
 
 function renderCompletion() {
-  return render(
+  return renderWithQueryClient(
     <AuthProvider>
       <ProfileCompletionScreen onComplete={onComplete} />
     </AuthProvider>,

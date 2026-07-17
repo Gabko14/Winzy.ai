@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { CreateHabitScreen } from "../CreateHabitScreen";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/habits", () => ({
   fetchHabits: jest.fn().mockResolvedValue([]),
@@ -26,7 +27,7 @@ const onClose = jest.fn();
 const onSaved = jest.fn();
 
 function renderCreate(props?: Partial<Parameters<typeof CreateHabitScreen>[0]>) {
-  return render(
+  return renderWithQueryClient(
     <CreateHabitScreen
       visible={true}
       onClose={onClose}
@@ -73,6 +74,7 @@ describe("CreateHabitScreen", () => {
         frequency: "daily",
         customDays: null,
         minimumDescription: null,
+        position: 0,
         createdAt: "2026-01-01T00:00:00Z",
         archivedAt: null,
       },
@@ -90,6 +92,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -124,6 +127,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -178,6 +182,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -218,6 +223,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -272,6 +278,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -318,6 +325,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -454,6 +462,7 @@ describe("CreateHabitScreen", () => {
       frequency: "weekly",
       customDays: [1, 3, 5],
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -566,6 +575,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -594,6 +604,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -631,6 +642,7 @@ describe("CreateHabitScreen", () => {
         frequency: "daily",
         customDays: null,
         minimumDescription: null,
+        position: 0,
         createdAt: "2026-01-01T00:00:00Z",
         archivedAt: null,
       },
@@ -658,6 +670,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -808,6 +821,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -840,6 +854,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -886,6 +901,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -927,6 +943,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -983,6 +1000,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: "10-minute walk",
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -1012,6 +1030,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily",
       customDays: null,
       minimumDescription: null,
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };
@@ -1040,6 +1059,7 @@ describe("CreateHabitScreen", () => {
         frequency: "daily",
         customDays: null,
         minimumDescription: "10-minute walk",
+        position: 0,
         createdAt: "2026-01-01T00:00:00Z",
         archivedAt: null,
       },
@@ -1071,6 +1091,7 @@ describe("CreateHabitScreen", () => {
       frequency: "daily" as const,
       customDays: null,
       minimumDescription: "10-minute walk",
+      position: 0,
       createdAt: "2026-01-01T00:00:00Z",
       archivedAt: null,
     };

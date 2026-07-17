@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchHabits,
   createHabit as apiCreateHabit,
@@ -8,104 +9,95 @@ import {
   type CreateHabitRequest,
   type UpdateHabitRequest,
 } from "../api/habits";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
 
-type HabitsState = {
-  habits: Habit[];
-  loading: boolean;
-  error: ApiError | null;
-};
-
-export function useHabits() {
-  const [state, setState] = useState<HabitsState>({
-    habits: [],
-    loading: true,
-    error: null,
+/** Single shared queryFn for the habits list — useHabits and useTodayHabits both use this. */
+export function habitsListQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.habits.list(),
+    queryFn: fetchHabits,
   });
-
-  const load = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const habits = await fetchHabits();
-      setState({ habits, loading: false, error: null });
-    } catch (err) {
-      setState((s) => ({ ...s, loading: false, error: err as ApiError }));
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return { ...state, refresh: load };
 }
 
-type MutationState = {
-  loading: boolean;
-  error: ApiError | null;
-};
+export function useHabits() {
+  const query = useQuery(habitsListQueryOptions());
+
+  const refresh = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
+
+  return {
+    habits: query.data ?? [],
+    loading: query.isPending,
+    error: (query.error as ApiError | null) ?? null,
+    refresh,
+  };
+}
 
 export function useCreateHabit(onSuccess?: (habit: Habit) => void) {
-  const [state, setState] = useState<MutationState>({ loading: false, error: null });
+  const queryClient = useQueryClient();
 
-  const create = useCallback(
-    async (request: CreateHabitRequest) => {
-      setState({ loading: true, error: null });
-      try {
-        const habit = await apiCreateHabit(request);
-        setState({ loading: false, error: null });
-        onSuccess?.(habit);
-        return habit;
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
+  const mutation = useMutation({
+    mutationFn: (request: CreateHabitRequest) => apiCreateHabit(request),
+    onSuccess: async (habit) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() });
+      onSuccess?.(habit);
     },
-    [onSuccess],
-  );
+  });
 
-  return { ...state, create };
+  return {
+    loading: mutation.isPending,
+    error: (mutation.error as ApiError | null) ?? null,
+    create: mutation.mutateAsync,
+  };
 }
 
 export function useUpdateHabit(onSuccess?: (habit: Habit) => void) {
-  const [state, setState] = useState<MutationState>({ loading: false, error: null });
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: ({ id, request }: { id: string; request: UpdateHabitRequest }) =>
+      apiUpdateHabit(id, request),
+    onSuccess: async (habit) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.detail(habit.id) }),
+      ]);
+      onSuccess?.(habit);
+    },
+  });
 
   const update = useCallback(
-    async (id: string, request: UpdateHabitRequest) => {
-      setState({ loading: true, error: null });
-      try {
-        const habit = await apiUpdateHabit(id, request);
-        setState({ loading: false, error: null });
-        onSuccess?.(habit);
-        return habit;
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
-    },
-    [onSuccess],
+    async (id: string, request: UpdateHabitRequest) =>
+      mutation.mutateAsync({ id, request }),
+    [mutation.mutateAsync],
   );
 
-  return { ...state, update };
+  return {
+    loading: mutation.isPending,
+    error: (mutation.error as ApiError | null) ?? null,
+    update,
+  };
 }
 
 export function useArchiveHabit(onSuccess?: () => void) {
-  const [state, setState] = useState<MutationState>({ loading: false, error: null });
+  const queryClient = useQueryClient();
 
-  const archive = useCallback(
-    async (id: string) => {
-      setState({ loading: true, error: null });
-      try {
-        await apiArchiveHabit(id);
-        setState({ loading: false, error: null });
-        onSuccess?.();
-      } catch (err) {
-        setState({ loading: false, error: err as ApiError });
-        throw err;
-      }
+  const mutation = useMutation({
+    mutationFn: (id: string) => apiArchiveHabit(id),
+    onSuccess: async (_data, id) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.detail(id) }),
+      ]);
+      onSuccess?.();
     },
-    [onSuccess],
-  );
+  });
 
-  return { ...state, archive };
+  return {
+    loading: mutation.isPending,
+    error: (mutation.error as ApiError | null) ?? null,
+    archive: mutation.mutateAsync,
+  };
 }

@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { ProfileScreen } from "../ProfileScreen";
 import { AuthProvider } from "../../hooks/useAuth";
 
@@ -42,7 +43,7 @@ const onEditProfile = jest.fn();
 const onSettings = jest.fn();
 
 function renderProfile() {
-  return render(
+  return renderWithQueryClient(
     <AuthProvider>
       <ProfileScreen onEditProfile={onEditProfile} onSettings={onSettings} />
     </AuthProvider>,
