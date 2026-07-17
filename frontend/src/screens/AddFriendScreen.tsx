@@ -30,9 +30,10 @@ import type { ApiError } from "../api/types";
 type Props = {
   currentUserId?: string;
   onBack?: () => void;
+  onChallengeInvite?: () => void;
 };
 
-export function AddFriendScreen({ currentUserId, onBack }: Props) {
+export function AddFriendScreen({ currentUserId, onBack, onChallengeInvite }: Props) {
   const colors = lightTheme;
   const { query, setQuery, results, loading, error, clear } = useUserSearch();
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
@@ -191,6 +192,24 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
           testID="search-results"
         />
       )}
+
+      {onChallengeInvite && (
+        <View style={styles.inviteSection} testID="challenge-invite-entry">
+          <Text style={[styles.inviteTitle, { color: colors.textPrimary }]}>
+            Friend not on Winzy yet?
+          </Text>
+          <Text style={[styles.inviteMessage, { color: colors.textSecondary }]}>
+            Challenge them to join — they'll get a habit and a shared goal when they accept.
+          </Text>
+          <Button
+            title="Create challenge invite"
+            onPress={onChallengeInvite}
+            variant="secondary"
+            size="md"
+            accessibilityLabel="Create a challenge invite for someone not on Winzy"
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -258,5 +277,19 @@ const styles = StyleSheet.create({
   },
   username: {
     ...typography.bodySmall,
+  },
+  inviteSection: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: lightTheme.border,
+  },
+  inviteTitle: {
+    ...typography.label,
+  },
+  inviteMessage: {
+    ...typography.bodySmall,
+    marginBottom: spacing.sm,
   },
 });

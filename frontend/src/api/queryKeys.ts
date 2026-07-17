@@ -60,6 +60,7 @@ export const queryKeys = {
   challenges: {
     list: () => ["challenges"] as const,
     detail: (id: string) => ["challenge", id] as const,
+    invites: () => ["challenge-invites"] as const,
   },
   notifications: {
     list: (pageSize = 20) => ["notifications", pageSize] as const,

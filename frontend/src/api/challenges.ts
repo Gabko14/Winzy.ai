@@ -14,6 +14,12 @@ export type ChallengeDetail = Schemas["ChallengeDetail"];
 export type ChallengesPage = Schemas["ChallengesPage"];
 export type CreateChallengeRequest = Schemas["CreateChallengeRequest"];
 
+export type ChallengeInviteStatus = Schemas["ChallengeInviteStatus"];
+export type CreateChallengeInviteRequest = Schemas["CreateChallengeInviteRequest"];
+export type CreateChallengeInviteResponse = Schemas["CreateChallengeInviteResponse"];
+export type ChallengeInvite = Schemas["ChallengeInvite"];
+export type ChallengeInvitesResponse = Schemas["ChallengeInvitesResponse"];
+
 // --- API functions ---
 
 export function fetchChallenges(page = 1, pageSize = 20): Promise<ChallengesPage> {
@@ -41,4 +47,18 @@ export function createChallenge(request: CreateChallengeRequest): Promise<Challe
 
 export function claimChallenge(id: string): Promise<Challenge> {
   return api.put<Challenge>(`/challenges/${id}/claim`);
+}
+
+export function createChallengeInvite(
+  request: CreateChallengeInviteRequest,
+): Promise<CreateChallengeInviteResponse> {
+  return api.post<CreateChallengeInviteResponse>("/challenges/invites", request);
+}
+
+export function listChallengeInvites(): Promise<ChallengeInvitesResponse> {
+  return api.get<ChallengeInvitesResponse>("/challenges/invites");
+}
+
+export function revokeChallengeInvite(id: string): Promise<void> {
+  return api.delete<void>(`/challenges/invites/${id}`);
 }

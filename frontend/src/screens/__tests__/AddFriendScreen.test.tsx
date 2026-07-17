@@ -240,4 +240,18 @@ describe("AddFriendScreen", () => {
       expect(queryAllByText("Sent").length).toBe(1);
     });
   });
+
+  it("shows challenge invite entry and calls onChallengeInvite", () => {
+    const onChallengeInvite = jest.fn();
+    const { getByTestId, getByRole } = renderWithQueryClient(
+      <AddFriendScreen onChallengeInvite={onChallengeInvite} />,
+    );
+    expect(getByTestId("challenge-invite-entry")).toBeTruthy();
+    fireEvent.press(
+      getByRole("button", {
+        name: "Create a challenge invite for someone not on Winzy",
+      }),
+    );
+    expect(onChallengeInvite).toHaveBeenCalled();
+  });
 });

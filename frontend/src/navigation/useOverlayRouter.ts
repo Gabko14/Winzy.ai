@@ -13,7 +13,8 @@ export type OverlayType =
   | "challenges"
   | "settings"
   | "stats"
-  | "witnessLinks";
+  | "witnessLinks"
+  | "createChallengeInvite";
 
 export type OverlayParams = {
   habitId?: string;

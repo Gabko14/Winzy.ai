@@ -12,7 +12,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
-  TextInput,
   Flame,
   LoadingState,
   ErrorState,
@@ -27,27 +26,18 @@ import { fetchFriendProfile } from "../api/social";
 import { queryKeys } from "../api/queryKeys";
 import { useCreateChallenge } from "../hooks/useChallenges";
 import type { CreateChallengeRequest } from "../api/challenges";
-import { codePointLength } from "../utils/validation";
 import type { ApiError } from "../api/types";
 import { isApiError } from "../api/types";
+import {
+  ChallengeTargetPeriodFields,
+  ChallengeRewardFields,
+  DEFAULT_TARGET,
+  DEFAULT_PERIOD,
+  isRewardValid,
+  isTargetPeriodValid,
+} from "../components/challengeWizardShared";
 
 // --- Constants ---
-
-const MIN_TARGET = 1;
-const MAX_TARGET = 100;
-const MIN_PERIOD = 7;
-const MAX_PERIOD = 365;
-const DEFAULT_TARGET = 60;
-const DEFAULT_PERIOD = 30;
-const MAX_REWARD_LENGTH = 512;
-
-const PERIOD_PRESETS = [
-  { label: "1 week", days: 7 },
-  { label: "2 weeks", days: 14 },
-  { label: "30 days", days: 30 },
-  { label: "60 days", days: 60 },
-  { label: "90 days", days: 90 },
-] as const;
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -122,14 +112,10 @@ export function CreateChallengeScreen({
 
   // --- Validation ---
   const rewardTrimmed = rewardDescription.trim();
-  // Backend counts characters (runes), not UTF-16 units — see codePointLength.
-  const rewardChars = codePointLength(rewardTrimmed);
-  const rewardTooLong = rewardChars > MAX_REWARD_LENGTH;
-  const rewardEmpty = rewardTrimmed.length === 0;
 
   const canProceedFromStep1 = selectedHabit !== null;
-  const canProceedFromStep2 = targetValue >= MIN_TARGET && targetValue <= MAX_TARGET && periodDays >= MIN_PERIOD && periodDays <= MAX_PERIOD;
-  const canProceedFromStep3 = !rewardEmpty && !rewardTooLong;
+  const canProceedFromStep2 = isTargetPeriodValid(targetValue, periodDays);
+  const canProceedFromStep3 = isRewardValid(rewardDescription);
 
   // --- Submit ---
   const handleSubmit = useCallback(async () => {
@@ -289,81 +275,12 @@ export function CreateChallengeScreen({
                 What consistency should {displayName} aim for on "{selectedHabit.name}"?
                 Focus on achievable progress, not perfection.
               </Text>
-
-              {/* Target value */}
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: colors.textPrimary }]}>
-                  Target consistency
-                </Text>
-                <View style={styles.sliderRow}>
-                  <Pressable
-                    onPress={() => setTargetValue((v) => Math.max(MIN_TARGET, v - 5))}
-                    style={[styles.sliderButton, { borderColor: colors.border }]}
-                    accessibilityLabel={`Decrease target, currently ${targetValue}%`}
-                    testID="target-decrease"
-                  >
-                    <Text style={[styles.sliderButtonText, { color: colors.textPrimary }]}>-</Text>
-                  </Pressable>
-                  <View style={styles.sliderValue}>
-                    <Text style={[styles.targetValueText, { color: colors.brandPrimary }]} testID="target-value">
-                      {targetValue}%
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => setTargetValue((v) => Math.min(MAX_TARGET, v + 5))}
-                    style={[styles.sliderButton, { borderColor: colors.border }]}
-                    accessibilityLabel={`Increase target, currently ${targetValue}%`}
-                    testID="target-increase"
-                  >
-                    <Text style={[styles.sliderButtonText, { color: colors.textPrimary }]}>+</Text>
-                  </Pressable>
-                </View>
-                <Text style={[styles.fieldHint, { color: colors.textTertiary }]}>
-                  {targetValue <= 30
-                    ? "A gentle start - great for building momentum!"
-                    : targetValue <= 60
-                      ? "A solid goal - challenging but achievable!"
-                      : targetValue <= 80
-                        ? "Ambitious! This will take real commitment."
-                        : "Going for the top - impressive dedication!"}
-                </Text>
-              </View>
-
-              {/* Period */}
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: colors.textPrimary }]}>
-                  Time period
-                </Text>
-                <View style={styles.presetRow} testID="period-presets">
-                  {PERIOD_PRESETS.map((preset) => (
-                    <Pressable
-                      key={preset.days}
-                      onPress={() => setPeriodDays(preset.days)}
-                      style={[
-                        styles.presetChip,
-                        {
-                          backgroundColor: periodDays === preset.days ? colors.brandPrimary : colors.surface,
-                          borderColor: periodDays === preset.days ? colors.brandPrimary : colors.border,
-                        },
-                      ]}
-                      accessibilityLabel={`${preset.label} period`}
-                      accessibilityState={{ selected: periodDays === preset.days }}
-                      testID={`period-${preset.days}`}
-                    >
-                      <Text
-                        style={[
-                          styles.presetChipText,
-                          {
-                            color: periodDays === preset.days ? colors.textInverse : colors.textPrimary,
-                          },
-                        ]}
-                      >
-                        {preset.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
+              <ChallengeTargetPeriodFields
+                targetValue={targetValue}
+                periodDays={periodDays}
+                onTargetChange={setTargetValue}
+                onPeriodChange={setPeriodDays}
+              />
             </View>
           )}
 
@@ -377,41 +294,10 @@ export function CreateChallengeScreen({
                 When {displayName} hits the goal, what shared experience will you enjoy?
                 Think of something you'll both love doing together.
               </Text>
-
-              <View style={styles.fieldGroup}>
-                <TextInput
-                  label="Shared experience"
-                  placeholder={'e.g., "We\'ll go hiking at our favorite trail"'}
-                  value={rewardDescription}
-                  onChangeText={setRewardDescription}
-                  multiline
-                  numberOfLines={3}
-                  maxLength={MAX_REWARD_LENGTH}
-                  validationState={rewardTooLong ? "error" : "default"}
-                  errorMessage={rewardTooLong ? `Maximum ${MAX_REWARD_LENGTH} characters` : undefined}
-                  hint={`${rewardChars}/${MAX_REWARD_LENGTH} characters`}
-                  testID="reward-input"
-                  accessibilityLabel="Describe the shared experience reward"
-                />
-              </View>
-
-              <View style={styles.rewardExamples}>
-                <Text style={[styles.examplesLabel, { color: colors.textTertiary }]}>
-                  IDEAS
-                </Text>
-                {["Grab coffee at that new place downtown", "Play a round of tennis together", "Cook dinner together and try a new recipe", "Go for a sunset bike ride"].map((example) => (
-                  <Pressable
-                    key={example}
-                    onPress={() => setRewardDescription(example)}
-                    style={[styles.exampleChip, { backgroundColor: colors.backgroundSecondary }]}
-                    accessibilityLabel={`Use suggestion: ${example}`}
-                  >
-                    <Text style={[styles.exampleText, { color: colors.textSecondary }]}>
-                      {example}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              <ChallengeRewardFields
+                value={rewardDescription}
+                onChange={setRewardDescription}
+              />
             </View>
           )}
 

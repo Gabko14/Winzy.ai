@@ -19,6 +19,7 @@ import { FriendsScreen } from "../screens/FriendsScreen";
 import { AddFriendScreen } from "../screens/AddFriendScreen";
 import { FriendProfileScreen } from "../screens/FriendProfileScreen";
 import { CreateChallengeScreen } from "../screens/CreateChallengeScreen";
+import { CreateChallengeInviteScreen } from "../screens/CreateChallengeInviteScreen";
 import { FeedScreen } from "../screens/FeedScreen";
 import { StatsScreen } from "../screens/StatsScreen";
 import { CreateHabitScreen } from "../screens/CreateHabitScreen";
@@ -129,6 +130,7 @@ export function RootNavigator() {
   const goToNotifications = useCallback(() => overlay.push("notifications"), [overlay]);
   const goToHabits = useCallback(() => overlay.push("habits"), [overlay]);
   const goToAddFriend = useCallback(() => overlay.push("addFriend"), [overlay]);
+  const goToChallengeInvite = useCallback(() => overlay.push("createChallengeInvite"), [overlay]);
   const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
   const goToWitnessLinks = useCallback(() => overlay.push("witnessLinks"), [overlay]);
   const handleEditHabit = useCallback(async (habitId: string) => {
@@ -387,6 +389,7 @@ export function RootNavigator() {
         <AddFriendScreen
           currentUserId={auth.user.id}
           onBack={() => { overlay.closeAll(); selectTab("friends"); }}
+          onChallengeInvite={goToChallengeInvite}
         />
       </OverlayShell>
     );
@@ -412,6 +415,17 @@ export function RootNavigator() {
         <CreateChallengeScreen
           friendId={overlay.params.friendId}
           friendName={overlay.params.friendName ?? undefined}
+          onBack={() => { overlay.pop(); }}
+          onComplete={() => { overlay.closeAll(); selectTab("friends"); }}
+        />
+      </OverlayShell>
+    );
+  }
+
+  if (overlay.current === "createChallengeInvite") {
+    return (
+      <OverlayShell>
+        <CreateChallengeInviteScreen
           onBack={() => { overlay.pop(); }}
           onComplete={() => { overlay.closeAll(); selectTab("friends"); }}
         />
