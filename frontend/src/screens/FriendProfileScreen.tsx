@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
 import {
   Card,
@@ -11,11 +11,10 @@ import {
   ScreenHeader,
 } from "../design-system";
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
-import { fetchFriendProfile } from "../api/social";
+import { useFriendProfile } from "../hooks/useFriendProfile";
 import { getInitials } from "../utils/getInitials";
 import { flameLevelFromConsistency, flameBackgroundColor, flameTextColor } from "../utils/flameHelpers";
-import type { FriendHabit, FriendProfileResponse } from "../api/social";
-import type { ApiError } from "../api/types";
+import type { FriendHabit } from "../api/social";
 
 type Props = {
   friendId: string;
@@ -38,26 +37,7 @@ export function FriendProfileScreen({
   onSetChallenge,
 }: Props) {
   const colors = lightTheme;
-  const [data, setData] = useState<FriendProfileResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<ApiError | null>(null);
-
-  const loadProfile = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchFriendProfile(friendId);
-      setData(result);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setLoading(false);
-    }
-  }, [friendId]);
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+  const { data, loading, error, refresh } = useFriendProfile(friendId);
 
   const name = displayName ?? (username ? `@${username}` : `User ${friendId.slice(0, 8)}`);
   const initials = getInitials(displayName, username, friendId);
@@ -80,7 +60,7 @@ export function FriendProfileScreen({
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="friend-profile-error">
         <ScreenHeader title={name} onBack={onBack} />
         <View style={styles.center}>
-          <ErrorState message={error.message} onRetry={loadProfile} />
+          <ErrorState message={error.message} onRetry={refresh} />
         </View>
       </View>
     );
@@ -103,7 +83,7 @@ export function FriendProfileScreen({
         refreshControl={
           <RefreshControl
             refreshing={loading}
-            onRefresh={loadProfile}
+            onRefresh={refresh}
             tintColor={colors.brandPrimary}
           />
         }
@@ -156,7 +136,7 @@ export function FriendProfileScreen({
             <ErrorState
               title="Couldn't load habits"
               message="Habit data is temporarily unavailable. Try again in a moment."
-              onRetry={loadProfile}
+              onRetry={refresh}
             />
           </View>
         ) : habits.length === 0 ? (

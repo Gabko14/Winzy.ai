@@ -1,86 +1,37 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchFeed, type FeedEntry } from "../api/feed";
+import { useCallback } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchFeed } from "../api/feed";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
 
-type FeedState = {
-  items: FeedEntry[];
-  nextCursor: string | null;
-  hasMore: boolean;
-  loading: boolean;
-  loadingMore: boolean;
-  error: ApiError | null;
-};
-
 export function useFeed(limit = 20) {
-  const [state, setState] = useState<FeedState>({
-    items: [],
-    nextCursor: null,
-    hasMore: false,
-    loading: true,
-    loadingMore: false,
-    error: null,
+  const queryClient = useQueryClient();
+
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.feed.list(limit),
+    queryFn: ({ pageParam }) => fetchFeed(pageParam, limit),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined),
   });
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const items = query.data?.pages.flatMap((p) => p.items) ?? [];
+  const lastPage = query.data?.pages[query.data.pages.length - 1];
 
-  const load = useCallback(
-    async (cursor: string | undefined, append: boolean) => {
-      if (!append) {
-        setState((s) => ({ ...s, loading: true, error: null }));
-      } else {
-        setState((s) => ({ ...s, loadingMore: true }));
-      }
-
-      try {
-        const data = await fetchFeed(cursor, limit);
-        if (!mountedRef.current) return;
-
-        setState((s) => ({
-          ...s,
-          items: append ? [...s.items, ...data.items] : data.items,
-          nextCursor: data.nextCursor,
-          hasMore: data.hasMore,
-          loading: false,
-          loadingMore: false,
-          error: null,
-        }));
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setState((s) => ({
-          ...s,
-          loading: false,
-          loadingMore: false,
-          error: err as ApiError,
-        }));
-      }
-    },
-    [limit],
-  );
-
-  // Initial load
-  useEffect(() => {
-    load(undefined, false);
-  }, [load]);
-
-  const refresh = useCallback(() => load(undefined, false), [load]);
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.feed.list(limit) });
+  }, [queryClient, limit]);
 
   const loadMore = useCallback(() => {
-    if (!state.hasMore || state.loadingMore || !state.nextCursor) return;
-    load(state.nextCursor, true);
-  }, [load, state.hasMore, state.loadingMore, state.nextCursor]);
+    if (!query.hasNextPage || query.isFetchingNextPage) return;
+    void query.fetchNextPage();
+  }, [query]);
 
   return {
-    items: state.items,
-    hasMore: state.hasMore,
-    loading: state.loading,
-    loadingMore: state.loadingMore,
-    error: state.error,
+    items,
+    hasMore: lastPage?.hasMore ?? false,
+    loading: query.isPending,
+    loadingMore: query.isFetchingNextPage,
+    error: (query.error as ApiError | null) ?? null,
     refresh,
     loadMore,
   };

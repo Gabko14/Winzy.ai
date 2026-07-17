@@ -1,5 +1,6 @@
 import React from "react";
-import { render, waitFor } from "@testing-library/react-native";
+import { waitFor } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { WitnessViewerScreen } from "../WitnessViewerScreen";
 
 const mockFetchWitnessView = jest.fn();
@@ -11,7 +12,7 @@ jest.mock("../../api/witnessLinks", () => ({
 const onNavigateToSignUp = jest.fn();
 
 function renderScreen(token = "test-token") {
-  return render(
+  return renderWithQueryClient(
     <WitnessViewerScreen token={token} onNavigateToSignUp={onNavigateToSignUp} />,
   );
 }

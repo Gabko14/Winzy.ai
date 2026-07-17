@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { fireEvent, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { FeedScreen } from "../FeedScreen";
 import type { FeedEntry, FeedEventType } from "../../api/feed";
 import type { Friend } from "../../api/social";
@@ -91,7 +92,7 @@ describe("FeedScreen", () => {
       }),
     ];
 
-    const { getByTestId, getByText } = render(<FeedScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FeedScreen />);
 
     expect(getByTestId("feed-screen")).toBeTruthy();
     expect(getByTestId("feed-list")).toBeTruthy();
@@ -117,7 +118,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = [makeEntry({ id: "e1", actorId: "actor-abc" })];
 
     const onAvatarPress = jest.fn();
-    const { getByTestId } = render(<FeedScreen onAvatarPress={onAvatarPress} />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen onAvatarPress={onAvatarPress} />);
 
     fireEvent.press(getByTestId("feed-avatar-e1"));
     expect(onAvatarPress).toHaveBeenCalledWith("actor-abc");
@@ -137,7 +138,7 @@ describe("FeedScreen", () => {
     ];
 
     const onChallengePress = jest.fn();
-    const { getByTestId } = render(<FeedScreen onChallengePress={onChallengePress} />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen onChallengePress={onChallengePress} />);
 
     fireEvent.press(getByTestId("feed-entry-e1"));
     expect(onChallengePress).toHaveBeenCalledWith("ch-99");
@@ -150,7 +151,7 @@ describe("FeedScreen", () => {
     mockUseFriends.totalFriends = 1;
     mockUseFeed.items = [makeEntry({ id: "e1" })];
 
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
     const flatList = getByTestId("feed-list");
 
     // Simulate pull-to-refresh
@@ -171,7 +172,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = [];
     mockUseFeed.loading = false;
 
-    const { getByTestId, getByText } = render(<FeedScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FeedScreen />);
 
     expect(getByTestId("feed-empty-no-friends")).toBeTruthy();
     expect(getByText("Add friends to see activity")).toBeTruthy();
@@ -186,7 +187,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = [];
     mockUseFeed.loading = false;
 
-    const { getByTestId, getByText } = render(<FeedScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FeedScreen />);
 
     expect(getByTestId("feed-empty-quiet")).toBeTruthy();
     expect(getByText("No recent activity")).toBeTruthy();
@@ -200,7 +201,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = Array.from({ length: 20 }, (_, i) => makeEntry({ id: `e${i}` }));
     mockUseFeed.hasMore = true;
 
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
     const flatList = getByTestId("feed-list");
 
     act(() => {
@@ -220,7 +221,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: "e2", eventType: "challenge.completed", data: null }),
     ];
 
-    const { getByTestId, getByText } = render(<FeedScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FeedScreen />);
 
     expect(getByTestId("feed-entry-e1")).toBeTruthy();
     expect(getByTestId("feed-entry-e2")).toBeTruthy();
@@ -236,7 +237,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = [];
     mockUseFeed.loading = false;
 
-    const { getByTestId, getByText } = render(<FeedScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FeedScreen />);
 
     expect(getByTestId("feed-error")).toBeTruthy();
     expect(getByText("Something went wrong on our end. Please try again.")).toBeTruthy();
@@ -258,7 +259,7 @@ describe("FeedScreen", () => {
     mockUseFeed.error = null;
 
     // Should show "no friends" empty state since we can't load friends
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
     expect(getByTestId("feed-empty-no-friends")).toBeTruthy();
   });
 
@@ -268,7 +269,7 @@ describe("FeedScreen", () => {
     mockUseFeed.loading = true;
     mockUseFeed.items = [];
 
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
     expect(getByTestId("feed-loading")).toBeTruthy();
   });
 
@@ -280,7 +281,7 @@ describe("FeedScreen", () => {
     mockUseFeed.items = [makeEntry({ id: "e1" })];
     mockUseFeed.loadingMore = true;
 
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
     expect(getByTestId("feed-loading-more")).toBeTruthy();
   });
 
@@ -293,7 +294,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: "e1", actorDisplayName: "Jane Doe", actorUsername: "janedoe" }),
     ];
 
-    const { getByText } = render(<FeedScreen />);
+    const { getByText } = renderWithQueryClient(<FeedScreen />);
     expect(getByText("Jane Doe")).toBeTruthy();
   });
 
@@ -304,7 +305,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: "e1", actorDisplayName: null, actorUsername: "janedoe" }),
     ];
 
-    const { getByText } = render(<FeedScreen />);
+    const { getByText } = renderWithQueryClient(<FeedScreen />);
     expect(getByText("janedoe")).toBeTruthy();
   });
 
@@ -315,7 +316,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: "e1", actorId: "abcdef12-0000-0000-0000-000000000000", actorDisplayName: null, actorUsername: null }),
     ];
 
-    const { getByText } = render(<FeedScreen />);
+    const { getByText } = renderWithQueryClient(<FeedScreen />);
     expect(getByText("abcdef12")).toBeTruthy();
   });
 
@@ -326,7 +327,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: "e1", actorDisplayName: "Jane Doe", actorUsername: "janedoe" }),
     ];
 
-    const { getByText } = render(<FeedScreen />);
+    const { getByText } = renderWithQueryClient(<FeedScreen />);
     // Initials should be "JD" from "Jane Doe"
     expect(getByText("JD")).toBeTruthy();
   });
@@ -350,7 +351,7 @@ describe("FeedScreen", () => {
       makeEntry({ id: `e${i}`, eventType }),
     );
 
-    const { getByTestId } = render(<FeedScreen />);
+    const { getByTestId } = renderWithQueryClient(<FeedScreen />);
 
     eventTypes.forEach((_, i) => {
       expect(getByTestId(`feed-entry-e${i}`)).toBeTruthy();

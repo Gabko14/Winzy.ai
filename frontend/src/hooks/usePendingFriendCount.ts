@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { fetchPendingFriendCount as fetchCount } from "../api/social";
+import { queryKeys } from "../api/queryKeys";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -11,73 +12,23 @@ const POLL_INTERVAL_MS = 30_000;
  *   to 0 and polling stops so the badge doesn't show stale data after logout.
  */
 export function usePendingFriendCount(isAuthenticated = true) {
-  const [count, setCount] = useState(0);
-  const mountedRef = useRef(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const cancelledRef = useRef(false);
+  const queryClient = useQueryClient();
 
-  const poll = useCallback(async () => {
-    try {
-      const data = await fetchCount();
-      if (mountedRef.current && !cancelledRef.current) {
-        setCount(data.count);
-      }
-    } catch {
-      // Silently ignore — badge is non-critical
-    }
-  }, []);
+  const query = useQuery({
+    queryKey: queryKeys.friends.pendingCount(),
+    queryFn: fetchCount,
+    enabled: isAuthenticated,
+    refetchInterval: isAuthenticated ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
 
   const refresh = useCallback(() => {
-    poll();
-  }, [poll]);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.friends.pendingCount() });
+  }, [queryClient]);
 
-  // Clear stale state and cancel in-flight fetches when auth drops
-  useEffect(() => {
-    if (!isAuthenticated) {
-      cancelledRef.current = true;
-      setCount(0);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    cancelledRef.current = false;
-    mountedRef.current = true;
-
-    poll();
-
-    intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
-    const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState === "active") {
-        poll();
-        if (!intervalRef.current) {
-          intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-        }
-      } else {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      }
-    };
-
-    const subscription = AppState.addEventListener("change", handleAppState);
-
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      subscription.remove();
-    };
-  }, [poll, isAuthenticated]);
-
-  return { count, refresh };
+  return {
+    count: isAuthenticated ? (query.data?.count ?? 0) : 0,
+    refresh,
+  };
 }

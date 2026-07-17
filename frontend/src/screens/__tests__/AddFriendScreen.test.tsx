@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { Alert } from "react-native";
 import { AddFriendScreen } from "../AddFriendScreen";
 import type { UserSearchResult } from "../../api/social";
@@ -62,7 +63,7 @@ describe("AddFriendScreen", () => {
       makeUser({ id: "u2", username: "alicew", displayName: "Alice Wang" }),
     ];
 
-    const { getByTestId, getByText } = render(<AddFriendScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<AddFriendScreen />);
 
     expect(getByTestId("search-results")).toBeTruthy();
     expect(getByText("Alice Smith")).toBeTruthy();
@@ -78,7 +79,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "bob";
     mockUseUserSearch.results = [user];
 
-    const { getAllByText } = render(<AddFriendScreen currentUserId="me" />);
+    const { getAllByText } = renderWithQueryClient(<AddFriendScreen currentUserId="me" />);
 
     await act(async () => {
       fireEvent.press(getAllByText("Add")[0]);
@@ -103,7 +104,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "zzzznonexistent";
     mockUseUserSearch.results = [];
 
-    const { getByTestId, getByText } = render(<AddFriendScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<AddFriendScreen />);
 
     expect(getByTestId("search-empty")).toBeTruthy();
     expect(getByText("No users found")).toBeTruthy();
@@ -116,7 +117,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "me";
     mockUseUserSearch.results = [selfUser];
 
-    const { getAllByText } = render(<AddFriendScreen currentUserId="my-id" />);
+    const { getAllByText } = renderWithQueryClient(<AddFriendScreen currentUserId="my-id" />);
 
     // The "You" badge should show, but let's also test the alert path
     // when the user somehow triggers sendRequest for themselves
@@ -137,7 +138,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "dupe";
     mockUseUserSearch.results = [user];
 
-    const { getAllByText, getByText } = render(<AddFriendScreen currentUserId="me" />);
+    const { getAllByText, getByText } = renderWithQueryClient(<AddFriendScreen currentUserId="me" />);
 
     await act(async () => {
       fireEvent.press(getAllByText("Add")[0]);
@@ -158,7 +159,7 @@ describe("AddFriendScreen", () => {
       message: "Something went wrong on our end. Please try again.",
     };
 
-    const { getByTestId } = render(<AddFriendScreen />);
+    const { getByTestId } = renderWithQueryClient(<AddFriendScreen />);
 
     expect(getByTestId("search-error")).toBeTruthy();
   });
@@ -176,7 +177,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "fail";
     mockUseUserSearch.results = [user];
 
-    const { getAllByText, getByText } = render(<AddFriendScreen currentUserId="me" />);
+    const { getAllByText, getByText } = renderWithQueryClient(<AddFriendScreen currentUserId="me" />);
 
     await act(async () => {
       fireEvent.press(getAllByText("Add")[0]);
@@ -192,7 +193,7 @@ describe("AddFriendScreen", () => {
   it("shows search hint when query is less than 2 characters", () => {
     mockUseUserSearch.query = "";
 
-    const { getByTestId, getByText } = render(<AddFriendScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<AddFriendScreen />);
 
     expect(getByTestId("search-hint")).toBeTruthy();
     expect(getByText("Search for friends")).toBeTruthy();
@@ -204,7 +205,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "loading";
     mockUseUserSearch.loading = true;
 
-    const { getByTestId } = render(<AddFriendScreen />);
+    const { getByTestId } = renderWithQueryClient(<AddFriendScreen />);
 
     expect(getByTestId("search-loading")).toBeTruthy();
   });
@@ -213,7 +214,7 @@ describe("AddFriendScreen", () => {
 
   it("calls onBack when back button is pressed", () => {
     const onBack = jest.fn();
-    const { getByTestId } = render(<AddFriendScreen onBack={onBack} />);
+    const { getByTestId } = renderWithQueryClient(<AddFriendScreen onBack={onBack} />);
 
     fireEvent.press(getByTestId("back-button"));
     expect(onBack).toHaveBeenCalled();
@@ -226,7 +227,7 @@ describe("AddFriendScreen", () => {
     mockUseUserSearch.query = "sent";
     mockUseUserSearch.results = [user];
 
-    const { getAllByText, queryAllByText } = render(<AddFriendScreen currentUserId="me" />);
+    const { getAllByText, queryAllByText } = renderWithQueryClient(<AddFriendScreen currentUserId="me" />);
 
     // Initially shows "Add" button
     expect(getAllByText("Add").length).toBe(1);

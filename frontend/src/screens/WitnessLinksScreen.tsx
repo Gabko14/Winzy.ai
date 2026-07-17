@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -22,15 +22,7 @@ import {
   typography,
   lightTheme,
 } from "../design-system";
-import {
-  listWitnessLinks,
-  createWitnessLink,
-  revokeWitnessLink,
-  rotateWitnessLink,
-  updateWitnessLink,
-  type WitnessLink,
-} from "../api/witnessLinks";
-import { fetchHabits, type Habit } from "../api/habits";
+import { useWitnessLinks, type WitnessLink } from "../hooks/useWitnessLinks";
 import { isApiError } from "../api";
 
 type Props = {
@@ -69,66 +61,38 @@ async function copyOrShareUrl(text: string): Promise<boolean> {
 export function WitnessLinksScreen({ onBack }: Props) {
   const colors = lightTheme;
 
-  // Links state
-  const [links, setLinks] = useState<WitnessLink[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    links,
+    habits,
+    loading,
+    error: loadError,
+    refresh,
+    create,
+    creating,
+    revoke,
+    rotate,
+    update,
+    updating: saving,
+  } = useWitnessLinks();
 
-  // User habits (for selection)
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const error = loadError?.message ?? null;
 
   // Create modal state
   const [showCreate, setShowCreate] = useState(false);
   const [createLabel, setCreateLabel] = useState("");
   const [selectedHabitIds, setSelectedHabitIds] = useState<Set<string>>(new Set());
-  const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   // Edit modal state
   const [editingLink, setEditingLink] = useState<WitnessLink | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editHabitIds, setEditHabitIds] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
   // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const loadData = useCallback(async (signal?: { cancelled: boolean }) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [linksRes, habitsRes] = await Promise.all([
-        listWitnessLinks(),
-        fetchHabits(),
-      ]);
-      if (signal?.cancelled) return;
-      setLinks(linksRes.items);
-      // Only show active (non-archived) habits
-      setHabits(habitsRes.filter((h) => !h.archivedAt));
-    } catch (err) {
-      if (signal?.cancelled) return;
-      if (isApiError(err)) {
-        setError(err.message);
-      } else {
-        setError("Could not load witness links.");
-      }
-    } finally {
-      if (!signal?.cancelled) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    loadData(signal);
-    return () => { signal.cancelled = true; };
-  }, [loadData]);
-
-  // --- Create ---
-
-  const handleOpenCreate = useCallback(() => {
+    const handleOpenCreate = useCallback(() => {
     setCreateLabel("");
     setSelectedHabitIds(new Set());
     setCreateError(null);
@@ -136,14 +100,12 @@ export function WitnessLinksScreen({ onBack }: Props) {
   }, []);
 
   const handleCreate = useCallback(async () => {
-    setCreating(true);
     setCreateError(null);
     try {
-      const newLink = await createWitnessLink({
+      await create({
         label: createLabel.trim() || undefined,
         habitIds: selectedHabitIds.size > 0 ? Array.from(selectedHabitIds) : undefined,
       });
-      setLinks((prev) => [newLink, ...prev]);
       setShowCreate(false);
     } catch (err) {
       if (isApiError(err)) {
@@ -151,10 +113,8 @@ export function WitnessLinksScreen({ onBack }: Props) {
       } else {
         setCreateError("Failed to create link.");
       }
-    } finally {
-      setCreating(false);
     }
-  }, [createLabel, selectedHabitIds]);
+  }, [create, createLabel, selectedHabitIds]);
 
   // --- Copy ---
 
@@ -183,8 +143,7 @@ export function WitnessLinksScreen({ onBack }: Props) {
           style: "destructive",
           onPress: async () => {
             try {
-              await revokeWitnessLink(link.id);
-              setLinks((prev) => prev.filter((l) => l.id !== link.id));
+              await revoke(link.id);
             } catch (err) {
               const msg = isApiError(err) ? err.message : "Failed to revoke link.";
               Alert.alert("Error", msg);
@@ -193,7 +152,7 @@ export function WitnessLinksScreen({ onBack }: Props) {
         },
       ],
     );
-  }, []);
+  }, [revoke]);
 
   // --- Rotate ---
 
@@ -208,8 +167,7 @@ export function WitnessLinksScreen({ onBack }: Props) {
           text: "Rotate",
           onPress: async () => {
             try {
-              const updated = await rotateWitnessLink(link.id);
-              setLinks((prev) => prev.map((l) => (l.id === link.id ? updated : l)));
+              await rotate(link.id);
             } catch (err) {
               const msg = isApiError(err) ? err.message : "Failed to rotate link.";
               Alert.alert("Error", msg);
@@ -218,7 +176,7 @@ export function WitnessLinksScreen({ onBack }: Props) {
         },
       ],
     );
-  }, []);
+  }, [rotate]);
 
   // --- Edit ---
 
@@ -231,16 +189,12 @@ export function WitnessLinksScreen({ onBack }: Props) {
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingLink) return;
-    setSaving(true);
     setEditError(null);
     try {
-      const updated = await updateWitnessLink(editingLink.id, {
-        // Send empty string to clear label, trimmed string to set, undefined to leave unchanged
-        // Since user always sees the field, always send the current value
+      await update(editingLink.id, {
         label: editLabel.trim(),
         habitIds: Array.from(editHabitIds),
       });
-      setLinks((prev) => prev.map((l) => (l.id === editingLink.id ? updated : l)));
       setEditingLink(null);
     } catch (err) {
       if (isApiError(err)) {
@@ -248,10 +202,8 @@ export function WitnessLinksScreen({ onBack }: Props) {
       } else {
         setEditError("Failed to save changes.");
       }
-    } finally {
-      setSaving(false);
     }
-  }, [editingLink, editLabel, editHabitIds]);
+  }, [editingLink, editLabel, editHabitIds, update]);
 
   // --- Habit toggle helper ---
 
@@ -293,7 +245,7 @@ export function WitnessLinksScreen({ onBack }: Props) {
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Witness Links</Text>
         </View>
         <View style={styles.center}>
-          <ErrorState message={error} onRetry={loadData} />
+          <ErrorState message={error} onRetry={refresh} />
         </View>
       </View>
     );

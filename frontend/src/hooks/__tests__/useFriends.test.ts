@@ -1,4 +1,5 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 import { useFriends } from "../useFriends";
 
 jest.mock("../../api/social", () => ({
@@ -74,7 +75,7 @@ describe("useFriends", () => {
   it("loads friends and requests on mount", async () => {
     mockDefaultResponses();
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     expect(result.current.loading).toBe(true);
     expect(result.current.requestsLoading).toBe(true);
@@ -102,7 +103,7 @@ describe("useFriends", () => {
       createdAt: mockIncoming.createdAt,
     });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -122,6 +123,10 @@ describe("useFriends", () => {
       pageSize: 100,
       total: 2,
     });
+    fetchFriendRequests.mockResolvedValue({
+      incoming: [],
+      outgoing: [mockOutgoing],
+    });
 
     let success: boolean | undefined;
     await act(async () => {
@@ -130,19 +135,26 @@ describe("useFriends", () => {
 
     expect(success).toBe(true);
     expect(acceptFriendRequest).toHaveBeenCalledWith("req-1");
-    expect(result.current.incoming).toEqual([]);
-    expect(result.current.friends).toEqual([mockFriend, newFriend]);
-    expect(result.current.totalFriends).toBe(2);
+    await waitFor(() => {
+      expect(result.current.incoming).toEqual([]);
+      expect(result.current.friends).toEqual([mockFriend, newFriend]);
+      expect(result.current.totalFriends).toBe(2);
+    });
   });
 
   it("declineRequest removes from incoming", async () => {
     mockDefaultResponses();
     declineFriendRequest.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    fetchFriendRequests.mockResolvedValue({
+      incoming: [],
+      outgoing: [mockOutgoing],
     });
 
     let success: boolean | undefined;
@@ -152,17 +164,24 @@ describe("useFriends", () => {
 
     expect(success).toBe(true);
     expect(declineFriendRequest).toHaveBeenCalledWith("req-1");
-    expect(result.current.incoming).toEqual([]);
+    await waitFor(() => {
+      expect(result.current.incoming).toEqual([]);
+    });
   });
 
   it("cancelRequest removes from outgoing", async () => {
     mockDefaultResponses();
     declineFriendRequest.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    fetchFriendRequests.mockResolvedValue({
+      incoming: [mockIncoming],
+      outgoing: [],
     });
 
     let success: boolean | undefined;
@@ -173,7 +192,9 @@ describe("useFriends", () => {
     expect(success).toBe(true);
     // cancelRequest calls declineFriendRequest under the hood
     expect(declineFriendRequest).toHaveBeenCalledWith("req-2");
-    expect(result.current.outgoing).toEqual([]);
+    await waitFor(() => {
+      expect(result.current.outgoing).toEqual([]);
+    });
   });
 
   it("removeFriend removes from list and decrements total", async () => {
@@ -186,7 +207,7 @@ describe("useFriends", () => {
     fetchFriendRequests.mockResolvedValue({ incoming: [], outgoing: [] });
     removeFriend.mockResolvedValue(undefined);
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -195,6 +216,13 @@ describe("useFriends", () => {
     expect(result.current.friends).toHaveLength(2);
     expect(result.current.totalFriends).toBe(2);
 
+    fetchFriends.mockResolvedValue({
+      items: [mockFriend2],
+      page: 1,
+      pageSize: 100,
+      total: 1,
+    });
+
     let success: boolean | undefined;
     await act(async () => {
       success = await result.current.removeFriend("u1");
@@ -202,14 +230,16 @@ describe("useFriends", () => {
 
     expect(success).toBe(true);
     expect(removeFriend).toHaveBeenCalledWith("u1");
-    expect(result.current.friends).toEqual([mockFriend2]);
-    expect(result.current.totalFriends).toBe(1);
+    await waitFor(() => {
+      expect(result.current.friends).toEqual([mockFriend2]);
+      expect(result.current.totalFriends).toBe(1);
+    });
   });
 
   it("refresh reloads both friends and requests", async () => {
     mockDefaultResponses();
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -248,7 +278,7 @@ describe("useFriends", () => {
     });
     fetchFriendRequests.mockResolvedValue({ incoming: [], outgoing: [] });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -270,7 +300,7 @@ describe("useFriends", () => {
     );
     fetchFriendRequests.mockResolvedValue({ incoming: [], outgoing: [] });
 
-    const { result, unmount } = renderHook(() => useFriends());
+    const { result, unmount } = renderHookWithQueryClient(() => useFriends());
 
     expect(result.current.loading).toBe(true);
 
@@ -295,7 +325,7 @@ describe("useFriends", () => {
     fetchFriends.mockRejectedValue(apiError);
     fetchFriendRequests.mockResolvedValue({ incoming: [], outgoing: [] });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -315,7 +345,7 @@ describe("useFriends", () => {
     const apiError = { status: 0, code: "network", message: "Network error" };
     fetchFriendRequests.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.requestsLoading).toBe(false);
@@ -334,7 +364,7 @@ describe("useFriends", () => {
       message: "Failed",
     });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -358,7 +388,7 @@ describe("useFriends", () => {
       message: "Failed",
     });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -380,7 +410,7 @@ describe("useFriends", () => {
       message: "Network error",
     });
 
-    const { result } = renderHook(() => useFriends());
+    const { result } = renderHookWithQueryClient(() => useFriends());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

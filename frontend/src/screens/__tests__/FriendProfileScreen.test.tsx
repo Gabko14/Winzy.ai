@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { FriendProfileScreen } from "../FriendProfileScreen";
 import type { FriendProfileResponse, FriendHabit } from "../../api/social";
 
@@ -41,7 +42,7 @@ describe("FriendProfileScreen", () => {
   // --- Happy path: renders friend profile header (name, avatar, member-since) ---
 
   it("renders friend profile header with name, avatar, and member-since", async () => {
-    const { getByTestId, getAllByText, getByText } = render(
+    const { getByTestId, getAllByText, getByText } = renderWithQueryClient(
       <FriendProfileScreen
         friendId="friend-123"
         displayName="Alice Smith"
@@ -70,7 +71,7 @@ describe("FriendProfileScreen", () => {
     ];
     mockFetchFriendProfile.mockResolvedValue(makeProfileResponse({ habits }));
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Alice Smith" />,
     );
 
@@ -92,7 +93,7 @@ describe("FriendProfileScreen", () => {
 
   it("renders Set Challenge button that calls onSetChallenge", async () => {
     const onSetChallenge = jest.fn();
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <FriendProfileScreen
         friendId="friend-123"
         displayName="Alice Smith"
@@ -116,7 +117,7 @@ describe("FriendProfileScreen", () => {
   it("shows encouraging empty state when friend has no visible habits", async () => {
     mockFetchFriendProfile.mockResolvedValue(makeProfileResponse({ habits: [] }));
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Bob" />,
     );
 
@@ -136,7 +137,7 @@ describe("FriendProfileScreen", () => {
     // Backend filters private habits, so response comes back with empty array
     mockFetchFriendProfile.mockResolvedValue(makeProfileResponse({ habits: [] }));
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-456" displayName="Charlie" />,
     );
 
@@ -153,7 +154,7 @@ describe("FriendProfileScreen", () => {
     const apiError = { status: 500, code: "server_error" as const, message: "Could not load profile. Please try again." };
     mockFetchFriendProfile.mockRejectedValue(apiError);
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Alice" />,
     );
 
@@ -181,7 +182,7 @@ describe("FriendProfileScreen", () => {
       makeProfileResponse({ habits: [], habitsUnavailable: true }),
     );
 
-    const { getByTestId, getByText, queryByTestId } = render(
+    const { getByTestId, getByText, queryByTestId } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Diana" />,
     );
 
@@ -211,7 +212,7 @@ describe("FriendProfileScreen", () => {
       makeProfileResponse({ habits: [], habitsUnavailable: false }),
     );
 
-    const { getByTestId, getByText, queryByTestId } = render(
+    const { getByTestId, getByText, queryByTestId } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Diana" />,
     );
 
@@ -229,7 +230,7 @@ describe("FriendProfileScreen", () => {
 
   it("calls onBack when back button is pressed", async () => {
     const onBack = jest.fn();
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Alice" onBack={onBack} />,
     );
 
@@ -244,7 +245,7 @@ describe("FriendProfileScreen", () => {
   // --- Fallback display when no profile data ---
 
   it("shows truncated friendId when no displayName or username", async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithQueryClient(
       <FriendProfileScreen friendId="abcd1234-5678" />,
     );
 
@@ -259,7 +260,7 @@ describe("FriendProfileScreen", () => {
     // Never resolve the promise so it stays loading
     mockFetchFriendProfile.mockReturnValue(new Promise(() => {}));
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithQueryClient(
       <FriendProfileScreen friendId="friend-123" displayName="Alice" />,
     );
 

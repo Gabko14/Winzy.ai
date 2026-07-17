@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { fireEvent, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { Alert } from "react-native";
 import { FriendsScreen } from "../FriendsScreen";
 import type { Friend, IncomingRequest, OutgoingRequest } from "../../api/social";
@@ -76,7 +77,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.friends = friends;
     mockUseFriends.totalFriends = 2;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("friends-screen")).toBeTruthy();
     expect(getByTestId("friend-friend-1")).toBeTruthy();
@@ -91,7 +92,7 @@ describe("FriendsScreen", () => {
     const incoming = makeIncomingRequest({ id: "req-1" });
     mockUseFriends.incoming = [incoming];
 
-    const { getByTestId, getAllByText } = render(<FriendsScreen />);
+    const { getByTestId, getAllByText } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("pending-requests-section")).toBeTruthy();
     expect(getAllByText("Accept").length).toBeGreaterThan(0);
@@ -104,7 +105,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     mockUseFriends.incoming = [incoming];
 
-    const { getAllByText } = render(<FriendsScreen />);
+    const { getAllByText } = renderWithQueryClient(<FriendsScreen />);
 
     await act(async () => {
       fireEvent.press(getAllByText("Accept")[0]);
@@ -119,7 +120,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     mockUseFriends.incoming = [incoming];
 
-    const { getAllByText } = render(<FriendsScreen />);
+    const { getAllByText } = renderWithQueryClient(<FriendsScreen />);
 
     await act(async () => {
       fireEvent.press(getAllByText("Decline")[0]);
@@ -132,7 +133,7 @@ describe("FriendsScreen", () => {
 
   it("shows empty state when no friends and no pending requests", () => {
     const onAddFriend = jest.fn();
-    const { getByTestId, getByText } = render(<FriendsScreen onAddFriend={onAddFriend} />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FriendsScreen onAddFriend={onAddFriend} />);
 
     expect(getByTestId("friends-empty")).toBeTruthy();
     expect(getByText("Add friends to share your journey")).toBeTruthy();
@@ -148,7 +149,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.friends = [makeFriend({ friendId: "no-habits-friend" })];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("friend-no-habits-friend")).toBeTruthy();
   });
@@ -161,7 +162,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByText } = render(<FriendsScreen />);
+    const { getByText } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByText("Alice Smith")).toBeTruthy();
     expect(getByText("@alice")).toBeTruthy();
@@ -175,7 +176,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByText } = render(<FriendsScreen />);
+    const { getByText } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByText("User abcd1234")).toBeTruthy();
   });
@@ -189,7 +190,7 @@ describe("FriendsScreen", () => {
       message: "Something went wrong on our end. Please try again.",
     };
 
-    const { getByTestId, getByText } = render(<FriendsScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("friends-error")).toBeTruthy();
     expect(getByText("Something went wrong on our end. Please try again.")).toBeTruthy();
@@ -209,7 +210,7 @@ describe("FriendsScreen", () => {
       message: "Could not load friend requests",
     };
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     // Friends list renders fine
     expect(getByTestId("friends-screen")).toBeTruthy();
@@ -222,7 +223,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.loading = true;
     mockUseFriends.requestsLoading = true;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
     expect(getByTestId("friends-loading")).toBeTruthy();
   });
 
@@ -233,7 +234,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.friends = [friend];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
     fireEvent(getByTestId("friend-remove-me"), "longPress");
 
     // Long press now opens the action sheet first
@@ -283,7 +284,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     const onAddFriend = jest.fn();
 
-    const { getByTestId } = render(<FriendsScreen onAddFriend={onAddFriend} />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen onAddFriend={onAddFriend} />);
     fireEvent.press(getByTestId("add-friend-button"));
     expect(onAddFriend).toHaveBeenCalled();
   });
@@ -296,7 +297,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     mockUseFriends.outgoing = [outgoing];
 
-    const { getByTestId, getByText } = render(<FriendsScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("pending-requests-section")).toBeTruthy();
     expect(getByText("Cancel")).toBeTruthy();
@@ -331,7 +332,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     mockUseFriends.outgoing = [outgoing];
 
-    const { getByText } = render(<FriendsScreen />);
+    const { getByText } = renderWithQueryClient(<FriendsScreen />);
 
     fireEvent.press(getByText("Cancel"));
 
@@ -348,7 +349,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("flame-flame-friend")).toBeTruthy();
   });
@@ -359,7 +360,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     // Flame container should exist — "none" is a legitimate state (no visible habits)
     expect(getByTestId("flame-no-flame")).toBeTruthy();
@@ -376,7 +377,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId, getByText } = render(<FriendsScreen />);
+    const { getByTestId, getByText } = renderWithQueryClient(<FriendsScreen />);
 
     // Flame container exists but shows unavailable state with "?" badge
     expect(getByTestId("flame-degraded-friend")).toBeTruthy();
@@ -395,7 +396,7 @@ describe("FriendsScreen", () => {
     ];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId, queryByTestId } = render(<FriendsScreen />);
+    const { getByTestId, queryByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     // Normal none flame — no unavailable badge
     expect(getByTestId("flame-legit-none")).toBeTruthy();
@@ -408,7 +409,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.friends = [makeFriend({ friendId: "menu-friend" })];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
 
     expect(getByTestId("menu-menu-friend")).toBeTruthy();
   });
@@ -418,7 +419,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.friends = [friend];
     mockUseFriends.totalFriends = 1;
 
-    const { getByTestId } = render(<FriendsScreen />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen />);
     fireEvent.press(getByTestId("menu-menu-remove"));
 
     // Menu button now opens the action sheet
@@ -439,7 +440,7 @@ describe("FriendsScreen", () => {
     mockUseFriends.totalFriends = 1;
     const onFriendPress = jest.fn();
 
-    const { getByTestId } = render(<FriendsScreen onFriendPress={onFriendPress} />);
+    const { getByTestId } = renderWithQueryClient(<FriendsScreen onFriendPress={onFriendPress} />);
     fireEvent.press(getByTestId("friend-tap-me"));
     expect(onFriendPress).toHaveBeenCalledWith("tap-me");
   });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import {
   Flame,
@@ -15,7 +15,7 @@ import {
   brand,
   shadows,
 } from "../design-system";
-import { fetchWitnessView, type WitnessViewResponse } from "../api/witnessLinks";
+import { useWitnessView } from "../hooks/useWitnessView";
 import { flameLevelFromConsistency, flameBackgroundColor, flameTextColor } from "../utils/flameHelpers";
 
 type Props = {
@@ -25,44 +25,7 @@ type Props = {
 
 export function WitnessViewerScreen({ token, onNavigateToSignUp }: Props) {
   const colors = lightTheme;
-  const [data, setData] = useState<WitnessViewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notAvailable, setNotAvailable] = useState(false);
-
-  const fetchData = useCallback(async (signal?: { cancelled: boolean }) => {
-    setLoading(true);
-    setError(null);
-    setNotAvailable(false);
-
-    try {
-      const result = await fetchWitnessView(token);
-      if (signal?.cancelled) return;
-      setData(result);
-    } catch (err: unknown) {
-      if (signal?.cancelled) return;
-      if (
-        typeof err === "object" &&
-        err !== null &&
-        "code" in err &&
-        (err as Record<string, unknown>).code === "not_found"
-      ) {
-        setNotAvailable(true);
-      } else {
-        setError("Could not load this page. Please try again.");
-      }
-    } finally {
-      if (!signal?.cancelled) {
-        setLoading(false);
-      }
-    }
-  }, [token]);
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    fetchData(signal);
-    return () => { signal.cancelled = true; };
-  }, [fetchData]);
+  const { data, loading, error, notAvailable, refresh } = useWitnessView(token);
 
   if (loading) {
     return (
@@ -85,15 +48,16 @@ export function WitnessViewerScreen({ token, onNavigateToSignUp }: Props) {
     );
   }
 
-  if (error) {
+  if (error || !data) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]} testID="witness-viewer-error">
-        <ErrorState message={error} onRetry={fetchData} />
+        <ErrorState
+          message="Could not load this page. Please try again."
+          onRetry={refresh}
+        />
       </View>
     );
   }
-
-  if (!data) return null;
 
   const ownerName = data.ownerDisplayName || (data.ownerUsername ? `@${data.ownerUsername}` : "Someone");
 
@@ -134,7 +98,7 @@ export function WitnessViewerScreen({ token, onNavigateToSignUp }: Props) {
           <ErrorState
             title="Temporarily unavailable"
             message="We're having trouble loading habit data right now. Please try again shortly."
-            onRetry={fetchData}
+            onRetry={refresh}
           />
         </View>
       ) : data.habits.length === 0 ? (

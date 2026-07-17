@@ -1,4 +1,5 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 import { useUserSearch } from "../useUserSearch";
 
 jest.mock("../../api/social", () => ({
@@ -27,7 +28,7 @@ describe("useUserSearch", () => {
   it("returns search results after debounce delay", async () => {
     searchUsers.mockResolvedValue(mockResults);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     // Set query
     act(() => {
@@ -54,7 +55,7 @@ describe("useUserSearch", () => {
   it("clear resets query and results", async () => {
     searchUsers.mockResolvedValue(mockResults);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     act(() => {
       result.current.setQuery("ali");
@@ -81,7 +82,7 @@ describe("useUserSearch", () => {
   // --- Edge cases ---
 
   it("does not search when query is under 2 characters", async () => {
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     act(() => {
       result.current.setQuery("a");
@@ -102,7 +103,7 @@ describe("useUserSearch", () => {
   it("clears results when query goes from valid to too short", async () => {
     searchUsers.mockResolvedValue(mockResults);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     // First, get results
     act(() => {
@@ -127,7 +128,7 @@ describe("useUserSearch", () => {
   });
 
   it("trims whitespace before checking length", async () => {
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     act(() => {
       result.current.setQuery("  a  ");
@@ -146,7 +147,7 @@ describe("useUserSearch", () => {
   it("only fires the last query during rapid typing", async () => {
     searchUsers.mockResolvedValue(mockResults);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     // Type quickly
     act(() => {
@@ -175,7 +176,7 @@ describe("useUserSearch", () => {
   it("accepts custom debounceMs", async () => {
     searchUsers.mockResolvedValue(mockResults);
 
-    const { result } = renderHook(() => useUserSearch(500));
+    const { result } = renderHookWithQueryClient(() => useUserSearch(500));
 
     act(() => {
       result.current.setQuery("ali");
@@ -214,7 +215,7 @@ describe("useUserSearch", () => {
       )
       .mockResolvedValueOnce(fastResults);
 
-    const { result } = renderHook(() => useUserSearch(0));
+    const { result } = renderHookWithQueryClient(() => useUserSearch(0));
 
     // First query
     act(() => {
@@ -254,7 +255,7 @@ describe("useUserSearch", () => {
     const apiError = { status: 500, code: "server_error", message: "Search failed" };
     searchUsers.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     act(() => {
       result.current.setQuery("ali");
@@ -276,7 +277,7 @@ describe("useUserSearch", () => {
     const apiError = { status: 500, code: "server_error", message: "Search failed" };
     searchUsers.mockRejectedValueOnce(apiError).mockResolvedValueOnce(mockResults);
 
-    const { result } = renderHook(() => useUserSearch());
+    const { result } = renderHookWithQueryClient(() => useUserSearch());
 
     // First search fails
     act(() => {

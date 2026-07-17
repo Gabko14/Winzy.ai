@@ -20,7 +20,9 @@ import {
 } from "../design-system";
 import { spacing, typography, lightTheme, shadows } from "../design-system";
 import { useUserSearch } from "../hooks/useUserSearch";
+import { useMutation } from "@tanstack/react-query";
 import { sendFriendRequest } from "../api/social";
+import { queryKeys } from "../api/queryKeys";
 import { getInitials } from "../utils/getInitials";
 import type { UserSearchResult } from "../api/social";
 import type { ApiError } from "../api/types";
@@ -37,6 +39,13 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  const sendMutation = useMutation({
+    mutationFn: (friendId: string) => sendFriendRequest(friendId),
+    onSettled: (_data, _error, _vars, _onMutateResult, { client }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.friends.requests() });
+    },
+  });
+
   const handleSendRequest = useCallback(
     async (user: UserSearchResult) => {
       if (currentUserId && user.id === currentUserId) {
@@ -48,7 +57,7 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
       setSendError(null);
 
       try {
-        await sendFriendRequest(user.id);
+        await sendMutation.mutateAsync(user.id);
         setSentIds((s) => new Set(s).add(user.id));
         Alert.alert("Request sent!", `Friend request sent to ${user.displayName ?? user.username}.`);
       } catch (err) {
@@ -62,7 +71,7 @@ export function AddFriendScreen({ currentUserId, onBack }: Props) {
         setSendingId(null);
       }
     },
-    [currentUserId],
+    [currentUserId, sendMutation.mutateAsync],
   );
 
   const renderUser = useCallback(

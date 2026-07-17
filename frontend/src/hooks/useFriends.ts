@@ -1,162 +1,208 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchFriends,
   fetchFriendRequests,
   acceptFriendRequest as apiAcceptRequest,
   declineFriendRequest as apiDeclineRequest,
   removeFriend as apiRemoveFriend,
-  type Friend,
-  type IncomingRequest,
-  type OutgoingRequest,
+  type FriendRequestsResponse,
+  type FriendsPage,
 } from "../api/social";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
 
-type FriendsState = {
-  friends: Friend[];
-  totalFriends: number;
-  incoming: IncomingRequest[];
-  outgoing: OutgoingRequest[];
-  loading: boolean;
-  requestsLoading: boolean;
-  error: ApiError | null;
-  requestsError: ApiError | null;
-};
+export function friendsListQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.friends.list(),
+    queryFn: () => fetchFriends(1, 100),
+  });
+}
+
+export function friendRequestsQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.friends.requests(),
+    queryFn: fetchFriendRequests,
+  });
+}
 
 export function useFriends() {
-  const [state, setState] = useState<FriendsState>({
-    friends: [],
-    totalFriends: 0,
-    incoming: [],
-    outgoing: [],
-    loading: true,
-    requestsLoading: true,
-    error: null,
-    requestsError: null,
-  });
+  const queryClient = useQueryClient();
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const loadFriends = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const data = await fetchFriends(1, 100);
-      if (!mountedRef.current) return;
-      setState((s) => ({
-        ...s,
-        friends: data.items,
-        totalFriends: data.total,
-        loading: false,
-        error: null,
-      }));
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setState((s) => ({ ...s, loading: false, error: err as ApiError }));
-    }
-  }, []);
-
-  const loadRequests = useCallback(async () => {
-    setState((s) => ({ ...s, requestsLoading: true, requestsError: null }));
-    try {
-      const data = await fetchFriendRequests();
-      if (!mountedRef.current) return;
-      setState((s) => ({
-        ...s,
-        incoming: data.incoming,
-        outgoing: data.outgoing,
-        requestsLoading: false,
-        requestsError: null,
-      }));
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setState((s) => ({ ...s, requestsLoading: false, requestsError: err as ApiError }));
-    }
-  }, []);
+  const friendsQuery = useQuery(friendsListQueryOptions());
+  const requestsQuery = useQuery(friendRequestsQueryOptions());
 
   const refresh = useCallback(async () => {
-    await Promise.all([loadFriends(), loadRequests()]);
-  }, [loadFriends, loadRequests]);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.friends.list() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.friends.requests() }),
+    ]);
+  }, [queryClient]);
 
-  useEffect(() => {
-    loadFriends();
-    loadRequests();
-  }, [loadFriends, loadRequests]);
+  const acceptMutation = useMutation({
+    mutationFn: (requestId: string) => apiAcceptRequest(requestId),
+    onMutate: async (requestId, { client }) => {
+      await client.cancelQueries({ queryKey: queryKeys.friends.requests() });
+      const previous = client.getQueryData<FriendRequestsResponse>(queryKeys.friends.requests());
+      if (previous) {
+        client.setQueryData<FriendRequestsResponse>(queryKeys.friends.requests(), {
+          ...previous,
+          incoming: previous.incoming.filter((r) => r.id !== requestId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, onMutateResult, { client }) => {
+      if (onMutateResult?.previous) {
+        client.setQueryData(queryKeys.friends.requests(), onMutateResult.previous);
+      }
+    },
+    onSettled: (_data, _error, _vars, _onMutateResult, { client }) => {
+      void Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.friends.list() }),
+        client.invalidateQueries({ queryKey: queryKeys.friends.requests() }),
+        client.invalidateQueries({ queryKey: queryKeys.friends.pendingCount() }),
+        client.invalidateQueries({ queryKey: ["feed"] }),
+      ]);
+    },
+  });
 
-  const acceptRequest = useCallback(async (requestId: string): Promise<boolean> => {
-    try {
-      await apiAcceptRequest(requestId);
-      if (!mountedRef.current) return true;
-      // Remove from incoming, refresh friends list
-      setState((s) => ({
-        ...s,
-        incoming: s.incoming.filter((r) => r.id !== requestId),
-      }));
-      await loadFriends();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [loadFriends]);
+  const declineMutation = useMutation({
+    mutationFn: (requestId: string) => apiDeclineRequest(requestId),
+    onMutate: async (requestId, { client }) => {
+      await client.cancelQueries({ queryKey: queryKeys.friends.requests() });
+      const previous = client.getQueryData<FriendRequestsResponse>(queryKeys.friends.requests());
+      if (previous) {
+        client.setQueryData<FriendRequestsResponse>(queryKeys.friends.requests(), {
+          ...previous,
+          incoming: previous.incoming.filter((r) => r.id !== requestId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, onMutateResult, { client }) => {
+      if (onMutateResult?.previous) {
+        client.setQueryData(queryKeys.friends.requests(), onMutateResult.previous);
+      }
+    },
+    onSettled: (_data, _error, _vars, _onMutateResult, { client }) => {
+      void Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.friends.requests() }),
+        client.invalidateQueries({ queryKey: queryKeys.friends.pendingCount() }),
+      ]);
+    },
+  });
 
-  const declineRequest = useCallback(async (requestId: string): Promise<boolean> => {
-    try {
-      await apiDeclineRequest(requestId);
-      if (!mountedRef.current) return true;
-      setState((s) => ({
-        ...s,
-        incoming: s.incoming.filter((r) => r.id !== requestId),
-      }));
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+  const cancelMutation = useMutation({
+    mutationFn: (requestId: string) => apiDeclineRequest(requestId),
+    onMutate: async (requestId, { client }) => {
+      await client.cancelQueries({ queryKey: queryKeys.friends.requests() });
+      const previous = client.getQueryData<FriendRequestsResponse>(queryKeys.friends.requests());
+      if (previous) {
+        client.setQueryData<FriendRequestsResponse>(queryKeys.friends.requests(), {
+          ...previous,
+          outgoing: previous.outgoing.filter((r) => r.id !== requestId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, onMutateResult, { client }) => {
+      if (onMutateResult?.previous) {
+        client.setQueryData(queryKeys.friends.requests(), onMutateResult.previous);
+      }
+    },
+    onSettled: (_data, _error, _vars, _onMutateResult, { client }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.friends.requests() });
+    },
+  });
 
-  const cancelRequest = useCallback(async (requestId: string): Promise<boolean> => {
-    // Outgoing requests: the requestId is the friendship ID.
-    // Declining from the sender side is the same as remove.
-    try {
-      await apiDeclineRequest(requestId);
-      if (!mountedRef.current) return true;
-      setState((s) => ({
-        ...s,
-        outgoing: s.outgoing.filter((r) => r.id !== requestId),
-      }));
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+  const removeMutation = useMutation({
+    mutationFn: (friendId: string) => apiRemoveFriend(friendId),
+    onMutate: async (friendId, { client }) => {
+      await client.cancelQueries({ queryKey: queryKeys.friends.list() });
+      const previous = client.getQueryData<FriendsPage>(queryKeys.friends.list());
+      if (previous) {
+        client.setQueryData<FriendsPage>(queryKeys.friends.list(), {
+          ...previous,
+          items: previous.items.filter((f) => f.friendId !== friendId),
+          total: Math.max(0, previous.total - 1),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, onMutateResult, { client }) => {
+      if (onMutateResult?.previous) {
+        client.setQueryData(queryKeys.friends.list(), onMutateResult.previous);
+      }
+    },
+    onSettled: (_data, _error, friendId, _onMutateResult, { client }) => {
+      void Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.friends.list() }),
+        client.invalidateQueries({ queryKey: ["feed"] }),
+        client.invalidateQueries({ queryKey: queryKeys.friend.profile(friendId) }),
+      ]);
+    },
+  });
 
-  const removeFriend = useCallback(async (friendId: string): Promise<boolean> => {
-    try {
-      await apiRemoveFriend(friendId);
-      if (!mountedRef.current) return true;
-      setState((s) => ({
-        ...s,
-        friends: s.friends.filter((f) => f.friendId !== friendId),
-        totalFriends: s.totalFriends - 1,
-      }));
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
+  const acceptRequest = useCallback(
+    async (requestId: string): Promise<boolean> => {
+      try {
+        await acceptMutation.mutateAsync(requestId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [acceptMutation.mutateAsync],
+  );
+
+  const declineRequest = useCallback(
+    async (requestId: string): Promise<boolean> => {
+      try {
+        await declineMutation.mutateAsync(requestId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [declineMutation.mutateAsync],
+  );
+
+  const cancelRequest = useCallback(
+    async (requestId: string): Promise<boolean> => {
+      try {
+        await cancelMutation.mutateAsync(requestId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [cancelMutation.mutateAsync],
+  );
+
+  const removeFriend = useCallback(
+    async (friendId: string): Promise<boolean> => {
+      try {
+        await removeMutation.mutateAsync(friendId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [removeMutation.mutateAsync],
+  );
+
+  const friendsPage = friendsQuery.data;
 
   return {
-    friends: state.friends,
-    totalFriends: state.totalFriends,
-    incoming: state.incoming,
-    outgoing: state.outgoing,
-    loading: state.loading,
-    requestsLoading: state.requestsLoading,
-    error: state.error,
-    requestsError: state.requestsError,
+    friends: friendsPage?.items ?? [],
+    totalFriends: friendsPage?.total ?? 0,
+    incoming: requestsQuery.data?.incoming ?? [],
+    outgoing: requestsQuery.data?.outgoing ?? [],
+    loading: friendsQuery.isPending,
+    requestsLoading: requestsQuery.isPending,
+    error: (friendsQuery.error as ApiError | null) ?? null,
+    requestsError: (requestsQuery.error as ApiError | null) ?? null,
     refresh,
     acceptRequest,
     declineRequest,

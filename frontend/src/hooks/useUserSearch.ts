@@ -1,68 +1,45 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { searchUsers, type UserSearchResult } from "../api/social";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { searchUsers } from "../api/social";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
-
-type SearchState = {
-  results: UserSearchResult[];
-  loading: boolean;
-  error: ApiError | null;
-};
 
 export function useUserSearch(debounceMs = 300) {
   const [query, setQuery] = useState("");
-  const [state, setState] = useState<SearchState>({
-    results: [],
-    loading: false,
-    error: null,
-  });
-
-  const mountedRef = useRef(true);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const seqRef = useRef(0);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-
     const trimmed = query.trim();
     if (trimmed.length < 2) {
-      setState({ results: [], loading: false, error: null });
+      setDebouncedQuery("");
       return;
     }
-
-    setState((s) => ({ ...s, loading: true, error: null }));
-    const seq = ++seqRef.current;
-
-    timerRef.current = setTimeout(async () => {
-      try {
-        const results = await searchUsers(trimmed);
-        if (!mountedRef.current || seq !== seqRef.current) return;
-        setState({ results, loading: false, error: null });
-      } catch (err) {
-        if (!mountedRef.current || seq !== seqRef.current) return;
-        setState({ results: [], loading: false, error: err as ApiError });
-      }
+    const timer = setTimeout(() => {
+      setDebouncedQuery(trimmed);
     }, debounceMs);
+    return () => clearTimeout(timer);
   }, [query, debounceMs]);
+
+  const searchQuery = useQuery({
+    queryKey: queryKeys.users.search(debouncedQuery),
+    queryFn: () => searchUsers(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
+  });
 
   const clear = useCallback(() => {
     setQuery("");
-    setState({ results: [], loading: false, error: null });
+    setDebouncedQuery("");
   }, []);
+
+  const trimmedLive = query.trim();
+  const awaitingDebounce = trimmedLive.length >= 2 && trimmedLive !== debouncedQuery;
 
   return {
     query,
     setQuery,
-    results: state.results,
-    loading: state.loading,
-    error: state.error,
+    results: debouncedQuery.length >= 2 ? (searchQuery.data ?? []) : [],
+    loading: awaitingDebounce || (debouncedQuery.length >= 2 && searchQuery.isFetching),
+    error: (searchQuery.error as ApiError | null) ?? null,
     clear,
   };
 }

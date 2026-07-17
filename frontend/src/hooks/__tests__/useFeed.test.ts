@@ -1,4 +1,5 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 import { useFeed } from "../useFeed";
 
 jest.mock("../../api/feed", () => ({
@@ -29,7 +30,7 @@ describe("useFeed", () => {
       hasMore: true,
     });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     expect(result.current.loading).toBe(true);
 
@@ -51,7 +52,7 @@ describe("useFeed", () => {
       hasMore: false,
     });
 
-    renderHook(() => useFeed(5));
+    renderHookWithQueryClient(() => useFeed(5));
 
     await waitFor(() => {
       expect(fetchFeed).toHaveBeenCalledWith(undefined, 5);
@@ -71,7 +72,7 @@ describe("useFeed", () => {
         hasMore: false,
       });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -107,7 +108,7 @@ describe("useFeed", () => {
         }),
       );
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -144,7 +145,7 @@ describe("useFeed", () => {
         hasMore: true,
       });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -173,7 +174,7 @@ describe("useFeed", () => {
       hasMore: false,
     });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -191,7 +192,7 @@ describe("useFeed", () => {
       hasMore: false,
     });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -220,7 +221,7 @@ describe("useFeed", () => {
         }),
       );
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -257,7 +258,7 @@ describe("useFeed", () => {
       hasMore: true, // hasMore true but no cursor — edge case
     });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -280,7 +281,7 @@ describe("useFeed", () => {
       }),
     );
 
-    const { result, unmount } = renderHook(() => useFeed());
+    const { result, unmount } = renderHookWithQueryClient(() => useFeed());
 
     expect(result.current.loading).toBe(true);
 
@@ -302,7 +303,7 @@ describe("useFeed", () => {
       hasMore: false,
     });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -321,7 +322,7 @@ describe("useFeed", () => {
     };
     fetchFeed.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -345,7 +346,7 @@ describe("useFeed", () => {
       })
       .mockRejectedValueOnce(apiError);
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -380,7 +381,7 @@ describe("useFeed", () => {
         hasMore: false,
       });
 
-    const { result } = renderHook(() => useFeed());
+    const { result } = renderHookWithQueryClient(() => useFeed());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -408,7 +409,7 @@ describe("useFeed", () => {
       }),
     );
 
-    const { unmount } = renderHook(() => useFeed());
+    const { unmount } = renderHookWithQueryClient(() => useFeed());
 
     unmount();
 

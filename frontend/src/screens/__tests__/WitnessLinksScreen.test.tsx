@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { Alert } from "react-native";
 import { WitnessLinksScreen } from "../WitnessLinksScreen";
 import type { WitnessLink } from "../../api/witnessLinks";
@@ -64,7 +65,7 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
 }
 
 function renderScreen() {
-  return render(<WitnessLinksScreen onBack={onBack} />);
+  return renderWithQueryClient(<WitnessLinksScreen onBack={onBack} />);
 }
 
 beforeEach(() => {
@@ -185,7 +186,10 @@ describe("WitnessLinksScreen", () => {
     mockFetchHabits.mockResolvedValue([habit]);
 
     const newLink = makeLink({ id: "new-link", label: "Maya", habitIds: ["h1"] });
-    mockCreateWitnessLink.mockResolvedValue(newLink);
+    mockCreateWitnessLink.mockImplementation(async () => {
+      mockListWitnessLinks.mockResolvedValue({ items: [newLink] });
+      return newLink;
+    });
 
     const { getByText, getByTestId } = renderScreen();
 
