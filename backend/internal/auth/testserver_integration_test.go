@@ -63,7 +63,9 @@ func newTestServerWithRegistries(t *testing.T, authPerMinute, generalPerMinute i
 	mux := http.NewServeMux()
 	auth.RegisterRoutes(mux, handlers)
 
-	protected := auth.Middleware(tokens, auth.DefaultPublicRoutes())(mux)
+	publicRoutes := auth.DefaultPublicRoutes()
+	publicRoutes["GET /auth/users/*/avatar"] = true
+	protected := auth.Middleware(tokens, publicRoutes)(mux)
 	bodyLimited := httpserver.BodyLimit()(protected)
 
 	generalLimiter := ratelimit.New(generalPerMinute, time.Minute)
@@ -84,11 +86,13 @@ func newTestServerWithRegistries(t *testing.T, authPerMinute, generalPerMinute i
 }
 
 type testRequest struct {
-	method  string
-	path    string
-	body    any
-	rawBody *string
-	headers map[string]string
+	method      string
+	path        string
+	body        any
+	rawBody     *string
+	rawBytes    []byte
+	contentType string
+	headers     map[string]string
 	// chunkedEmptyBody forces the request to arrive as a zero-byte CHUNKED
 	// body (Content-Length: -1 at the server, not the 0 a nil/empty body
 	// reports) — the exact shape FIX C (winzy.ai-n5fv review round 1)
@@ -101,7 +105,9 @@ func doRequest(t *testing.T, srv *httptest.Server, req testRequest) *http.Respon
 	t.Helper()
 
 	var bodyReader io.Reader
-	if req.rawBody != nil {
+	if req.rawBytes != nil {
+		bodyReader = bytes.NewReader(req.rawBytes)
+	} else if req.rawBody != nil {
 		bodyReader = strings.NewReader(*req.rawBody)
 	} else if req.body != nil {
 		b, err := json.Marshal(req.body)
@@ -122,7 +128,10 @@ func doRequest(t *testing.T, srv *httptest.Server, req testRequest) *http.Respon
 		// chunked instead of with a Content-Length header.
 		httpReq.ContentLength = -1
 	}
-	if req.body != nil || req.rawBody != nil {
+	switch {
+	case req.contentType != "":
+		httpReq.Header.Set("Content-Type", req.contentType)
+	case req.body != nil || req.rawBody != nil:
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 	for k, v := range req.headers {

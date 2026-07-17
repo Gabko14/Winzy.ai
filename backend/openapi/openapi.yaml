@@ -1085,6 +1085,16 @@ paths:
                 $ref: "#/components/schemas/UnreadCountResponse"
 
   /notifications/settings:
+    get:
+      tags: [notifications]
+      operationId: getNotificationSettings
+      responses:
+        "200":
+          description: Current settings (defaults when no row exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
     put:
       tags: [notifications]
       operationId: updateNotificationSettings
@@ -1101,6 +1111,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationSettings"
+        "400":
+          $ref: "#/components/responses/Error"
 
   /notifications/devices:
     post:
@@ -2399,7 +2411,7 @@ components:
 
     NotificationSettings:
       type: object
-      required: [habitReminders, friendActivity, challengeUpdates]
+      required: [habitReminders, friendActivity, challengeUpdates, reminderTime, reminderTimezone]
       properties:
         habitReminders:
           type: boolean
@@ -2407,6 +2419,15 @@ components:
           type: boolean
         challengeUpdates:
           type: boolean
+        reminderTime:
+          type: string
+          description: Local wall-clock time HH:MM (default 19:00)
+          example: "19:00"
+        reminderTimezone:
+          type: ["string", "null"]
+          description: >
+            IANA timezone used ONLY for reminder scheduling. null means the
+            device timezone has never been saved — reminders are not sent.
 
     UpdateNotificationSettingsRequest:
       type: object
@@ -2417,6 +2438,13 @@ components:
           type: boolean
         challengeUpdates:
           type: boolean
+        reminderTime:
+          type: string
+          description: Local wall-clock time HH:MM
+          example: "19:00"
+        reminderTimezone:
+          type: ["string", "null"]
+          description: IANA timezone; explicit null clears (stops reminders)
 
     RegisterDeviceRequest:
       type: object

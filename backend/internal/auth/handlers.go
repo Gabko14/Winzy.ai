@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
@@ -268,6 +270,55 @@ func (h *Handlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UploadAvatar handles PUT /auth/avatar (raw image body).
+func (h *Handlers) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	contentType := r.Header.Get("Content-Type")
+	if semi := strings.IndexByte(contentType, ';'); semi >= 0 {
+		contentType = strings.TrimSpace(contentType[:semi])
+	}
+	result, err := h.service.UploadAvatar(r.Context(), userID, contentType, r.Body)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GetAvatar handles GET /auth/users/{userID}/avatar (public).
+func (h *Handlers) GetAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("userID")
+	avatar, err := h.service.GetAvatar(r.Context(), userID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	etag := avatarETag(avatar.UpdatedAt)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Content-Type", avatar.ContentType)
+
+	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Length", strconv.Itoa(len(avatar.Data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(avatar.Data)
+}
+
+// DeleteAvatar handles DELETE /auth/avatar.
+func (h *Handlers) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	if err := h.service.DeleteAvatar(r.Context(), userID); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // DeleteAccount handles DELETE /auth/account.
 func (h *Handlers) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
@@ -375,4 +426,8 @@ func conflictMessage(err error) string {
 		return msg[len(prefix):]
 	}
 	return "A conflict occurred."
+}
+
+func avatarETag(updatedAt time.Time) string {
+	return `"` + strconv.FormatInt(updatedAt.UTC().UnixNano(), 10) + `"`
 }

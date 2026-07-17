@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -339,6 +341,10 @@ func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if _, err := deleteUserAvatar(ctx, tx, userID); err != nil {
+		return err
+	}
+
 	found, err := deleteUser(ctx, tx, userID)
 	if err != nil {
 		return err
@@ -396,28 +402,37 @@ func (s *Service) Export(ctx context.Context, userID string) ([]export.ServiceEx
 	}
 
 	others, warnings := s.exportReg.Export(ctx, userID)
-	services := append([]export.ServiceExport{{Service: "auth", Data: newAuthExportData(user)}}, others...)
+	services := append([]export.ServiceExport{{Service: "auth", Data: s.newAuthExportData(ctx, user)}}, others...)
 	return services, warnings, nil
+}
+
+// authExportAvatar is the optional blob payload nested under auth's export
+// section when the user has an uploaded avatar.
+type authExportAvatar struct {
+	ContentType string `json:"contentType"`
+	Data        string `json:"data"`
 }
 
 // authExportData is auth's own export.Section payload — profile data only,
 // deliberately never the password hash (matching the PM REVIEW ADDENDUM:
 // "check what auth exports... never the password hash").
 type authExportData struct {
-	UserID      string     `json:"userId"`
-	Email       string     `json:"email"`
-	Username    string     `json:"username"`
-	DisplayName *string    `json:"displayName"`
-	AvatarURL   *string    `json:"avatarUrl"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	LastLoginAt *time.Time `json:"lastLoginAt"`
+	UserID      string            `json:"userId"`
+	Email       string            `json:"email"`
+	Username    string            `json:"username"`
+	DisplayName *string           `json:"displayName"`
+	AvatarURL   *string           `json:"avatarUrl"`
+	Avatar      *authExportAvatar `json:"avatar,omitempty"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	LastLoginAt *time.Time        `json:"lastLoginAt"`
 }
 
 // newAuthExportData builds the "auth" section payload from an
-// already-fetched user — no ctx, no DB access, so it cannot race a
-// concurrent account deletion (see Export's doc comment).
-func newAuthExportData(user User) authExportData {
-	return authExportData{
+// already-fetched user — plus the avatar blob when present. Avatar lookup
+// failure degrades to omitting the blob (still exporting profile fields)
+// rather than failing the whole export.
+func (s *Service) newAuthExportData(ctx context.Context, user User) authExportData {
+	data := authExportData{
 		UserID:      user.ID,
 		Email:       user.Email,
 		Username:    user.Username,
@@ -426,6 +441,80 @@ func newAuthExportData(user User) authExportData {
 		CreatedAt:   user.CreatedAt,
 		LastLoginAt: user.LastLoginAt,
 	}
+	avatar, found, err := findUserAvatar(ctx, s.pool, user.ID)
+	if err != nil {
+		s.logger.WarnContext(ctx, "auth export: avatar lookup failed", "user_id", user.ID, "error", err)
+		return data
+	}
+	if found {
+		data.Avatar = &authExportAvatar{
+			ContentType: avatar.ContentType,
+			Data:        encodeBase64(avatar.Data),
+		}
+	}
+	return data
+}
+
+// UploadAvatar validates and stores raw image bytes for userID, sets
+// users.avatar_url to the public serving path, and returns cache-busting
+// metadata for the client.
+func (s *Service) UploadAvatar(ctx context.Context, userID, contentType string, body io.Reader) (AvatarUploadResponse, error) {
+	data, storedType, err := validateAvatarBytes(contentType, body)
+	if err != nil {
+		return AvatarUploadResponse{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return AvatarUploadResponse{}, fmt.Errorf("auth: beginning avatar upload transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	avatar, err := upsertUserAvatar(ctx, tx, userID, data, storedType)
+	if err != nil {
+		return AvatarUploadResponse{}, err
+	}
+	path := avatarServingPath(userID)
+	if err := setUserAvatarURL(ctx, tx, userID, &path); err != nil {
+		return AvatarUploadResponse{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AvatarUploadResponse{}, fmt.Errorf("auth: committing avatar upload: %w", err)
+	}
+	return AvatarUploadResponse{AvatarURL: path, UpdatedAt: avatar.UpdatedAt}, nil
+}
+
+// GetAvatar returns the stored avatar bytes for userID, or ErrNotFound.
+func (s *Service) GetAvatar(ctx context.Context, userID string) (UserAvatar, error) {
+	avatar, found, err := findUserAvatar(ctx, s.pool, userID)
+	if err != nil {
+		return UserAvatar{}, err
+	}
+	if !found {
+		return UserAvatar{}, ErrNotFound
+	}
+	return avatar, nil
+}
+
+// DeleteAvatar removes the avatar row and nulls users.avatar_url. Idempotent:
+// missing avatar still succeeds (and still clears avatar_url if set).
+func (s *Service) DeleteAvatar(ctx context.Context, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("auth: beginning avatar delete transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := deleteUserAvatar(ctx, tx, userID); err != nil {
+		return err
+	}
+	if err := setUserAvatarURL(ctx, tx, userID, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("auth: committing avatar delete: %w", err)
+	}
+	return nil
 }
 
 // ResolveUsername is the direct-call replacement for the old GET
@@ -464,6 +553,10 @@ func (s *Service) issueAuthResult(ctx context.Context, user User) (AuthResult, e
 		RefreshTokenExpiresAt: rt.ExpiresAt,
 		User:                  user,
 	}, nil
+}
+
+func encodeBase64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func trimToNil(s *string) *string {

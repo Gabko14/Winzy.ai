@@ -52,13 +52,22 @@ func TestIsPublicRoute_HappyPath_ExactMatchBypassesAuth(t *testing.T) {
 	}
 }
 
-func TestIsPublicRoute_HappyPath_PrefixMatchBypassesAuthForAnySuffix(t *testing.T) {
+func TestIsPublicRoute_HappyPath_SegmentWildcardMatchesOneSegment(t *testing.T) {
 	t.Parallel()
-	routes := map[string]bool{"GET /habits/public/*": true}
-	for _, path := range []string{"/habits/public/alice", "/habits/public/alice/flame.svg", "/habits/public/"} {
+	routes := map[string]bool{"GET /auth/users/*/avatar": true}
+	rec := serveWithPublicRoutes(routes, http.MethodGet, "/auth/users/11111111-1111-1111-1111-111111111111/avatar")
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (segment-wildcard public route)", rec.Code)
+	}
+}
+
+func TestIsPublicRoute_EdgeCase_SegmentWildcardDoesNotOpenSiblingPaths(t *testing.T) {
+	t.Parallel()
+	routes := map[string]bool{"GET /auth/users/*/avatar": true}
+	for _, path := range []string{"/auth/users/search", "/auth/users/11111111-1111-1111-1111-111111111111/profile"} {
 		rec := serveWithPublicRoutes(routes, http.MethodGet, path)
-		if rec.Code != http.StatusOK {
-			t.Errorf("GET %s: status = %d, want 200 (prefix public route)", path, rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s: status = %d, want 401", path, rec.Code)
 		}
 	}
 }

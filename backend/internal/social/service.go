@@ -325,6 +325,7 @@ func (s *Service) ListFriends(ctx context.Context, userID string, page, pageSize
 			username := p.Username
 			item.Username = &username
 			item.DisplayName = p.DisplayName
+			item.AvatarURL = p.AvatarURL
 		}
 
 		flameLevel, consistency, unavailable, err := s.aggregateVisibleFlame(ctx, f.FriendID)

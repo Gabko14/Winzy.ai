@@ -745,7 +745,7 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getNotificationSettings"];
         put: operations["updateNotificationSettings"];
         post?: never;
         delete?: never;
@@ -1356,11 +1356,25 @@ export type components = {
             habitReminders: boolean;
             friendActivity: boolean;
             challengeUpdates: boolean;
+            /**
+             * @description Local wall-clock time HH:MM (default 19:00)
+             * @example 19:00
+             */
+            reminderTime: string;
+            /** @description IANA timezone used ONLY for reminder scheduling. null means the device timezone has never been saved — reminders are not sent. */
+            reminderTimezone: string | null;
         };
         UpdateNotificationSettingsRequest: {
             habitReminders?: boolean;
             friendActivity?: boolean;
             challengeUpdates?: boolean;
+            /**
+             * @description Local wall-clock time HH:MM
+             * @example 19:00
+             */
+            reminderTime?: string;
+            /** @description IANA timezone; explicit null clears (stops reminders) */
+            reminderTimezone?: string | null;
         };
         RegisterDeviceRequest: {
             /** @enum {string} */
@@ -3037,6 +3051,26 @@ export interface operations {
             };
         };
     };
+    getNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current settings (defaults when no row exists) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+        };
+    };
     updateNotificationSettings: {
         parameters: {
             query?: never;
@@ -3059,6 +3093,7 @@ export interface operations {
                     "application/json": components["schemas"]["NotificationSettings"];
                 };
             };
+            400: components["responses"]["Error"];
         };
     };
     registerDevice: {

@@ -105,6 +105,10 @@ func run() error {
 		PublicKey:  cfg.VAPIDPublicKey,
 		PrivateKey: cfg.VAPIDPrivateKey,
 	}, logger)
+	// habits.Service satisfies notifications.DueChecker structurally —
+	// reminder usefulness check (HasUncompletedDueHabits). Wired after both
+	// services exist so notifications stays free of a habits import.
+	notificationsService.SetDueChecker(habitsService)
 	notificationsHandlers := notifications.NewHandlers(notificationsService)
 
 	activityService := activity.NewService(pool, registry, exportRegistry, authService, socialService, logger)
@@ -139,6 +143,9 @@ func run() error {
 	publicRoutes["GET /habits/public/*"] = true
 	publicRoutes["GET /social/witness/*"] = true
 	publicRoutes["GET /notifications/vapid-public-key"] = true
+	// Public avatar bytes for /@username flame pages (winzy.ai-mfns.1).
+	// Segment wildcard so GET /auth/users/search stays authenticated.
+	publicRoutes["GET /auth/users/*/avatar"] = true
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 
 	// BodyLimit sits between the rate limiter and the router (not in
@@ -167,5 +174,8 @@ func run() error {
 	// never reach stdout/Railway logs (see httpserver.RequestLogging's doc
 	// comment).
 	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, handler, logger, "/social/witness/")
+	// Reminder ticker starts after every module is wired; stops when the
+	// process shutdown context is cancelled (httpserver.Serve).
+	notificationsService.StartReminderScheduler(ctx)
 	return httpserver.Serve(ctx, srv, logger)
 }

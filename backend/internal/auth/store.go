@@ -242,12 +242,12 @@ func resolveUsername(ctx context.Context, db querier, usernameLower string) (str
 	return id, true, nil
 }
 
-// batchProfiles returns username/displayName for every id in ids that
-// exists — the direct-call replacement for the old POST
+// batchProfiles returns username/displayName/avatarUrl for every id in ids
+// that exists — the direct-call replacement for the old POST
 // /auth/internal/profiles endpoint.
 func batchProfiles(ctx context.Context, db querier, ids []string) ([]ProfileSummary, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id::text, username, display_name
+		SELECT id::text, username, display_name, avatar_url
 		FROM users
 		WHERE id = ANY($1::uuid[])`,
 		ids)
@@ -259,7 +259,7 @@ func batchProfiles(ctx context.Context, db querier, ids []string) ([]ProfileSumm
 	results := []ProfileSummary{}
 	for rows.Next() {
 		var p ProfileSummary
-		if err := rows.Scan(&p.UserID, &p.Username, &p.DisplayName); err != nil {
+		if err := rows.Scan(&p.UserID, &p.Username, &p.DisplayName, &p.AvatarURL); err != nil {
 			return nil, fmt.Errorf("auth: scanning batch profile: %w", err)
 		}
 		results = append(results, p)
@@ -268,6 +268,72 @@ func batchProfiles(ctx context.Context, db querier, ids []string) ([]ProfileSumm
 		return nil, fmt.Errorf("auth: iterating batch profiles: %w", err)
 	}
 	return results, nil
+}
+
+// UserAvatar is one row of user_avatars.
+type UserAvatar struct {
+	UserID      string
+	Data        []byte
+	ContentType string
+	UpdatedAt   time.Time
+}
+
+func upsertUserAvatar(ctx context.Context, db querier, userID string, data []byte, contentType string) (UserAvatar, error) {
+	row := db.QueryRow(ctx, `
+		INSERT INTO user_avatars (user_id, data, content_type, updated_at)
+		VALUES ($1::uuid, $2, $3, now())
+		ON CONFLICT (user_id) DO UPDATE
+		SET data = EXCLUDED.data,
+		    content_type = EXCLUDED.content_type,
+		    updated_at = now()
+		RETURNING user_id::text, data, content_type, updated_at`,
+		userID, data, contentType)
+
+	var a UserAvatar
+	if err := row.Scan(&a.UserID, &a.Data, &a.ContentType, &a.UpdatedAt); err != nil {
+		return UserAvatar{}, fmt.Errorf("auth: upserting avatar: %w", err)
+	}
+	return a, nil
+}
+
+func setUserAvatarURL(ctx context.Context, db querier, userID string, avatarURL *string) error {
+	tag, err := db.Exec(ctx, `
+		UPDATE users SET avatar_url = $2, updated_at = now()
+		WHERE id = $1::uuid`,
+		userID, avatarURL)
+	if err != nil {
+		return fmt.Errorf("auth: setting avatar_url: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func findUserAvatar(ctx context.Context, db querier, userID string) (UserAvatar, bool, error) {
+	row := db.QueryRow(ctx, `
+		SELECT user_id::text, data, content_type, updated_at
+		FROM user_avatars
+		WHERE user_id = $1::uuid`,
+		userID)
+
+	var a UserAvatar
+	err := row.Scan(&a.UserID, &a.Data, &a.ContentType, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return UserAvatar{}, false, nil
+	}
+	if err != nil {
+		return UserAvatar{}, false, fmt.Errorf("auth: finding avatar: %w", err)
+	}
+	return a, true, nil
+}
+
+func deleteUserAvatar(ctx context.Context, db querier, userID string) (bool, error) {
+	tag, err := db.Exec(ctx, `DELETE FROM user_avatars WHERE user_id = $1::uuid`, userID)
+	if err != nil {
+		return false, fmt.Errorf("auth: deleting avatar: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // --- refresh tokens ---

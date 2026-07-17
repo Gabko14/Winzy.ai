@@ -8,6 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/marknefedov/go-webpush/v2 v2.0.0
 	golang.org/x/crypto v0.54.0
+	golang.org/x/image v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

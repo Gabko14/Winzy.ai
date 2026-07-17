@@ -95,6 +95,14 @@ type ProfileSummary struct {
 	UserID      string  `json:"userId"`
 	Username    string  `json:"username"`
 	DisplayName *string `json:"displayName"`
+	AvatarURL   *string `json:"avatarUrl"`
+}
+
+// AvatarUploadResponse is returned by PUT /auth/avatar so clients can
+// cache-bust the public serving URL with updatedAt.
+type AvatarUploadResponse struct {
+	AvatarURL string    `json:"avatarUrl"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func toProfile(u User) UserProfile {

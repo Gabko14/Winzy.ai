@@ -66,14 +66,10 @@ func DefaultPublicRoutes() map[string]bool {
 }
 
 // isPublicRoute reports whether method+path is covered by routes. A key is
-// either an exact "METHOD path" (matched verbatim, the every-route-so-far
-// convention) or, if it ends in "*", a prefix: "GET /habits/public/*" (added
-// by winzy.ai-rdc7.3.3 for the public flame surfaces) allows any GET whose
-// path starts with "/habits/public/" — needed because that route's final
-// path segment is a caller-supplied username, and no finite set of exact
-// entries could enumerate every valid one. The map's value must still be
-// true for either form to take effect, matching the existing exact-match
-// convention (a route can be present-but-disabled).
+// either an exact "METHOD path" (matched verbatim), a trailing "*" prefix
+// pattern ("GET /habits/public/*"), or a single-segment wildcard pattern
+// ("GET /auth/users/*/avatar") where each "*" matches exactly one path
+// segment. The map's value must still be true for any form to take effect.
 func isPublicRoute(routes map[string]bool, method, path string) bool {
 	key := method + " " + path
 	if routes[key] {
@@ -83,11 +79,50 @@ func isPublicRoute(routes map[string]bool, method, path string) bool {
 		if !enabled {
 			continue
 		}
-		if prefix, isPrefix := strings.CutSuffix(pattern, "*"); isPrefix && strings.HasPrefix(key, prefix) {
+		if prefix, isPrefix := strings.CutSuffix(pattern, "*"); isPrefix && !strings.Contains(prefix, "*") {
+			if strings.HasPrefix(key, prefix) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(pattern, "*") && matchSegmentWildcard(pattern, key) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchSegmentWildcard compares pattern and key segment-by-segment after
+// splitting on '/', treating "*" as exactly one segment. The method token
+// (text before the first space) is the first segment.
+func matchSegmentWildcard(pattern, key string) bool {
+	pSegs := splitRouteKey(pattern)
+	kSegs := splitRouteKey(key)
+	if len(pSegs) != len(kSegs) {
+		return false
+	}
+	for i := range pSegs {
+		if pSegs[i] == "*" {
+			continue
+		}
+		if pSegs[i] != kSegs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func splitRouteKey(s string) []string {
+	method, path, ok := strings.Cut(s, " ")
+	if !ok {
+		return []string{s}
+	}
+	parts := []string{method}
+	path = strings.Trim(path, "/")
+	if path != "" {
+		parts = append(parts, strings.Split(path, "/")...)
+	}
+	return parts
 }
 
 func writeUnauthorized(w http.ResponseWriter) {
