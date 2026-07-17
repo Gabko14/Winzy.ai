@@ -1,5 +1,5 @@
-import React from "react";
-import { Modal as RNModal, View, Text, Pressable, StyleSheet } from "react-native";
+import React, { useEffect } from "react";
+import { Modal as RNModal, View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { spacing, radii, shadows } from "../tokens/spacing";
 import { typography } from "../tokens/typography";
 import { lightTheme } from "../tokens/colors";
@@ -14,6 +14,26 @@ export type ModalProps = {
 export function Modal({ visible, onClose, title, children }: ModalProps) {
   const colors = lightTheme;
 
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web") {
+      return;
+    }
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") {
+      return;
+    }
+
+    const handleKeyDown = (event: Event) => {
+      if (!("key" in event) || (event as { key: string }).key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
   return (
     <RNModal
       visible={visible}
@@ -25,8 +45,9 @@ export function Modal({ visible, onClose, title, children }: ModalProps) {
       <Pressable
         style={[styles.overlay, { backgroundColor: colors.overlay }]}
         onPress={onClose}
-        accessibilityRole="button"
+        accessibilityRole="none"
         accessibilityLabel="Close modal"
+        focusable={false}
       >
         <Pressable
           style={[styles.content, shadows.lg, { backgroundColor: colors.surface }]}
