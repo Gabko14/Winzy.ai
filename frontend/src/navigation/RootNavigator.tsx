@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { AuthNavigator } from "./AuthNavigator";
@@ -37,6 +37,7 @@ import { TabBar, type TabId } from "./TabBar";
 import { useChallengeCompletion } from "../hooks/useChallengeCompletion";
 import { ChallengeCompletionOverlay } from "../components/ChallengeCompletionOverlay";
 import { useOverlayRouter } from "./useOverlayRouter";
+import { useHistorySync } from "./useHistorySync";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { OverlayShell } from "../components/OverlayShell";
 
@@ -88,7 +89,32 @@ export function RootNavigator() {
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
   const [exitWitnessView, setExitWitnessView] = useState(false);
-  const overlay = useOverlayRouter();
+
+  const applyPopRef = useRef<() => void>(() => {});
+  const setActiveTabRef = useRef<(tab: TabId) => void>(() => {});
+
+  const witnessTokenForHistory = getWitnessToken();
+  const publicUsernameForHistory = getPublicFlameUsername();
+  const historyEnabled =
+    Platform.OS === "web" &&
+    auth.status === "authenticated" &&
+    !(witnessTokenForHistory && !exitWitnessView) &&
+    !(publicUsernameForHistory && !exitPublicFlame);
+
+  const historySync = useHistorySync({
+    enabled: historyEnabled,
+    applyOverlayPop: () => applyPopRef.current(),
+    applyReturnToToday: () => setActiveTabRef.current("today"),
+  });
+
+  const overlay = useOverlayRouter({
+    onAfterPush: () => historySync.onOverlayPushed(),
+    interceptPop: () => historySync.interceptOverlayPop(),
+    beforeCloseAll: (depth) => historySync.beforeOverlayCloseAll(depth),
+  });
+
+  applyPopRef.current = overlay.applyPop;
+  setActiveTabRef.current = setActiveTab;
 
   const isAuthenticated = auth.status === "authenticated";
   const unreadCount = useUnreadCount(isAuthenticated);
@@ -116,10 +142,15 @@ export function RootNavigator() {
     overlay.push("createChallenge", { friendId: fId, friendName: fName });
   }, [overlay]);
 
+  const selectTab = useCallback((tabId: TabId) => {
+    historySync.syncTabChange(activeTab, tabId);
+    setActiveTab(tabId);
+  }, [historySync, activeTab]);
+
   const handleTabPress = useCallback((tabId: TabId) => {
     overlay.closeAll();
-    setActiveTab(tabId);
-  }, [overlay]);
+    selectTab(tabId);
+  }, [overlay, selectTab]);
 
   const handleHabitPress = useCallback((habitId: string) => {
     overlay.push("habitDetail", { habitId });
@@ -254,7 +285,7 @@ export function RootNavigator() {
   if (overlay.current === "editProfile") {
     return (
       <OverlayShell>
-        <EditProfileScreen onBack={() => { overlay.closeAll(); setActiveTab("profile"); }} />
+        <EditProfileScreen onBack={() => { overlay.closeAll(); selectTab("profile"); }} />
       </OverlayShell>
     );
   }
@@ -322,7 +353,7 @@ export function RootNavigator() {
             if (!onboarding.hasSeenFlameIntro) {
               // First habit: return to daily loop and show flame intro
               overlay.closeAll();
-              setActiveTab("today");
+              selectTab("today");
               setShowFlameIntro(true);
             }
             // Returning users stay on HabitListScreen
@@ -337,7 +368,7 @@ export function RootNavigator() {
       <OverlayShell>
         <AddFriendScreen
           currentUserId={auth.user.id}
-          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
+          onBack={() => { overlay.closeAll(); selectTab("friends"); }}
         />
       </OverlayShell>
     );
@@ -350,7 +381,7 @@ export function RootNavigator() {
       <OverlayShell>
         <FriendProfileScreen
           friendId={overlay.params.friendId}
-          onBack={() => { overlay.closeAll(); setActiveTab("friends"); }}
+          onBack={() => { overlay.closeAll(); selectTab("friends"); }}
           onSetChallenge={handleSetChallenge}
         />
       </OverlayShell>
@@ -364,7 +395,7 @@ export function RootNavigator() {
           friendId={overlay.params.friendId}
           friendName={overlay.params.friendName ?? undefined}
           onBack={() => { overlay.pop(); }}
-          onComplete={() => { overlay.closeAll(); setActiveTab("friends"); }}
+          onComplete={() => { overlay.closeAll(); selectTab("friends"); }}
         />
       </OverlayShell>
     );
@@ -382,7 +413,7 @@ export function RootNavigator() {
     return (
       <OverlayShell>
         <SettingsScreen
-          onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
+          onBack={() => { overlay.closeAll(); selectTab("profile"); }}
           onEditProfile={goToEditProfile}
         />
       </OverlayShell>
@@ -393,7 +424,7 @@ export function RootNavigator() {
     return (
       <OverlayShell>
         <WitnessLinksScreen
-          onBack={() => { overlay.closeAll(); setActiveTab("profile"); }}
+          onBack={() => { overlay.closeAll(); selectTab("profile"); }}
         />
       </OverlayShell>
     );

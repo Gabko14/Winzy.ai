@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useMemo } from "react";
+import { useReducer, useCallback, useMemo, useRef } from "react";
 import type { Habit } from "../api/habits";
 
 export type OverlayType =
@@ -37,6 +37,12 @@ type Action =
   | { kind: "REPLACE"; type: OverlayType; params?: OverlayParams }
   | { kind: "CLOSE_ALL" };
 
+export type OverlayHistoryBridge = {
+  onAfterPush: () => void;
+  interceptPop: () => boolean;
+  beforeCloseAll: (depth: number) => void;
+};
+
 function overlayReducer(state: OverlayState, action: Action): OverlayState {
   switch (action.kind) {
     case "PUSH":
@@ -60,18 +66,27 @@ function overlayReducer(state: OverlayState, action: Action): OverlayState {
 
 const initialState: OverlayState = { stack: [] };
 
-export function useOverlayRouter() {
+export function useOverlayRouter(bridge?: OverlayHistoryBridge) {
   const [state, dispatch] = useReducer(overlayReducer, initialState);
+  const bridgeRef = useRef(bridge);
+  bridgeRef.current = bridge;
+  const depthRef = useRef(0);
+  depthRef.current = state.stack.length;
 
   const top = state.stack.length > 0 ? state.stack[state.stack.length - 1] : null;
 
   const push = useCallback(
-    (type: OverlayType, params?: OverlayParams) =>
-      dispatch({ kind: "PUSH", type, params }),
+    (type: OverlayType, params?: OverlayParams) => {
+      dispatch({ kind: "PUSH", type, params });
+      bridgeRef.current?.onAfterPush();
+    },
     [],
   );
 
-  const pop = useCallback(() => dispatch({ kind: "POP" }), []);
+  const pop = useCallback(() => {
+    if (bridgeRef.current?.interceptPop()) return;
+    dispatch({ kind: "POP" });
+  }, []);
 
   const replace = useCallback(
     (type: OverlayType, params?: OverlayParams) =>
@@ -79,17 +94,24 @@ export function useOverlayRouter() {
     [],
   );
 
-  const closeAll = useCallback(() => dispatch({ kind: "CLOSE_ALL" }), []);
+  const closeAll = useCallback(() => {
+    bridgeRef.current?.beforeCloseAll(depthRef.current);
+    dispatch({ kind: "CLOSE_ALL" });
+  }, []);
+
+  const applyPop = useCallback(() => dispatch({ kind: "POP" }), []);
 
   return useMemo(
     () => ({
       current: top?.type ?? null,
       params: top?.params ?? {},
+      depth: state.stack.length,
       push,
       pop,
       replace,
       closeAll,
+      applyPop,
     }),
-    [top, push, pop, replace, closeAll],
+    [top, state.stack.length, push, pop, replace, closeAll, applyPop],
   );
 }
