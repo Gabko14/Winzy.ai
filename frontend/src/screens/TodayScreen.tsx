@@ -19,6 +19,7 @@ import { spacing, radii, typography, lightTheme, shadows } from "../design-syste
 import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
 import { UnreadBadge } from "../components/notifications";
 import { WeekStrip } from "../components/WeekStrip";
+import { TodayTodosSection } from "../components/TodayTodosSection";
 import type { FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
@@ -107,6 +108,9 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
             onAction={onCreateHabit}
           />
         </View>
+        <View style={styles.todosEmptyPad}>
+          <TodayTodosSection />
+        </View>
       </View>
     );
   }
@@ -144,6 +148,7 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
         renderItem={renderHabit}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        ListFooterComponent={<TodayTodosSection />}
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -403,6 +408,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
   },
+  todosEmptyPad: {
+    paddingHorizontal: spacing.xl,
+  },
   dateHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -446,8 +454,8 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing["3xl"],
-    gap: spacing.md,
+    paddingBottom: spacing.base,
+    gap: spacing.sm,
   },
   habitCard: {
     padding: 0,

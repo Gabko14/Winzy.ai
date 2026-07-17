@@ -30,6 +30,10 @@ jest.mock("../../hooks/useTodayHabits", () => ({
   useTodayHabits: () => mockUseTodayHabits,
 }));
 
+jest.mock("../../components/TodayTodosSection", () => ({
+  TodayTodosSection: () => null,
+}));
+
 function makeHabit(overrides: Partial<TodayHabit> = {}): TodayHabit {
   const id = overrides.habit?.id ?? Math.random().toString(36).slice(2);
   return {

@@ -67,4 +67,9 @@ export const queryKeys = {
     list: (pageSize = 20) => ["notifications", pageSize] as const,
     unreadCount: () => ["notifications", "unread-count"] as const,
   },
+  todos: {
+    /** GET /todos?status= — open | completed | all. */
+    list: (status: "open" | "completed" | "all" = "open") =>
+      ["todos", status] as const,
+  },
 } as const;
