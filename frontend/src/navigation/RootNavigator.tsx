@@ -29,6 +29,7 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { WitnessLinksScreen } from "../screens/WitnessLinksScreen";
 import { WitnessViewerScreen } from "../screens/WitnessViewerScreen";
 import { TodosManageScreen } from "../screens/TodosManageScreen";
+import { MeditationScreen } from "../screens/MeditationScreen";
 import { fetchHabit, archiveHabit } from "../api/habits";
 import { claimChallengeInvite } from "../api/challenges";
 import { queryKeys } from "../api/queryKeys";
@@ -162,6 +163,7 @@ export function RootNavigator() {
   const goToEditProfile = useCallback(() => overlay.push("editProfile"), [overlay]);
   const goToNotifications = useCallback(() => overlay.push("notifications"), [overlay]);
   const goToCreateHabit = useCallback(() => overlay.push("createHabit"), [overlay]);
+  const goToMeditation = useCallback(() => overlay.push("meditation"), [overlay]);
   const goToAddFriend = useCallback(() => overlay.push("addFriend"), [overlay]);
   const goToChallengeInvite = useCallback(() => overlay.push("createChallengeInvite"), [overlay]);
   const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
@@ -606,6 +608,14 @@ export function RootNavigator() {
     );
   }
 
+  if (overlay.current === "meditation") {
+    return (
+      <OverlayShell>
+        <MeditationScreen onClose={overlay.closeAll} />
+      </OverlayShell>
+    );
+  }
+
   if (overlay.current === "stats" && overlay.params.habitId) {
     return (
       <OverlayShell>
@@ -663,6 +673,7 @@ export function RootNavigator() {
             onCreateHabit={goToCreateHabit}
             onHabitPress={handleHabitPress}
             onNotifications={goToNotifications}
+            onMeditation={goToMeditation}
             onManageTodos={goToTodos}
             unreadNotificationCount={unreadCount.count}
           />

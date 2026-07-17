@@ -291,6 +291,22 @@ jest.mock("../../screens/CreateHabitScreen", () => ({
   },
 }));
 
+jest.mock("../../screens/MeditationScreen", () => ({
+  MeditationScreen: (props: Record<string, unknown>) => {
+    const RN = require("react-native");
+    return (
+      <RN.View testID="meditation-screen">
+        <RN.Text>MeditationScreen</RN.Text>
+        {props.onClose && (
+          <RN.Pressable testID="meditation-close" onPress={props.onClose as () => void}>
+            <RN.Text>Close</RN.Text>
+          </RN.Pressable>
+        )}
+      </RN.View>
+    );
+  },
+}));
+
 const mockFetchHabit = jest.fn();
 const mockArchiveHabit = jest.fn();
 jest.mock("../../api/habits", () => ({

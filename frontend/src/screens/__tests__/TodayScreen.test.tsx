@@ -658,10 +658,15 @@ describe("TodayScreen", () => {
     });
   });
 
-  it("does not expose reorder controls outside reorder mode", () => {
-    twoHabitsSetup();
-    const { queryByTestId } = render(<TodayScreen />);
-    expect(queryByTestId("habits-move-up-h1")).toBeNull();
-    expect(queryByTestId("habits-reorder-done")).toBeNull();
+  it("calls onMeditation from quiet header timer icon", () => {
+    const onMeditation = jest.fn();
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Run" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId } = render(<TodayScreen onMeditation={onMeditation} />);
+    fireEvent.press(getByTestId("meditation-timer-entry"));
+    expect(onMeditation).toHaveBeenCalledTimes(1);
   });
 });

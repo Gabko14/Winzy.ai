@@ -29,6 +29,7 @@ type Props = {
   onCreateHabit?: () => void;
   onHabitPress?: (habitId: string) => void;
   onNotifications?: () => void;
+  onMeditation?: () => void;
   onManageTodos?: () => void;
   unreadNotificationCount?: number;
 };
@@ -37,6 +38,7 @@ export function TodayScreen({
   onCreateHabit,
   onHabitPress,
   onNotifications,
+  onMeditation,
   onManageTodos,
   unreadNotificationCount,
 }: Props) {
@@ -193,7 +195,11 @@ export function TodayScreen({
   if (!loading && !hasAnyHabits) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-empty">
-        <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
+        <DateHeader
+          onNotifications={onNotifications}
+          onMeditation={onMeditation}
+          unreadCount={unreadNotificationCount}
+        />
         <View style={styles.emptyContainer}>
           <EmptyState
             title="Ready to build a habit?"
@@ -211,7 +217,11 @@ export function TodayScreen({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-screen">
-      <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
+      <DateHeader
+        onNotifications={onNotifications}
+        onMeditation={onMeditation}
+        unreadCount={unreadNotificationCount}
+      />
 
       {/* Create habit FAB — hidden in reorder mode */}
       {onCreateHabit && !reorderMode && (
@@ -366,10 +376,11 @@ export function TodayScreen({
 
 type DateHeaderProps = {
   onNotifications?: () => void;
+  onMeditation?: () => void;
   unreadCount?: number;
 };
 
-function DateHeader({ onNotifications, unreadCount }: DateHeaderProps) {
+function DateHeader({ onNotifications, onMeditation, unreadCount }: DateHeaderProps) {
   const colors = lightTheme;
   const today = new Date();
   const dayName = today.toLocaleDateString(undefined, { weekday: "long" });
@@ -384,26 +395,39 @@ function DateHeader({ onNotifications, unreadCount }: DateHeaderProps) {
         <Text style={[styles.dayName, { color: colors.textPrimary }]}>{dayName}</Text>
         <Text style={[styles.dateStr, { color: colors.textSecondary }]}>{dateStr}</Text>
       </View>
-      {onNotifications && (
-        <Pressable
-          onPress={onNotifications}
-          accessibilityRole="button"
-          accessibilityLabel={
-            unreadCount && unreadCount > 0
-              ? `Notifications, ${unreadCount} unread`
-              : "Notifications"
-          }
-          style={styles.bellButton}
-          testID="notifications-bell"
-        >
-          <Text style={[styles.bellIcon, { color: colors.textPrimary }]}>{"\uD83D\uDD14"}</Text>
-          {unreadCount != null && unreadCount > 0 && (
-            <View style={styles.badgeOverlay}>
-              <UnreadBadge count={unreadCount} />
-            </View>
-          )}
-        </Pressable>
-      )}
+      <View style={styles.headerActionsRow}>
+        {onMeditation && (
+          <Pressable
+            onPress={onMeditation}
+            accessibilityRole="button"
+            accessibilityLabel="Meditation timer"
+            style={styles.bellButton}
+            testID="meditation-timer-entry"
+          >
+            <Text style={[styles.timerIcon, { color: colors.textTertiary }]}>{"\u23F1"}</Text>
+          </Pressable>
+        )}
+        {onNotifications && (
+          <Pressable
+            onPress={onNotifications}
+            accessibilityRole="button"
+            accessibilityLabel={
+              unreadCount && unreadCount > 0
+                ? `Notifications, ${unreadCount} unread`
+                : "Notifications"
+            }
+            style={styles.bellButton}
+            testID="notifications-bell"
+          >
+            <Text style={[styles.bellIcon, { color: colors.textPrimary }]}>{"\uD83D\uDD14"}</Text>
+            {unreadCount != null && unreadCount > 0 && (
+              <View style={styles.badgeOverlay}>
+                <UnreadBadge count={unreadCount} />
+              </View>
+            )}
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -712,12 +736,20 @@ const styles = StyleSheet.create({
   dateHeaderText: {
     flex: 1,
   },
+  headerActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   bellButton: {
     padding: spacing.sm,
     marginTop: spacing.xs,
   },
   bellIcon: {
     fontSize: 24,
+  },
+  timerIcon: {
+    fontSize: 20,
+    opacity: 0.75,
   },
   badgeOverlay: {
     position: "absolute",
