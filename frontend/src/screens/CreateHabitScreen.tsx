@@ -14,18 +14,12 @@ import { useDefaultVisibility, useUpdateVisibility } from "../hooks/useVisibilit
 import { validateHabitName, validateCustomDays } from "../utils/habitValidation";
 import { VisibilityPicker } from "../components/VisibilityPicker";
 import { TemplatePicker } from "../components/TemplatePicker";
+import { IconPicker, DEFAULT_HABIT_ICON } from "../components/IconPicker";
 import type { HabitTemplate } from "../data/habitTemplates";
 import type { HabitVisibility } from "../api/visibility";
 import type { Habit, FrequencyType, CreateHabitRequest, UpdateHabitRequest } from "../api/habits";
 
 // --- Preset options ---
-
-const HABIT_ICONS = [
-  "\uD83D\uDCAA", "\uD83C\uDFC3", "\uD83D\uDCD6", "\uD83E\uDDD8", "\uD83D\uDCA4",
-  "\uD83D\uDCA7", "\uD83C\uDF4E", "\u2708\uFE0F", "\uD83C\uDFB5", "\uD83C\uDFA8",
-  "\u2615", "\uD83D\uDCBB", "\uD83C\uDFCB\uFE0F", "\uD83D\uDEB4", "\uD83E\uDD62",
-  "\uD83D\uDE4F", "\uD83C\uDF1E", "\u270D\uFE0F", "\uD83D\uDEBF", "\uD83C\uDF3F",
-];
 
 const HABIT_COLORS = [
   "#F97316", "#EF4444", "#EC4899", "#8B5CF6", "#6366F1",
@@ -59,7 +53,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
 
   // --- Form state ---
   const [name, setName] = useState(editHabit?.name ?? "");
-  const [icon, setIcon] = useState(editHabit?.icon ?? HABIT_ICONS[0]);
+  const [icon, setIcon] = useState(editHabit?.icon ?? DEFAULT_HABIT_ICON);
   const [color, setColor] = useState(editHabit?.color ?? HABIT_COLORS[0]);
   const [frequency, setFrequency] = useState<FrequencyType>(editHabit?.frequency ?? "daily");
   const [customDays, setCustomDays] = useState<number[]>(editHabit?.customDays ?? []);
@@ -104,7 +98,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
   // so async visibility fetch won't wipe in-progress edits
   const resetForm = useCallback(() => {
     setName(editHabit?.name ?? "");
-    setIcon(editHabit?.icon ?? HABIT_ICONS[0]);
+    setIcon(editHabit?.icon ?? DEFAULT_HABIT_ICON);
     setColor(editHabit?.color ?? HABIT_COLORS[0]);
     setFrequency(editHabit?.frequency ?? "daily");
     setCustomDays(editHabit?.customDays ?? []);
@@ -344,31 +338,7 @@ export function CreateHabitScreen({ visible, onClose, onSaved, editHabit, editVi
           </View>
         </View>
 
-        {/* Icon picker */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>Icon</Text>
-          <View style={styles.grid} testID="icon-picker">
-            {HABIT_ICONS.map((emoji) => (
-              <Pressable
-                key={emoji}
-                onPress={() => setIcon(emoji)}
-                style={[
-                  styles.iconOption,
-                  {
-                    backgroundColor: icon === emoji ? colors.brandMuted : colors.backgroundSecondary,
-                    borderColor: icon === emoji ? colors.brandPrimary : "transparent",
-                  },
-                ]}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: icon === emoji }}
-                accessibilityLabel={`Icon ${emoji}`}
-                testID={`icon-${emoji}`}
-              >
-                <Text style={styles.iconText}>{emoji}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        <IconPicker value={icon} onChange={setIcon} />
 
         {/* Color picker */}
         <View style={styles.section}>
@@ -516,17 +486,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-  },
-  iconOption: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconText: {
-    fontSize: 22,
   },
   colorOption: {
     width: 36,
