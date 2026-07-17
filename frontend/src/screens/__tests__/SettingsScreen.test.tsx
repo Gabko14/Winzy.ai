@@ -1,4 +1,3 @@
-import React from "react";
 import { Platform } from "react-native";
 import { screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import { renderWithQueryClient } from "../../test/renderWithQueryClient";
@@ -52,6 +51,57 @@ jest.mock("../../api/account", () => ({
   }),
 }));
 
+jest.mock("../../api/notifications", () => ({
+  fetchNotificationSettings: jest.fn().mockResolvedValue({
+    habitReminders: false,
+    friendActivity: true,
+    challengeUpdates: true,
+    reminderTime: "19:00",
+    reminderTimezone: null,
+  }),
+  updateNotificationSettings: jest.fn().mockImplementation(async (body: Record<string, unknown>) => ({
+    habitReminders: body.habitReminders ?? false,
+    friendActivity: true,
+    challengeUpdates: true,
+    reminderTime: body.reminderTime ?? "19:00",
+    reminderTimezone: body.reminderTimezone ?? null,
+  })),
+}));
+
+jest.mock("@react-native-community/datetimepicker", () => {
+  const RN = jest.requireActual("react-native") as typeof import("react-native");
+  const ReactActual = jest.requireActual("react") as typeof import("react");
+  return {
+    __esModule: true,
+    default: ({
+      value,
+      onChange,
+      testID,
+    }: {
+      value: Date;
+      onChange?: (event: { type: string }, date?: Date) => void;
+      testID?: string;
+    }) =>
+      ReactActual.createElement(
+        RN.Pressable,
+        {
+          testID: testID ?? "native-datetime-picker",
+          onPress: () => {
+            const next = new Date(value);
+            next.setHours(8, 30, 0, 0);
+            onChange?.({ type: "set" }, next);
+          },
+        },
+        ReactActual.createElement(
+          RN.Text,
+          null,
+          `${value.getHours()}:${value.getMinutes()}`,
+        ),
+      ),
+    DateTimePickerAndroid: { open: jest.fn() },
+  };
+});
+
 const mockSubscribe = jest.fn();
 const mockUnsubscribe = jest.fn();
 const mockClearError = jest.fn();
@@ -72,6 +122,10 @@ jest.mock("../../hooks/usePushNotifications", () => ({
 const { api } = jest.requireMock("../../api");
 const { fetchPreferences, updateDefaultVisibility } = jest.requireMock("../../api/visibility");
 const { exportMyData } = jest.requireMock("../../api/account");
+const {
+  fetchNotificationSettings,
+  updateNotificationSettings,
+} = jest.requireMock("../../api/notifications");
 
 const onBack = jest.fn();
 const onEditProfile = jest.fn();
@@ -83,6 +137,8 @@ function renderSettings() {
     </AuthProvider>,
   );
 }
+
+const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -99,7 +155,27 @@ beforeEach(() => {
     exportedAt: "2026-03-14T00:00:00Z",
     services: [{ service: "auth", data: {} }],
   });
+  fetchNotificationSettings.mockResolvedValue({
+    habitReminders: false,
+    friendActivity: true,
+    challengeUpdates: true,
+    reminderTime: "19:00",
+    reminderTimezone: null,
+  });
+  updateNotificationSettings.mockImplementation(async (body: Record<string, unknown>) => ({
+    habitReminders: body.habitReminders ?? false,
+    friendActivity: true,
+    challengeUpdates: true,
+    reminderTime: body.reminderTime ?? "19:00",
+    reminderTimezone: body.reminderTimezone ?? null,
+  }));
   api.delete.mockResolvedValue(undefined);
+  Intl.DateTimeFormat.prototype.resolvedOptions = () =>
+    ({ timeZone: "Europe/Vienna" }) as Intl.ResolvedDateTimeFormatOptions;
+});
+
+afterEach(() => {
+  Intl.DateTimeFormat.prototype.resolvedOptions = originalResolvedOptions;
 });
 
 // --- Account Section ---
@@ -599,6 +675,159 @@ describe("SettingsScreen — Notifications Section", () => {
     });
 
     expect(screen.queryByTestId("push-error")).toBeNull();
+  });
+
+  it("hides reminder time picker when habit reminders are off", async () => {
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminders-toggle")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("habit-reminder-details")).toBeNull();
+    expect(
+      screen.getByText(
+        "A gentle nudge if you haven't logged yet — never when you're already done.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows time picker when habit reminders are on and push is subscribed", async () => {
+    mockPushState.status = "subscribed";
+    fetchNotificationSettings.mockResolvedValue({
+      habitReminders: true,
+      friendActivity: true,
+      challengeUpdates: true,
+      reminderTime: "19:00",
+      reminderTimezone: "Europe/Vienna",
+    });
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminder-time-row")).toBeTruthy();
+    });
+
+    expect(screen.getByTestId("reminder-time-picker")).toBeTruthy();
+    expect(screen.queryByTestId("habit-reminder-needs-subscribe")).toBeNull();
+  });
+
+  it("offers subscribe flow when reminders are on but push is not subscribed", async () => {
+    fetchNotificationSettings.mockResolvedValue({
+      habitReminders: true,
+      friendActivity: true,
+      challengeUpdates: true,
+      reminderTime: "19:00",
+      reminderTimezone: null,
+    });
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminder-needs-subscribe")).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Reminders need notifications enabled/i)).toBeTruthy();
+    expect(screen.queryByTestId("habit-reminder-time-row")).toBeNull();
+
+    fireEvent.press(screen.getByTestId("habit-reminder-enable-push"));
+    expect(mockSubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains permission need when reminders are on and push is denied", async () => {
+    mockPushState.status = "denied";
+    fetchNotificationSettings.mockResolvedValue({
+      habitReminders: true,
+      friendActivity: true,
+      challengeUpdates: true,
+      reminderTime: "19:00",
+      reminderTimezone: null,
+    });
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminder-needs-permission")).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId("habit-reminder-time-row")).toBeNull();
+  });
+
+  it("saves habit reminders toggle with reminderTime and device timezone", async () => {
+    mockPushState.status = "subscribed";
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminders-toggle")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent(screen.getByTestId("habit-reminders-toggle"), "valueChange", true);
+    });
+
+    await waitFor(() => {
+      expect(updateNotificationSettings).toHaveBeenCalledWith({
+        habitReminders: true,
+        reminderTime: "19:00",
+        reminderTimezone: "Europe/Vienna",
+      });
+    });
+  });
+
+  it("saves reminder time changes with timezone in the payload", async () => {
+    mockPushState.status = "subscribed";
+    fetchNotificationSettings.mockResolvedValue({
+      habitReminders: true,
+      friendActivity: true,
+      challengeUpdates: true,
+      reminderTime: "19:00",
+      reminderTimezone: "Europe/Vienna",
+    });
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("native-datetime-picker")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("native-datetime-picker"));
+    });
+
+    await waitFor(() => {
+      expect(updateNotificationSettings).toHaveBeenCalledWith({
+        habitReminders: true,
+        reminderTime: "08:30",
+        reminderTimezone: "Europe/Vienna",
+      });
+    });
+  });
+
+  it("hides time picker after toggling habit reminders off", async () => {
+    mockPushState.status = "subscribed";
+    fetchNotificationSettings.mockResolvedValue({
+      habitReminders: true,
+      friendActivity: true,
+      challengeUpdates: true,
+      reminderTime: "19:00",
+      reminderTimezone: "Europe/Vienna",
+    });
+
+    renderSettings();
+    await waitFor(() => {
+      expect(screen.getByTestId("habit-reminder-details")).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent(screen.getByTestId("habit-reminders-toggle"), "valueChange", false);
+    });
+
+    await waitFor(() => {
+      expect(updateNotificationSettings).toHaveBeenCalledWith({
+        habitReminders: false,
+        reminderTime: "19:00",
+        reminderTimezone: "Europe/Vienna",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("habit-reminder-details")).toBeNull();
+    });
   });
 });
 

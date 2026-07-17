@@ -11,6 +11,8 @@ import {
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import { getDeviceTimezone } from "../hooks/useReminderTimezoneSync";
+import { ReminderTimePicker } from "../components/ReminderTimePicker";
 import { Button, Card, Modal, Avatar, ScreenHeader, InlineError } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
 import { useAuth } from "../hooks/useAuth";
@@ -19,11 +21,20 @@ import {
   updateDefaultVisibility,
   type HabitVisibility,
 } from "../api/visibility";
+import {
+  fetchNotificationSettings,
+  updateNotificationSettings,
+  type UpdateNotificationSettingsRequest,
+} from "../api/notifications";
 import { queryKeys } from "../api/queryKeys";
 import { exportMyData } from "../api/account";
 import { isApiError } from "../api";
 import { getInitials } from "../utils/getInitials";
 import { resolveAvatarUrl } from "../utils/avatarUrl";
+
+const DEFAULT_REMINDER_TIME = "19:00";
+const REMINDER_COPY =
+  "A gentle nudge if you haven't logged yet — never when you're already done.";
 
 const APP_VERSION = "1.0.0";
 
@@ -103,6 +114,27 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
   // Push notifications
   const push = usePushNotifications();
 
+  const notificationSettingsQuery = useQuery({
+    queryKey: queryKeys.notifications.settings(),
+    queryFn: fetchNotificationSettings,
+  });
+
+  const notificationSettingsMutation = useMutation({
+    mutationFn: (body: UpdateNotificationSettingsRequest) =>
+      updateNotificationSettings(body),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(queryKeys.notifications.settings(), settings);
+    },
+  });
+
+  const habitReminders = notificationSettingsQuery.data?.habitReminders ?? false;
+  const reminderTime =
+    notificationSettingsQuery.data?.reminderTime ?? DEFAULT_REMINDER_TIME;
+  const reminderSettingsSaving = notificationSettingsMutation.isPending;
+  const reminderSettingsError = notificationSettingsMutation.isError
+    ? "Failed to update reminder settings"
+    : null;
+
   // Sign out state
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -134,6 +166,41 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
       await push.unsubscribe();
     }
   }, [push]);
+
+  const saveReminderSettings = useCallback(
+    async (patch: UpdateNotificationSettingsRequest) => {
+      try {
+        await notificationSettingsMutation.mutateAsync({
+          ...patch,
+          reminderTime: patch.reminderTime ?? reminderTime,
+          reminderTimezone: getDeviceTimezone(),
+        });
+      } catch {
+        // Error surfaced via notificationSettingsMutation.isError
+      }
+    },
+    [notificationSettingsMutation, reminderTime],
+  );
+
+  const handleHabitRemindersToggle = useCallback(
+    (value: boolean) => {
+      void saveReminderSettings({
+        habitReminders: value,
+        reminderTime,
+      });
+    },
+    [reminderTime, saveReminderSettings],
+  );
+
+  const handleReminderTimeChange = useCallback(
+    (nextTime: string) => {
+      void saveReminderSettings({
+        habitReminders: true,
+        reminderTime: nextTime,
+      });
+    },
+    [saveReminderSettings],
+  );
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -405,6 +472,79 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
                   </View>
                 </View>
               )}
+
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+              <View testID="habit-reminders-section">
+                {reminderSettingsError && (
+                  <InlineError message={reminderSettingsError} testID="habit-reminders-error" />
+                )}
+                <View style={styles.pushRow}>
+                  <View style={styles.actionContent}>
+                    <Text style={[styles.settingLabel, { color: colors.textPrimary, marginBottom: 0 }]}>
+                      Habit reminders
+                    </Text>
+                    <Text style={[styles.settingHint, { color: colors.textTertiary, marginBottom: 0 }]}>
+                      {REMINDER_COPY}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={habitReminders}
+                    onValueChange={handleHabitRemindersToggle}
+                    disabled={
+                      notificationSettingsQuery.isPending || reminderSettingsSaving
+                    }
+                    trackColor={{ false: colors.border, true: colors.brandPrimary }}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Habit reminders"
+                    accessibilityState={{ checked: habitReminders }}
+                    testID="habit-reminders-toggle"
+                  />
+                </View>
+
+                {habitReminders && (
+                  <View style={styles.habitReminderDetails} testID="habit-reminder-details">
+                    {push.status === "subscribed" ? (
+                      <View testID="habit-reminder-time-row">
+                        <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>
+                          Reminder time
+                        </Text>
+                        <ReminderTimePicker
+                          value={reminderTime}
+                          onChange={handleReminderTimeChange}
+                          disabled={reminderSettingsSaving}
+                        />
+                      </View>
+                    ) : push.status === "denied" ? (
+                      <Text
+                        style={[styles.settingHint, { color: colors.textSecondary, marginBottom: 0 }]}
+                        testID="habit-reminder-needs-permission"
+                      >
+                        Reminders need notifications enabled. Allow notifications above to receive them.
+                      </Text>
+                    ) : push.status === "loading" ? null : (
+                      <View testID="habit-reminder-needs-subscribe">
+                        <Text style={[styles.settingHint, { color: colors.textSecondary }]}>
+                          Reminders need notifications enabled.
+                        </Text>
+                        <Pressable
+                          onPress={() => {
+                            void push.subscribe();
+                          }}
+                          disabled={push.subscribing}
+                          accessibilityRole="button"
+                          accessibilityLabel="Enable notifications"
+                          testID="habit-reminder-enable-push"
+                        >
+                          <Text style={[styles.linkText, { color: colors.brandPrimary }]}>
+                            {push.subscribing ? "Enabling..." : "Enable notifications"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
             </Card>
           </View>
         )}
@@ -651,6 +791,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+  },
+  habitReminderDetails: {
+    marginTop: spacing.base,
   },
   aboutRow: {
     flexDirection: "row",

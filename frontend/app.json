@@ -31,6 +31,9 @@
       "themeColor": "#F97316",
       "backgroundColor": "#FAFAF9",
       "lang": "en"
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }

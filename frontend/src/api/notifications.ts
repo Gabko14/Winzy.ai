@@ -12,6 +12,9 @@ export type NotificationItem = Schemas["NotificationItem"];
 export type NotificationsPage = Schemas["NotificationsPage"];
 export type UnreadCountResponse = Schemas["UnreadCountResponse"];
 export type MarkAllReadResponse = Schemas["MarkAllReadResponse"];
+export type NotificationSettings = Schemas["NotificationSettings"];
+export type UpdateNotificationSettingsRequest =
+  Schemas["UpdateNotificationSettingsRequest"];
 
 // --- API functions ---
 
@@ -29,4 +32,14 @@ export function markNotificationRead(id: string): Promise<NotificationItem> {
 
 export function markAllNotificationsRead(): Promise<MarkAllReadResponse> {
   return api.put<MarkAllReadResponse>("/notifications/read-all");
+}
+
+export function fetchNotificationSettings(): Promise<NotificationSettings> {
+  return api.get<NotificationSettings>("/notifications/settings");
+}
+
+export function updateNotificationSettings(
+  body: UpdateNotificationSettingsRequest,
+): Promise<NotificationSettings> {
+  return api.put<NotificationSettings>("/notifications/settings", body);
 }

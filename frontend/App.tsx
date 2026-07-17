@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
-import { AuthProvider } from "./src/hooks/useAuth";
+import { AuthProvider, useAuth } from "./src/hooks/useAuth";
 import { useQueryFocusManager } from "./src/hooks/useQueryFocusManager";
+import { useReminderTimezoneSync } from "./src/hooks/useReminderTimezoneSync";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { registerServiceWorker, injectManifestLink } from "./src/pwa/register-sw";
 import { startNotificationClickCapture } from "./src/pwa/notificationClicks";
@@ -24,6 +25,8 @@ function makeQueryClient() {
 
 function AppProviders({ children }: { children: React.ReactNode }) {
   useQueryFocusManager();
+  const auth = useAuth();
+  useReminderTimezoneSync(auth.status === "authenticated");
   return <>{children}</>;
 }
 
