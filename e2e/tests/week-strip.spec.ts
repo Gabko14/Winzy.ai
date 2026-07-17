@@ -31,7 +31,6 @@ async function registerAndSetup(page: Page, prefix: string) {
 
 async function openCreateModal(page: Page) {
   await page.getByText("Create your first habit").click();
-  await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
 
   const emptyCta = page.getByText("Create your first habit");
   if (await emptyCta.isVisible().catch(() => false)) {

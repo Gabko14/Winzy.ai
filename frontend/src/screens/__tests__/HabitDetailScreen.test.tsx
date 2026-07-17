@@ -464,6 +464,44 @@ describe("HabitDetailScreen", () => {
     Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
   });
 
+  it("shows Modal confirm on web before archiving", async () => {
+    const onArchive = jest.fn();
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    renderDetail({ onArchive });
+    await waitFor(() => {
+      expect(screen.getByText("Archive habit")).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText("Archive habit"));
+
+    expect(onArchive).not.toHaveBeenCalled();
+    expect(screen.getByText("Archive habit?")).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("Confirm archive"));
+    expect(onArchive).toHaveBeenCalledWith("habit-1");
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
+  it("cancels web archive confirm without calling onArchive", async () => {
+    const onArchive = jest.fn();
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+
+    renderDetail({ onArchive });
+    await waitFor(() => {
+      expect(screen.getByText("Archive habit")).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText("Archive habit"));
+    fireEvent.press(screen.getByText("Cancel"));
+
+    expect(onArchive).not.toHaveBeenCalled();
+    expect(screen.queryByText("Archive habit?")).toBeNull();
+
+    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
+  });
+
   it("does not render back button when onBack is not provided", async () => {
     renderDetail();
     await waitFor(() => {

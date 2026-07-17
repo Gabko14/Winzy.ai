@@ -7,6 +7,8 @@ import type { FlameLevel } from "../../api/habits";
 // Mock the useTodayHabits hook
 const mockUseTodayHabits = {
   items: [] as TodayHabit[],
+  notTodayHabits: [] as import("../../api/habits").Habit[],
+  hasAnyHabits: false,
   loading: false,
   error: null as null | { status: number; code: string; message: string },
   completing: new Set<string>(),
@@ -27,7 +29,13 @@ const mockUseTodayHabits = {
 };
 
 jest.mock("../../hooks/useTodayHabits", () => ({
-  useTodayHabits: () => mockUseTodayHabits,
+  useTodayHabits: () => ({
+    ...mockUseTodayHabits,
+    hasAnyHabits:
+      mockUseTodayHabits.hasAnyHabits ||
+      mockUseTodayHabits.items.length > 0 ||
+      mockUseTodayHabits.notTodayHabits.length > 0,
+  }),
 }));
 
 jest.mock("../../components/TodayTodosSection", () => ({
@@ -61,6 +69,8 @@ function makeHabit(overrides: Partial<TodayHabit> = {}): TodayHabit {
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseTodayHabits.items = [];
+  mockUseTodayHabits.notTodayHabits = [];
+  mockUseTodayHabits.hasAnyHabits = false;
   mockUseTodayHabits.loading = false;
   mockUseTodayHabits.error = null;
   mockUseTodayHabits.completing = new Set();
@@ -439,5 +449,93 @@ describe("TodayScreen", () => {
     expect(screen.queryByText(/failed/i)).toBeNull();
     // Positive check: supportive message is shown
     expect(screen.getByText("Kept the ember alive")).toBeTruthy();
+  });
+
+  // --- Create FAB ---
+
+  it("calls onCreateHabit when FAB is pressed", () => {
+    const onCreateHabit = jest.fn();
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Run" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId } = render(<TodayScreen onCreateHabit={onCreateHabit} />);
+    fireEvent.press(getByTestId("create-habit-fab"));
+    expect(onCreateHabit).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Not today group ---
+
+  it("hides not-today section when every habit is due today", () => {
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Daily" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.notTodayHabits = [];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { queryByTestId } = render(<TodayScreen />);
+    expect(queryByTestId("not-today-section")).toBeNull();
+  });
+
+  it("shows collapsed not-today group with count and expands on tap", () => {
+    const onHabitPress = jest.fn();
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Daily" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.notTodayHabits = [
+      {
+        id: "h2",
+        name: "Tuesday only",
+        icon: "📘",
+        color: "#3B82F6",
+        frequency: "custom",
+        customDays: [2],
+        minimumDescription: null,
+        position: 1,
+        createdAt: "2026-01-01T00:00:00Z",
+        archivedAt: null,
+      },
+    ];
+    mockUseTodayHabits.totalCount = 1;
+
+    const { getByTestId, getByText, queryByTestId } = render(
+      <TodayScreen onHabitPress={onHabitPress} />,
+    );
+
+    expect(getByTestId("not-today-section")).toBeTruthy();
+    expect(getByText("Not today (1)")).toBeTruthy();
+    expect(queryByTestId("not-today-habit-h2")).toBeNull();
+
+    fireEvent.press(getByTestId("not-today-header"));
+    expect(getByTestId("not-today-habit-h2")).toBeTruthy();
+
+    fireEvent.press(getByTestId("not-today-habit-h2"));
+    expect(onHabitPress).toHaveBeenCalledWith("h2");
+  });
+
+  it("shows only not-today habits when nothing is due today", () => {
+    mockUseTodayHabits.items = [];
+    mockUseTodayHabits.notTodayHabits = [
+      {
+        id: "h2",
+        name: "Weekend yoga",
+        icon: null,
+        color: null,
+        frequency: "custom",
+        customDays: [0, 6],
+        minimumDescription: null,
+        position: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        archivedAt: null,
+      },
+    ];
+    mockUseTodayHabits.hasAnyHabits = true;
+    mockUseTodayHabits.totalCount = 0;
+
+    const { getByTestId, queryByTestId } = render(<TodayScreen />);
+    expect(getByTestId("today-screen")).toBeTruthy();
+    expect(queryByTestId("today-empty")).toBeNull();
+    expect(getByTestId("not-today-section")).toBeTruthy();
   });
 });

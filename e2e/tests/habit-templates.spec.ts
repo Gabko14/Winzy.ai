@@ -34,14 +34,15 @@ async function registerAndSetup(page: Page, prefix: string) {
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
 }
 
-/** Helper: navigate from Today to HabitListScreen and open the create modal. */
+/** Helper: navigate from Today to create habit modal. */
 async function openCreateModal(page: Page) {
   await page.getByText("Create your first habit").click();
-  await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
 
-  const emptyCta = page.getByText("Create your first habit");
-  if (await emptyCta.isVisible().catch(() => false)) {
-    await emptyCta.click();
+  const skipBtn = page.getByTestId("template-skip");
+  try {
+    await skipBtn.waitFor({ state: "visible", timeout: 3_000 });
+  } catch {
+    // Template picker may already be visible via different path
   }
 }
 

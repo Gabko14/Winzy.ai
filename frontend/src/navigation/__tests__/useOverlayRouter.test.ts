@@ -130,7 +130,7 @@ describe("useOverlayRouter", () => {
     const { result } = renderHook(() => useOverlayRouter());
 
     act(() => {
-      result.current.push("habits");
+      result.current.push("createHabit");
       result.current.push("habitDetail", { habitId: "h1" });
       result.current.push("editHabit", { editHabitData: { id: "h1" } as never });
     });
@@ -147,6 +147,6 @@ describe("useOverlayRouter", () => {
       result.current.pop();
     });
 
-    expect(result.current.current).toBe("habits");
+    expect(result.current.current).toBe("createHabit");
   });
 });

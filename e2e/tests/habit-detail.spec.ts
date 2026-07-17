@@ -10,9 +10,7 @@ import type { Page } from "@playwright/test";
 
 /**
  * Helper: register via UI, complete profile, create a habit via the
- * HabitListScreen modal, then navigate back to TodayScreen by
- * re-navigating to the app root. Returns with TodayScreen showing
- * the newly created habit.
+ * create-habit modal, then ensure TodayScreen shows the habit.
  */
 async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName: string) {
   const uniqueUser = `e2e_${prefix}_${Date.now()}`;
@@ -40,9 +38,7 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
   // On TodayScreen (empty)
   await expect(page.getByTestId("today-empty")).toBeVisible({ timeout: 10_000 });
 
-  // Create habit: TodayScreen CTA → HabitListScreen → empty-state CTA → modal
-  await page.getByText("Create your first habit").click();
-  await expect(page.getByTestId("habit-list-screen")).toBeVisible({ timeout: 10_000 });
+  // Create habit: Today empty CTA → create modal directly
   await page.getByText("Create your first habit").click();
 
   // Skip template picker if shown
@@ -63,13 +59,10 @@ async function setupWithHabitOnTodayScreen(page: Page, prefix: string, habitName
 
   await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
 
-  // Now on HabitListScreen with the habit. Navigate back to TodayScreen
-  // by re-navigating to the root URL. Session is preserved via
-  // localStorage access token + httpOnly refresh cookie.
+  // Ensure we're on TodayScreen with the habit
   await page.goto("/");
 
   // Wait for auth bootstrap and TodayScreen to load
-  // The app may show loading state briefly, then TodayScreen
   await expect(page.getByTestId("today-screen")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
 }

@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
 import { UnreadBadge } from "../components/notifications";
 import { WeekStrip } from "../components/WeekStrip";
 import { TodayTodosSection } from "../components/TodayTodosSection";
-import type { FlameLevel, CompletionKind } from "../api/habits";
+import type { Habit, FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
   onCreateHabit?: () => void;
@@ -40,6 +40,8 @@ export function TodayScreen({
   const colors = lightTheme;
   const {
     items,
+    notTodayHabits,
+    hasAnyHabits,
     loading,
     error,
     completing,
@@ -84,8 +86,15 @@ export function TodayScreen({
 
   const keyExtractor = useCallback((item: TodayHabit) => item.habit.id, []);
 
+  const listFooter = (
+    <>
+      <NotTodaySection habits={notTodayHabits} onPress={onHabitPress} />
+      <TodayTodosSection onManage={onManageTodos} />
+    </>
+  );
+
   // Loading state (initial load only)
-  if (loading && items.length === 0) {
+  if (loading && !hasAnyHabits) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]} testID="today-loading">
         <LoadingState message="Loading your habits..." />
@@ -94,7 +103,7 @@ export function TodayScreen({
   }
 
   // Error state
-  if (error && items.length === 0) {
+  if (error && !hasAnyHabits) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]} testID="today-error">
         <ErrorState message={error.message} onRetry={refresh} />
@@ -103,7 +112,7 @@ export function TodayScreen({
   }
 
   // Empty state — no habits created yet
-  if (!loading && items.length === 0) {
+  if (!loading && !hasAnyHabits) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]} testID="today-empty">
         <DateHeader onNotifications={onNotifications} unreadCount={unreadNotificationCount} />
@@ -155,7 +164,7 @@ export function TodayScreen({
         renderItem={renderHabit}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        ListFooterComponent={<TodayTodosSection onManage={onManageTodos} />}
+        ListFooterComponent={listFooter}
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -235,6 +244,63 @@ function DateHeader({ onNotifications, unreadCount }: DateHeaderProps) {
           )}
         </Pressable>
       )}
+    </View>
+  );
+}
+
+// --- Not today group ---
+
+type NotTodaySectionProps = {
+  habits: Habit[];
+  onPress?: (habitId: string) => void;
+};
+
+function NotTodaySection({ habits, onPress }: NotTodaySectionProps) {
+  const colors = lightTheme;
+  const [expanded, setExpanded] = useState(false);
+
+  if (habits.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.notTodaySection} testID="not-today-section">
+      <Pressable
+        onPress={() => setExpanded((v) => !v)}
+        style={styles.notTodayHeader}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`Not today, ${habits.length} habits`}
+        testID="not-today-header"
+      >
+        <Text style={[styles.notTodayTitle, { color: colors.textTertiary }]}>
+          Not today ({habits.length})
+        </Text>
+        <Text style={[styles.notTodayChevron, { color: colors.textTertiary }]}>
+          {expanded ? "\u25B2" : "\u25BC"}
+        </Text>
+      </Pressable>
+      {expanded &&
+        habits.map((habit) => (
+          <Pressable
+            key={habit.id}
+            style={[styles.notTodayRow, { borderColor: colors.border }]}
+            onPress={() => onPress?.(habit.id)}
+            accessibilityRole="button"
+            accessibilityLabel={habit.name}
+            testID={`not-today-habit-${habit.id}`}
+          >
+            <View style={[styles.notTodayIcon, { backgroundColor: habit.color ?? colors.brandMuted }]}>
+              <Text style={styles.notTodayIconText}>{habit.icon ?? "\u2B50"}</Text>
+            </View>
+            <Text
+              style={[styles.notTodayName, { color: colors.textTertiary }]}
+              numberOfLines={1}
+            >
+              {habit.name}
+            </Text>
+          </Pressable>
+        ))}
     </View>
   );
 }
@@ -463,6 +529,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.base,
     gap: spacing.sm,
+  },
+  notTodaySection: {
+    marginTop: spacing.base,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  notTodayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+  },
+  notTodayTitle: {
+    ...typography.bodySmall,
+    fontWeight: "600",
+  },
+  notTodayChevron: {
+    fontSize: 10,
+  },
+  notTodayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    opacity: 0.7,
+  },
+  notTodayIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notTodayIconText: {
+    fontSize: 16,
+  },
+  notTodayName: {
+    ...typography.bodySmall,
+    flex: 1,
+    fontWeight: "500",
   },
   habitCard: {
     padding: 0,

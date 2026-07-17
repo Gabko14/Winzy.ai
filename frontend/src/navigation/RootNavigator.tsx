@@ -10,7 +10,6 @@ import { OfflineIndicator } from "../components/OfflineIndicator";
 import { ProfileCompletionScreen } from "../screens/ProfileCompletionScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { EditProfileScreen } from "../screens/EditProfileScreen";
-import { HabitListScreen } from "../screens/HabitListScreen";
 import { TodayScreen } from "../screens/TodayScreen";
 import { HabitDetailScreen } from "../screens/HabitDetailScreen";
 import { PublicFlameScreen } from "../screens/PublicFlameScreen";
@@ -108,7 +107,7 @@ function getChallengeInviteToken(): string | null {
  * Authenticated shell has a bottom tab bar with:
  *   Today | Friends | Feed | Profile
  *
- * Overlay screens (habit detail, notifications, edit profile, habits list)
+ * Overlay screens (habit detail, notifications, edit profile, create habit)
  * render on top of the current tab.
  */
 export function RootNavigator() {
@@ -162,7 +161,7 @@ export function RootNavigator() {
 
   const goToEditProfile = useCallback(() => overlay.push("editProfile"), [overlay]);
   const goToNotifications = useCallback(() => overlay.push("notifications"), [overlay]);
-  const goToHabits = useCallback(() => overlay.push("habits"), [overlay]);
+  const goToCreateHabit = useCallback(() => overlay.push("createHabit"), [overlay]);
   const goToAddFriend = useCallback(() => overlay.push("addFriend"), [overlay]);
   const goToChallengeInvite = useCallback(() => overlay.push("createChallengeInvite"), [overlay]);
   const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
@@ -498,19 +497,22 @@ export function RootNavigator() {
     );
   }
 
-  if (overlay.current === "habits") {
+  if (overlay.current === "createHabit") {
     return (
       <OverlayShell>
-        <HabitListScreen
-          onBack={overlay.closeAll}
-          onHabitCreated={() => {
+        <CreateHabitScreen
+          visible
+          onClose={() => {
+            overlay.pop();
+          }}
+          onSaved={() => {
             if (!onboarding.hasSeenFlameIntro) {
-              // First habit: return to daily loop and show flame intro
               overlay.closeAll();
               selectTab("today");
               setShowFlameIntro(true);
+            } else {
+              overlay.closeAll();
             }
-            // Returning users stay on HabitListScreen
           }}
         />
       </OverlayShell>
@@ -658,7 +660,7 @@ export function RootNavigator() {
       tabContent = (
         <ErrorBoundary>
           <TodayScreen
-            onCreateHabit={goToHabits}
+            onCreateHabit={goToCreateHabit}
             onHabitPress={handleHabitPress}
             onNotifications={goToNotifications}
             onManageTodos={goToTodos}

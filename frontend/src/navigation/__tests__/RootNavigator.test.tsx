@@ -143,22 +143,6 @@ jest.mock("../../components/notifications", () => ({
   },
 }));
 
-jest.mock("../../screens/HabitListScreen", () => ({
-  HabitListScreen: (props: Record<string, unknown>) => {
-    const RN = require("react-native");
-    return (
-      <RN.View testID="habit-list-screen">
-        <RN.Text>HabitListScreen</RN.Text>
-        {props.onHabitCreated && (
-          <RN.Pressable testID="habit-created-trigger" onPress={props.onHabitCreated as () => void}>
-            <RN.Text>Habit Created</RN.Text>
-          </RN.Pressable>
-        )}
-      </RN.View>
-    );
-  },
-}));
-
 jest.mock("../../screens/ProfileCompletionScreen", () => ({
   ProfileCompletionScreen: (props: Record<string, unknown>) => {
     const RN = require("react-native");
@@ -571,10 +555,10 @@ describe("RootNavigator", () => {
     expect(getByTestId("tab-bar")).toBeTruthy();
   });
 
-  it("navigates to habits list overlay from create habit", () => {
+  it("navigates to create habit overlay from create habit FAB", () => {
     const { getByTestId, queryByTestId } = render(<RootNavigator />);
     fireEvent.press(getByTestId("create-habit-press"));
-    expect(getByTestId("habit-list-screen")).toBeTruthy();
+    expect(getByTestId("create-habit-screen")).toBeTruthy();
     expect(queryByTestId("tab-bar")).toBeNull();
   });
 
@@ -636,13 +620,11 @@ describe("RootNavigator", () => {
     mockOnboarding.hasSeenFlameIntro = false;
     const { getByTestId, queryByTestId } = render(<RootNavigator />);
 
-    // Navigate to habits overlay
     fireEvent.press(getByTestId("create-habit-press"));
-    expect(getByTestId("habit-list-screen")).toBeTruthy();
+    expect(getByTestId("create-habit-screen")).toBeTruthy();
 
-    // Simulate habit creation callback — should return to TodayScreen with flame intro
-    fireEvent.press(getByTestId("habit-created-trigger"));
-    expect(queryByTestId("habit-list-screen")).toBeNull();
+    fireEvent.press(getByTestId("create-habit-saved"));
+    expect(queryByTestId("create-habit-screen")).toBeNull();
     expect(getByTestId("today-screen")).toBeTruthy();
     expect(getByTestId("flame-intro-modal")).toBeTruthy();
   });
@@ -652,16 +634,16 @@ describe("RootNavigator", () => {
     const { getByTestId, queryByTestId } = render(<RootNavigator />);
 
     fireEvent.press(getByTestId("create-habit-press"));
-    fireEvent.press(getByTestId("habit-created-trigger"));
+    fireEvent.press(getByTestId("create-habit-saved"));
     expect(queryByTestId("flame-intro-modal")).toBeNull();
-    // Returning user stays on management screen
-    expect(getByTestId("habit-list-screen")).toBeTruthy();
+    expect(queryByTestId("create-habit-screen")).toBeNull();
+    expect(getByTestId("today-screen")).toBeTruthy();
   });
 
   // --- Edit habit direct to form (winzy.ai-2yc9) ---
 
   it("navigates from habit detail to edit form directly, not habit list", async () => {
-    const { getByTestId, queryByTestId } = render(<RootNavigator />);
+    const { getByTestId } = render(<RootNavigator />);
 
     // Navigate to habit detail
     fireEvent.press(getByTestId("habit-press"));
@@ -675,7 +657,6 @@ describe("RootNavigator", () => {
     expect(mockFetchHabit).toHaveBeenCalledWith("h1");
     expect(getByTestId("create-habit-screen")).toBeTruthy();
     expect(getByTestId("edit-habit-name").props.children).toBe("Morning Run");
-    expect(queryByTestId("habit-list-screen")).toBeNull();
   });
 
   it("returns from edit form to habit detail on close", async () => {

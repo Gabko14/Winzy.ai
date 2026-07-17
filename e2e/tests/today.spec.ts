@@ -59,16 +59,10 @@ test.describe("Today screen", () => {
     });
 
     await test.step("create a habit", async () => {
-      // Wait for the create habit modal/screen to appear
-      await expect(page.getByText("New Habit").or(page.getByText("My Habits"))).toBeVisible({
-        timeout: 10_000,
-      });
-
-      // If we landed on HabitListScreen, click the create button
-      const newButton = page.getByText("Create your first habit");
-      if (await newButton.isVisible().catch(() => false)) {
-        await newButton.click();
-      }
+      // Wait for the create habit modal (template picker or form)
+      await expect(
+        page.getByTestId("template-picker").or(page.getByText("New Habit")),
+      ).toBeVisible({ timeout: 10_000 });
 
       // Skip the template picker if it appears (new habits show it first)
       const skipBtn = page.getByTestId("template-skip");
@@ -89,12 +83,11 @@ test.describe("Today screen", () => {
       });
     });
 
-    await test.step("verify habit appears in list", async () => {
-      // After creation, we should see the habit in the list
+    await test.step("verify habit appears on Today", async () => {
       await expect(page.getByText(habitName)).toBeVisible({ timeout: 10_000 });
       test.info().annotations.push({
         type: "step",
-        description: `Habit "${habitName}" visible in list`,
+        description: `Habit "${habitName}" visible on Today`,
       });
     });
   });

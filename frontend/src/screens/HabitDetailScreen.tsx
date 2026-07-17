@@ -17,6 +17,7 @@ import {
   Badge,
   ScreenHeader,
   InlineError,
+  Modal,
 } from "../design-system";
 import {
   spacing,
@@ -265,6 +266,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
 
   // Error feedback for failed date toggles (web only — native uses Alert.alert)
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   // Auto-dismiss toggle error after 4 seconds
   useEffect(() => {
@@ -590,7 +592,7 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
             title="Archive habit"
             onPress={() => {
               if (Platform.OS === "web") {
-                onArchive(habitId);
+                setShowArchiveConfirm(true);
               } else {
                 Alert.alert(
                   "Archive habit",
@@ -608,6 +610,36 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
           />
         )}
       </View>
+
+      {onArchive && (
+        <Modal
+          visible={showArchiveConfirm}
+          onClose={() => setShowArchiveConfirm(false)}
+          title="Archive habit?"
+        >
+          <Text style={[styles.archiveModalBody, { color: colors.textSecondary }]}>
+            This will hide "{habit.name}" from your daily view. You can restore it later.
+          </Text>
+          <View style={styles.archiveModalActions}>
+            <Button
+              title="Cancel"
+              onPress={() => setShowArchiveConfirm(false)}
+              variant="secondary"
+              size="md"
+            />
+            <Button
+              title="Archive"
+              onPress={() => {
+                setShowArchiveConfirm(false);
+                onArchive(habitId);
+              }}
+              variant="primary"
+              size="md"
+              accessibilityLabel="Confirm archive"
+            />
+          </View>
+        </Modal>
+      )}
     </ScrollView>
   );
 }
@@ -798,6 +830,14 @@ const styles = StyleSheet.create({
 
   // Actions
   actions: {
+    gap: spacing.md,
+  },
+  archiveModalBody: {
+    ...typography.body,
+    marginBottom: spacing.xl,
+  },
+  archiveModalActions: {
+    flexDirection: "row",
     gap: spacing.md,
   },
 });

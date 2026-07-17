@@ -87,6 +87,11 @@ export function useTodayHabits() {
     [habitsQuery.data, today],
   );
 
+  const notTodayHabits = useMemo(
+    () => (habitsQuery.data ?? []).filter((h) => !isDueToday(h, today)),
+    [habitsQuery.data, today],
+  );
+
   const rangeQuery = useQuery({
     queryKey: rangeKey,
     queryFn: () => fetchCompletionsRange(from, to),
@@ -379,6 +384,8 @@ export function useTodayHabits() {
 
   return {
     items,
+    notTodayHabits,
+    hasAnyHabits: (habitsQuery.data ?? []).length > 0,
     loading,
     error: (habitsQuery.error as ApiError | null) ?? (rangeQuery.error as ApiError | null) ?? null,
     completing,
