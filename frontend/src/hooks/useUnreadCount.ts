@@ -1,97 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchUnreadCount } from "../api/notifications";
+import { queryKeys } from "../api/queryKeys";
 
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Tracks unread notification count with polling.
- *
- * @param isAuthenticated - Gate polling on auth status. When false, count resets
- *   to 0 and polling stops so the badge doesn't show stale data after logout.
+ * Unread notification badge count — TanStack query with the same 30s poll
+ * cadence as the previous hand-rolled hook. Mark-read mutations invalidate
+ * this key; decrementBy/resetToZero remain for optimistic badge UX.
  */
 export function useUnreadCount(isAuthenticated = true) {
-  const [count, setCount] = useState(0);
-  const mountedRef = useRef(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const cancelledRef = useRef(false);
+  const queryClient = useQueryClient();
 
-  const poll = useCallback(async () => {
-    try {
-      const data = await fetchUnreadCount();
-      if (mountedRef.current && !cancelledRef.current) {
-        setCount(data.unreadCount);
-      }
-    } catch {
-      // Silently ignore — badge is non-critical
-    }
-  }, []);
+  const query = useQuery({
+    queryKey: queryKeys.notifications.unreadCount(),
+    queryFn: fetchUnreadCount,
+    enabled: isAuthenticated,
+    refetchInterval: isAuthenticated ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+  });
 
-  // Decrement locally after marking one as read (avoids waiting for next poll)
-  const decrementBy = useCallback((n: number) => {
-    setCount((prev) => Math.max(0, prev - n));
-  }, []);
+  const count = isAuthenticated ? (query.data?.unreadCount ?? 0) : 0;
 
-  // Reset to zero locally (mark-all-read)
+  const decrementBy = useCallback(
+    (n: number) => {
+      queryClient.setQueryData<{ unreadCount: number }>(
+        queryKeys.notifications.unreadCount(),
+        (prev) => ({ unreadCount: Math.max(0, (prev?.unreadCount ?? 0) - n) }),
+      );
+    },
+    [queryClient],
+  );
+
   const resetToZero = useCallback(() => {
-    setCount(0);
-  }, []);
+    queryClient.setQueryData(queryKeys.notifications.unreadCount(), { unreadCount: 0 });
+  }, [queryClient]);
 
-  // Force refresh (e.g., after opening notifications screen)
   const refresh = useCallback(() => {
-    poll();
-  }, [poll]);
-
-  // Clear stale state and cancel in-flight fetches when auth drops
-  useEffect(() => {
-    if (!isAuthenticated) {
-      cancelledRef.current = true;
-      setCount(0);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
     if (!isAuthenticated) return;
-
-    cancelledRef.current = false;
-    mountedRef.current = true;
-
-    // Immediate fetch on auth (login or mount while authenticated)
-    poll();
-
-    // Poll on interval
-    intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
-    // Pause polling when app is backgrounded, resume on foreground
-    const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState === "active") {
-        poll();
-        if (!intervalRef.current) {
-          intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-        }
-      } else {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      }
-    };
-
-    const subscription = AppState.addEventListener("change", handleAppState);
-
-    return () => {
-      mountedRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      subscription.remove();
-    };
-  }, [poll, isAuthenticated]);
+    void query.refetch();
+  }, [isAuthenticated, query]);
 
   return { count, decrementBy, resetToZero, refresh };
 }

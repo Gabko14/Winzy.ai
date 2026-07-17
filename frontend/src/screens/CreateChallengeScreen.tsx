@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
@@ -23,7 +24,8 @@ import {
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import type { FriendHabit } from "../api/social";
 import { fetchFriendProfile } from "../api/social";
-import { createChallenge } from "../api/challenges";
+import { queryKeys } from "../api/queryKeys";
+import { useCreateChallenge } from "../hooks/useChallenges";
 import type { CreateChallengeRequest } from "../api/challenges";
 import { codePointLength } from "../utils/validation";
 import type { ApiError } from "../api/types";
@@ -67,10 +69,13 @@ export function CreateChallengeScreen({
 }: Props) {
   const colors = lightTheme;
 
-  // --- Data loading ---
-  const [habits, setHabits] = useState<FriendHabit[]>([]);
-  const [loadingHabits, setLoadingHabits] = useState(true);
-  const [loadError, setLoadError] = useState<ApiError | null>(null);
+  const profileQuery = useQuery({
+    queryKey: queryKeys.friend.profile(friendId),
+    queryFn: () => fetchFriendProfile(friendId),
+  });
+  const habits = profileQuery.data?.habits ?? [];
+  const loadingHabits = profileQuery.isPending;
+  const loadError = (profileQuery.error as ApiError | null) ?? null;
 
   // --- Step state ---
   const [step, setStep] = useState<Step>(1);
@@ -78,38 +83,27 @@ export function CreateChallengeScreen({
   const [targetValue, setTargetValue] = useState(DEFAULT_TARGET);
   const [periodDays, setPeriodDays] = useState(DEFAULT_PERIOD);
   const [rewardDescription, setRewardDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<ApiError | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
 
   const displayName = friendName ?? `User ${friendId.slice(0, 8)}`;
 
-  // --- Load friend's habits ---
-  const loadHabits = useCallback(async () => {
-    setLoadingHabits(true);
-    setLoadError(null);
-    try {
-      const profile = await fetchFriendProfile(friendId);
-      setHabits(profile.habits);
-      // Auto-select if pre-selected or single habit
-      if (preSelectedHabitId) {
-        const match = profile.habits.find((h) => h.id === preSelectedHabitId);
-        if (match) setSelectedHabit(match);
-      } else if (profile.habits.length === 1) {
-        setSelectedHabit(profile.habits[0]);
-      }
-    } catch (err) {
-      setLoadError(err as ApiError);
-    } finally {
-      setLoadingHabits(false);
-    }
-  }, [friendId, preSelectedHabitId]);
-
-  // Load on mount
   React.useEffect(() => {
-    loadHabits();
-  }, [loadHabits]);
+    if (!profileQuery.data) return;
+    if (preSelectedHabitId) {
+      const match = profileQuery.data.habits.find((h) => h.id === preSelectedHabitId);
+      if (match) setSelectedHabit(match);
+    } else if (profileQuery.data.habits.length === 1) {
+      setSelectedHabit(profileQuery.data.habits[0]);
+    }
+  }, [profileQuery.data, preSelectedHabitId]);
+
+  const createChallengeMutation = useCreateChallenge(() => {
+    setStep(5);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  });
+  const submitting = createChallengeMutation.loading;
 
   // --- Navigation helpers ---
   const goNext = useCallback(() => {
@@ -140,7 +134,6 @@ export function CreateChallengeScreen({
   // --- Submit ---
   const handleSubmit = useCallback(async () => {
     if (!selectedHabit) return;
-    setSubmitting(true);
     setSubmitError(null);
     try {
       const request: CreateChallengeRequest = {
@@ -151,15 +144,11 @@ export function CreateChallengeScreen({
         periodDays,
         rewardDescription: rewardTrimmed,
       };
-      await createChallenge(request);
-      setStep(5);
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      await createChallengeMutation.create(request);
     } catch (err) {
       setSubmitError(isApiError(err) ? err : { status: 0, code: "unknown", message: "Something went wrong. Please try again." });
-    } finally {
-      setSubmitting(false);
     }
-  }, [selectedHabit, friendId, targetValue, periodDays, rewardTrimmed]);
+  }, [selectedHabit, friendId, targetValue, periodDays, rewardTrimmed, createChallengeMutation]);
 
   // --- Error message for submit failures ---
   const submitErrorMessage = useMemo(() => {
@@ -203,7 +192,7 @@ export function CreateChallengeScreen({
           right={<Text style={[styles.stepIndicator, { color: lightTheme.textTertiary }]} testID="step-indicator">{step}/4</Text>}
         />
         <View style={styles.center}>
-          <ErrorState message={loadError.message} onRetry={loadHabits} />
+          <ErrorState message={loadError.message} onRetry={() => void profileQuery.refetch()} />
         </View>
       </View>
     );

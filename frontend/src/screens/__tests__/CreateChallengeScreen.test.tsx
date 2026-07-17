@@ -1,5 +1,6 @@
 import React from "react";
-import { render, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { fireEvent, waitFor, act } from "@testing-library/react-native";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 import { CreateChallengeScreen } from "../CreateChallengeScreen";
 import type { FriendProfileResponse, FriendHabit } from "../../api/social";
 import type { Challenge } from "../../api/challenges";
@@ -77,7 +78,7 @@ describe("CreateChallengeScreen", () => {
     mockFetchFriendProfile.mockResolvedValue(makeProfile({ habits }));
     const onComplete = jest.fn();
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen
         friendId="friend-123"
         friendName="Alice"
@@ -171,7 +172,7 @@ describe("CreateChallengeScreen", () => {
     ];
     mockFetchFriendProfile.mockResolvedValue(makeProfile({ habits }));
 
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen
         friendId="friend-123"
         friendName="Alice"
@@ -199,7 +200,7 @@ describe("CreateChallengeScreen", () => {
       habits: [makeHabit({ id: "h1", name: "Exercise" })],
     }));
 
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -217,7 +218,7 @@ describe("CreateChallengeScreen", () => {
   it("clamps target value within valid range", async () => {
     mockFetchFriendProfile.mockResolvedValue(makeProfile());
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -251,7 +252,7 @@ describe("CreateChallengeScreen", () => {
   it("disables continue when reward description is empty", async () => {
     mockFetchFriendProfile.mockResolvedValue(makeProfile());
 
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -278,7 +279,7 @@ describe("CreateChallengeScreen", () => {
     const timeoutError: ApiError = { status: 0, code: "timeout", message: "The request timed out." };
     mockCreateChallenge.mockRejectedValue(timeoutError);
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -319,7 +320,7 @@ describe("CreateChallengeScreen", () => {
     };
     mockCreateChallenge.mockRejectedValue(validationError);
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -353,7 +354,7 @@ describe("CreateChallengeScreen", () => {
     };
     mockCreateChallenge.mockRejectedValue(conflictError);
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -387,7 +388,7 @@ describe("CreateChallengeScreen", () => {
     };
     mockCreateChallenge.mockRejectedValue(serviceError);
 
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -416,7 +417,7 @@ describe("CreateChallengeScreen", () => {
   it("shows loading state while fetching habits", () => {
     mockFetchFriendProfile.mockReturnValue(new Promise(() => {}));
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -429,7 +430,7 @@ describe("CreateChallengeScreen", () => {
     const apiError: ApiError = { status: 500, code: "server_error", message: "Failed to load" };
     mockFetchFriendProfile.mockRejectedValue(apiError);
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -454,7 +455,7 @@ describe("CreateChallengeScreen", () => {
   it("shows empty state when friend has no shared habits", async () => {
     mockFetchFriendProfile.mockResolvedValue(makeProfile({ habits: [] }));
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -469,7 +470,7 @@ describe("CreateChallengeScreen", () => {
   it("calls onBack when pressing back from step 1", async () => {
     const onBack = jest.fn();
 
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" onBack={onBack} />,
     );
 
@@ -484,7 +485,7 @@ describe("CreateChallengeScreen", () => {
   // --- Back navigation from step 2 goes to step 1 ---
 
   it("goes back from step 2 to step 1", async () => {
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -500,7 +501,7 @@ describe("CreateChallengeScreen", () => {
   // --- Period preset selection ---
 
   it("allows selecting period presets", async () => {
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -518,7 +519,7 @@ describe("CreateChallengeScreen", () => {
   // --- Reward example suggestions ---
 
   it("fills reward from suggestion tap", async () => {
-    const { getByTestId, getByText, getByRole } = render(
+    const { getByTestId, getByText, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 
@@ -540,7 +541,7 @@ describe("CreateChallengeScreen", () => {
   // --- Step indicator shows correct step ---
 
   it("shows correct step indicator", async () => {
-    const { getByTestId, getByRole } = render(
+    const { getByTestId, getByRole } = renderWithQueryClient(
       <CreateChallengeScreen friendId="friend-123" friendName="Alice" />,
     );
 

@@ -1,9 +1,10 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import {
   useChallenges,
   useChallengeDetail,
   useHabitChallenges,
 } from "../useChallenges";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/challenges", () => ({
   fetchChallenges: jest.fn(),
@@ -67,7 +68,7 @@ describe("useChallenges", () => {
       total: 2,
     });
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     expect(result.current.loading).toBe(true);
 
@@ -95,7 +96,7 @@ describe("useChallenges", () => {
         total: 2,
       });
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -124,7 +125,7 @@ describe("useChallenges", () => {
       total: 0,
     });
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -144,7 +145,7 @@ describe("useChallenges", () => {
     };
     fetchChallenges.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -169,7 +170,7 @@ describe("useChallenges", () => {
         message: "Oops",
       });
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -204,7 +205,7 @@ describe("useChallenges", () => {
         total: 1,
       });
 
-    const { result } = renderHook(() => useChallenges());
+    const { result } = renderHookWithQueryClient(() => useChallenges());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -236,7 +237,7 @@ describe("useChallengeDetail", () => {
     const detail = makeChallengeDetail("c1", { progress: 0.75 });
     fetchChallengeDetail.mockResolvedValue(detail);
 
-    const { result } = renderHook(() => useChallengeDetail("c1"));
+    const { result } = renderHookWithQueryClient(() => useChallengeDetail("c1"));
 
     expect(result.current.loading).toBe(true);
     expect(result.current.challenge).toBeNull();
@@ -255,7 +256,7 @@ describe("useChallengeDetail", () => {
       .mockResolvedValueOnce(makeChallengeDetail("c1", { progress: 0.5 }))
       .mockResolvedValueOnce(makeChallengeDetail("c1", { progress: 0.8 }));
 
-    const { result } = renderHook(() => useChallengeDetail("c1"));
+    const { result } = renderHookWithQueryClient(() => useChallengeDetail("c1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -279,7 +280,7 @@ describe("useChallengeDetail", () => {
       .mockResolvedValueOnce(makeChallengeDetail("c1"))
       .mockResolvedValueOnce(makeChallengeDetail("c2"));
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = renderHookWithQueryClient(
       ({ id }: { id: string }) => useChallengeDetail(id),
       { initialProps: { id: "c1" } },
     );
@@ -309,7 +310,7 @@ describe("useChallengeDetail", () => {
     };
     fetchChallengeDetail.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useChallengeDetail("missing"));
+    const { result } = renderHookWithQueryClient(() => useChallengeDetail("missing"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -329,7 +330,7 @@ describe("useChallengeDetail", () => {
         message: "Failed",
       });
 
-    const { result } = renderHook(() => useChallengeDetail("c1"));
+    const { result } = renderHookWithQueryClient(() => useChallengeDetail("c1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -378,7 +379,7 @@ describe("useHabitChallenges", () => {
       total: 3,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     expect(result.current.loading).toBe(true);
 
@@ -411,7 +412,7 @@ describe("useHabitChallenges", () => {
       total: 2,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -432,7 +433,7 @@ describe("useHabitChallenges", () => {
       total: 1,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -471,7 +472,7 @@ describe("useHabitChallenges", () => {
       total: 1,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -492,7 +493,7 @@ describe("useHabitChallenges", () => {
       total: 3,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -509,7 +510,7 @@ describe("useHabitChallenges", () => {
       total: 0,
     });
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -529,7 +530,7 @@ describe("useHabitChallenges", () => {
     };
     fetchChallenges.mockRejectedValue(apiError);
 
-    const { result } = renderHook(() => useHabitChallenges("habit-1"));
+    const { result } = renderHookWithQueryClient(() => useHabitChallenges("habit-1"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

@@ -1,10 +1,12 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { screen, waitFor } from "@testing-library/react-native";
 import { ActiveChallengesSection } from "../ActiveChallengesSection";
+import { renderWithQueryClient } from "../../test/renderWithQueryClient";
 
 const mockFetchChallenges = jest.fn();
 
 jest.mock("../../api/challenges", () => ({
+  ...jest.requireActual("../../api/challenges"),
   fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
 }));
 
@@ -23,7 +25,7 @@ function makeChallengeDetail(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    progress: 0.75, // 0-1 fraction (backend contract)
+    progress: 0.75,
     completionCount: 18,
     baselineConsistency: null,
     customStartDate: null,
@@ -46,7 +48,7 @@ describe("ActiveChallengesSection", () => {
       total: 1,
     });
 
-    render(<ActiveChallengesSection habitId="habit-1" />);
+    renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-section")).toBeTruthy();
@@ -63,7 +65,7 @@ describe("ActiveChallengesSection", () => {
       total: 0,
     });
 
-    const { queryByTestId } = render(<ActiveChallengesSection habitId="habit-1" />);
+    const { queryByTestId } = renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
       expect(queryByTestId("active-challenges-section")).toBeNull();
@@ -81,12 +83,11 @@ describe("ActiveChallengesSection", () => {
       total: 2,
     });
 
-    render(<ActiveChallengesSection habitId="habit-1" />);
+    renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-section")).toBeTruthy();
     });
-    // Only one card rendered — habit-2 is filtered out
     expect(screen.getAllByTestId("challenge-progress-card")).toHaveLength(1);
   });
 
@@ -97,7 +98,7 @@ describe("ActiveChallengesSection", () => {
       message: "Server error",
     });
 
-    render(<ActiveChallengesSection habitId="habit-1" />);
+    renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
       expect(screen.getByText("Server error")).toBeTruthy();
@@ -105,9 +106,9 @@ describe("ActiveChallengesSection", () => {
   });
 
   it("shows loading state while fetching", () => {
-    mockFetchChallenges.mockReturnValue(new Promise(() => {})); // never resolves
+    mockFetchChallenges.mockReturnValue(new Promise(() => {}));
 
-    render(<ActiveChallengesSection habitId="habit-1" />);
+    renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     expect(screen.getByText("Loading challenges...")).toBeTruthy();
   });
@@ -123,12 +124,11 @@ describe("ActiveChallengesSection", () => {
       total: 2,
     });
 
-    render(<ActiveChallengesSection habitId="habit-1" />);
+    renderWithQueryClient(<ActiveChallengesSection habitId="habit-1" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("active-challenges-section")).toBeTruthy();
     });
-    // Only the active challenge renders a card
     expect(screen.getAllByTestId("challenge-progress-card")).toHaveLength(1);
   });
 });

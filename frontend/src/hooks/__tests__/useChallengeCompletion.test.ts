@@ -1,16 +1,13 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
-import { Platform } from "react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import { useChallengeCompletion } from "../useChallengeCompletion";
-
-const mockFetchChallenges = jest.fn();
-const mockFetchChallengesByStatus = jest.fn();
-const mockClaimChallenge = jest.fn();
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/challenges", () => ({
-  fetchChallenges: (...args: unknown[]) => mockFetchChallenges(...args),
-  fetchChallengesByStatus: (...args: unknown[]) => mockFetchChallengesByStatus(...args),
-  claimChallenge: (...args: unknown[]) => mockClaimChallenge(...args),
+  fetchChallenges: jest.fn(),
+  claimChallenge: jest.fn(),
 }));
+
+const { fetchChallenges, claimChallenge } = jest.requireMock("../../api/challenges");
 
 function makeChallenge(overrides: Record<string, unknown> = {}) {
   return {
@@ -27,7 +24,7 @@ function makeChallenge(overrides: Record<string, unknown> = {}) {
     endsAt: new Date(Date.now() + 10 * 86400000).toISOString(),
     completedAt: null,
     claimedAt: null,
-    progress: 0.75, // 0-1 fraction (backend contract)
+    progress: 0.75,
     completionCount: 18,
     baselineConsistency: null,
     customStartDate: null,
@@ -35,6 +32,10 @@ function makeChallenge(overrides: Record<string, unknown> = {}) {
     creatorDisplayName: null,
     ...overrides,
   };
+}
+
+function makePage(items: ReturnType<typeof makeChallenge>[]) {
+  return { items, page: 1, pageSize: 100, total: items.length };
 }
 
 beforeEach(() => {
@@ -46,464 +47,340 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("useChallengeCompletion — auth gate (winzy.ai-2pb1)", () => {
-  it("does not fetch or poll when isAuthenticated is false", async () => {
-    const { result } = renderHook(() => useChallengeCompletion(false));
+async function flushPromises() {
+  await act(async () => {
+    jest.advanceTimersByTime(0);
+  });
+}
 
-    // No initial fetch
-    expect(mockFetchChallenges).not.toHaveBeenCalled();
-    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+describe("useChallengeCompletion — auth gate", () => {
+  it("does not fetch or poll when isAuthenticated is false", async () => {
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion(false));
+
+    await flushPromises();
+
+    expect(fetchChallenges).not.toHaveBeenCalled();
     expect(result.current.current).toBeNull();
 
-    // Advance past poll interval — still nothing
     await act(async () => {
       jest.advanceTimersByTime(60_000);
     });
 
-    expect(mockFetchChallenges).not.toHaveBeenCalled();
-    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+    expect(fetchChallenges).not.toHaveBeenCalled();
   });
 
   it("clears queue when isAuthenticated transitions to false", async () => {
-    // Initial load with active challenge
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = renderHookWithQueryClient(
       ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
       { initialProps: { authed: true } },
     );
 
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    await flushPromises();
 
-    // Poll detects completion
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-1", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-1", status: "completed" })]),
+    );
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
+
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
 
-    // Logout — queue should clear
     rerender({ authed: false });
 
     expect(result.current.current).toBeNull();
+    expect(result.current.queueLength).toBe(0);
   });
 
   it("stops polling when isAuthenticated becomes false", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    fetchChallenges.mockResolvedValue(makePage([]));
 
-    const { rerender } = renderHook(
+    const { rerender } = renderHookWithQueryClient(
       ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
       { initialProps: { authed: true } },
     );
 
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    await flushPromises();
+    expect(fetchChallenges).toHaveBeenCalledTimes(1);
 
-    mockFetchChallenges.mockClear();
-    mockFetchChallengesByStatus.mockClear();
-
-    // Logout
+    fetchChallenges.mockClear();
     rerender({ authed: false });
 
-    // Advance past multiple poll intervals
     await act(async () => {
       jest.advanceTimersByTime(90_000);
     });
 
-    expect(mockFetchChallenges).not.toHaveBeenCalled();
-    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
+    expect(fetchChallenges).not.toHaveBeenCalled();
   });
 
   it("starts fresh polling when isAuthenticated transitions to true", async () => {
-    const { rerender } = renderHook(
+    const { rerender } = renderHookWithQueryClient(
       ({ authed }: { authed: boolean }) => useChallengeCompletion(authed),
       { initialProps: { authed: false } },
     );
 
-    expect(mockFetchChallenges).not.toHaveBeenCalled();
+    await flushPromises();
+    expect(fetchChallenges).not.toHaveBeenCalled();
 
-    // Login
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
-
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
     rerender({ authed: true });
 
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    await flushPromises();
+    expect(fetchChallenges).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("useChallengeCompletion", () => {
-  // --- Happy path ---
-
   it("detects a newly completed challenge after initial load", async () => {
-    // Initial load: only active challenges (uses fetchChallenges)
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-1", status: "active" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-1", status: "active" })]),
+    );
 
-    const { result } = renderHook(() => useChallengeCompletion());
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    // Wait for initial load
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    await flushPromises();
     expect(result.current.current).toBeNull();
 
-    // Next poll: uses filtered endpoint (fetchChallengesByStatus)
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-1", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-1", status: "completed" })]),
+    );
 
-    // Advance timer to trigger poll
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
 
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
+
     expect(result.current.current?.id).toBe("ch-1");
     expect(result.current.current?.status).toBe("completed");
-    // Verify it used the filtered endpoint
-    expect(mockFetchChallengesByStatus).toHaveBeenCalledWith("completed", expect.any(String));
   });
 
   it("claim succeeds and removes challenge from queue", async () => {
-    // Initial: nothing completed
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    // Poll detects completion (uses filtered endpoint)
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-1", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    await flushPromises();
+
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-1", status: "completed" })]),
+    );
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
+
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
 
-    // Claim
-    mockClaimChallenge.mockResolvedValueOnce(makeChallenge({ id: "ch-1", status: "claimed" }));
+    claimChallenge.mockResolvedValueOnce(makeChallenge({ id: "ch-1", status: "claimed" }));
+    fetchChallenges.mockResolvedValue(makePage([]));
+
     await act(async () => {
       await result.current.claim();
     });
+    await flushPromises();
 
-    expect(mockClaimChallenge).toHaveBeenCalledWith("ch-1");
+    expect(claimChallenge).toHaveBeenCalledWith("ch-1");
     expect(result.current.current).toBeNull();
   });
 
-  // --- Edge cases ---
-
   it("does not celebrate pre-existing completed challenges on initial load", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-old", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-old", status: "completed" })]),
+    );
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
+
+    await flushPromises();
+
+    expect(result.current.current).toBeNull();
+    expect(result.current.queueLength).toBe(0);
+  });
+
+  it("does not celebrate pre-existing claimed challenges on initial load", async () => {
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-old", status: "claimed" })]),
+    );
+
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
+
+    await flushPromises();
+
     expect(result.current.current).toBeNull();
   });
 
   it("celebrates each challenge when multiple complete simultaneously", async () => {
-    // Initial: active
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([
         makeChallenge({ id: "ch-1", status: "active" }),
         makeChallenge({ id: "ch-2", status: "active" }),
-      ],
-      page: 1,
-      pageSize: 100,
-      total: 2,
-    });
+      ]),
+    );
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    // Both complete (filtered endpoint)
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [
+    await flushPromises();
+
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([
         makeChallenge({ id: "ch-1", status: "completed" }),
         makeChallenge({ id: "ch-2", status: "completed" }),
-      ],
-      page: 1,
-      pageSize: 100,
-      total: 2,
-    });
+      ]),
+    );
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
 
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
+
     expect(result.current.current?.id).toBe("ch-1");
-    expect(result.current.remainingCount).toBe(1);
+    expect(result.current.queueLength).toBe(2);
 
-    // Dismiss first
     act(() => {
       result.current.dismiss();
     });
+
     expect(result.current.current?.id).toBe("ch-2");
-    expect(result.current.remainingCount).toBe(0);
+    expect(result.current.queueLength).toBe(1);
 
-    // Dismiss second
     act(() => {
       result.current.dismiss();
     });
+
     expect(result.current.current).toBeNull();
+    expect(result.current.queueLength).toBe(0);
   });
 
-  it("handles empty/generic reward description", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+  it("handles empty reward description", async () => {
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-empty", status: "completed", rewardDescription: "" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    await flushPromises();
+
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([
+        makeChallenge({ id: "ch-empty", status: "completed", rewardDescription: "" }),
+      ]),
+    );
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
 
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
+
     expect(result.current.current?.rewardDescription).toBe("");
   });
 
-  it("pauses polling when page is hidden and resumes when visible", async () => {
-    // Set up web platform + document mock for visibility API
-    const originalOS = Platform.OS;
-    Object.defineProperty(Platform, "OS", { value: "web", writable: true });
+  it("triggerCheck forces a refetch", async () => {
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
 
-    const listeners: Record<string, (() => void)[]> = {};
-    const mockDocument = {
-      hidden: false,
-      addEventListener: jest.fn((event: string, handler: () => void) => {
-        listeners[event] = listeners[event] || [];
-        listeners[event].push(handler);
-      }),
-      removeEventListener: jest.fn((event: string, handler: () => void) => {
-        listeners[event] = (listeners[event] || []).filter((h) => h !== handler);
-      }),
-    };
-    // @ts-expect-error -- partial document mock for visibility test
-    globalThis.document = mockDocument;
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    await flushPromises();
 
-    const { unmount } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
-
-    // Simulate tab going hidden
-    mockDocument.hidden = true;
-    for (const handler of listeners["visibilitychange"] || []) handler();
-
-    // Advance past a poll interval — should NOT trigger a fetch
-    await act(async () => {
-      jest.advanceTimersByTime(30_000);
-    });
-    // Still only the initial call (fetchChallenges), no filtered polls
-    expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    expect(mockFetchChallengesByStatus).not.toHaveBeenCalled();
-
-    // Simulate tab becoming visible again — resumes with filtered endpoint
-    mockDocument.hidden = false;
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
-    await act(async () => {
-      for (const handler of listeners["visibilitychange"] || []) handler();
-    });
-
-    // Should have fetched immediately on becoming visible (via filtered endpoint)
-    await waitFor(() => {
-      expect(mockFetchChallengesByStatus).toHaveBeenCalledTimes(1);
-    });
-
-    unmount();
-    // Clean up
-    // @ts-expect-error -- remove mock
-    delete globalThis.document;
-    Object.defineProperty(Platform, "OS", { value: originalOS, writable: true });
-  });
-
-  it("triggerCheck forces a refetch (push notification fallback)", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
-
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
-
-    // triggerCheck after initial load uses filtered endpoint
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-push", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-push", status: "completed" })]),
+    );
 
     await act(async () => {
       result.current.triggerCheck();
     });
+    await flushPromises();
 
     await waitFor(() => {
       expect(result.current.current?.id).toBe("ch-push");
     });
   });
 
-  // --- Error conditions ---
+  it("triggerCheck is a no-op when not authenticated", async () => {
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion(false));
+
+    await act(async () => {
+      result.current.triggerCheck();
+    });
+    await flushPromises();
+
+    expect(fetchChallenges).not.toHaveBeenCalled();
+  });
 
   it("claim failure shows error without dismissing overlay", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    fetchChallenges.mockResolvedValueOnce(makePage([]));
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-fail", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
+    await flushPromises();
+
+    fetchChallenges.mockResolvedValueOnce(
+      makePage([makeChallenge({ id: "ch-fail", status: "completed" })]),
+    );
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
+
     await waitFor(() => {
       expect(result.current.current).not.toBeNull();
     });
 
-    // Claim fails
     const claimError = { status: 500, code: "server_error", message: "Server error" };
-    mockClaimChallenge.mockRejectedValueOnce(claimError);
+    claimChallenge.mockRejectedValueOnce(claimError);
+
     await act(async () => {
       await result.current.claim();
     });
+    await flushPromises();
 
-    // Challenge still showing, error present
     expect(result.current.current?.id).toBe("ch-fail");
     expect(result.current.claimError).toEqual(claimError);
     expect(result.current.claiming).toBe(false);
   });
 
   it("polling failure is non-fatal — no crash, no celebration", async () => {
-    mockFetchChallenges.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 100,
-      total: 0,
-    });
+    fetchChallenges
+      .mockResolvedValueOnce(makePage([]))
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce(
+        makePage([makeChallenge({ id: "ch-recover", status: "completed" })]),
+      );
 
-    const { result } = renderHook(() => useChallengeCompletion());
-    await waitFor(() => {
-      expect(mockFetchChallenges).toHaveBeenCalledTimes(1);
-    });
+    const { result } = renderHookWithQueryClient(() => useChallengeCompletion());
 
-    // Next poll fails (filtered endpoint)
-    mockFetchChallengesByStatus.mockRejectedValueOnce(new Error("Network error"));
+    await flushPromises();
+    expect(result.current.current).toBeNull();
+
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
 
     expect(result.current.current).toBeNull();
 
-    // Next poll works fine — recovery
-    mockFetchChallengesByStatus.mockResolvedValueOnce({
-      items: [makeChallenge({ id: "ch-recover", status: "completed" })],
-      page: 1,
-      pageSize: 100,
-      total: 1,
-    });
     await act(async () => {
       jest.advanceTimersByTime(30_000);
     });
+    await flushPromises();
 
     await waitFor(() => {
       expect(result.current.current?.id).toBe("ch-recover");

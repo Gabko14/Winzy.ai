@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Linking,
 } from "react-native";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { Button, Card, Modal, Avatar, ScreenHeader, InlineError } from "../design-system";
 import { spacing, radii, typography, lightTheme } from "../design-system";
@@ -18,6 +19,7 @@ import {
   updateDefaultVisibility,
   type HabitVisibility,
 } from "../api/visibility";
+import { queryKeys } from "../api/queryKeys";
 import { exportMyData } from "../api/account";
 import { isApiError } from "../api";
 import { getInitials } from "../utils/getInitials";
@@ -66,12 +68,29 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
 export function SettingsScreen({ onBack, onEditProfile }: Props) {
   const auth = useAuth();
   const colors = lightTheme;
+  const queryClient = useQueryClient();
 
-  // Privacy state
-  const [defaultVisibility, setDefaultVisibility] = useState<HabitVisibility>("private");
-  const [visibilityLoading, setVisibilityLoading] = useState(true);
-  const [visibilityError, setVisibilityError] = useState<string | null>(null);
-  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const preferencesQuery = useQuery({
+    queryKey: queryKeys.visibility.preferences(),
+    queryFn: fetchPreferences,
+  });
+
+  const visibilityMutation = useMutation({
+    mutationFn: (visibility: HabitVisibility) => updateDefaultVisibility(visibility),
+    onSuccess: (prefs) => {
+      queryClient.setQueryData(queryKeys.visibility.preferences(), prefs);
+    },
+  });
+
+  const defaultVisibility: HabitVisibility =
+    preferencesQuery.data?.defaultHabitVisibility ?? "private";
+  const visibilityLoading = preferencesQuery.isPending;
+  const visibilityError = preferencesQuery.isError
+    ? "Could not load privacy settings"
+    : visibilityMutation.isError
+      ? "Failed to update visibility"
+      : null;
+  const visibilitySaving = visibilityMutation.isPending;
 
   // Appearance state
   const [theme, setTheme] = useState<ThemePreference>(getStoredTheme);
@@ -91,42 +110,16 @@ export function SettingsScreen({ onBack, onEditProfile }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Load default visibility on mount
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const handleVisibilityChange = useCallback(
+    async (visibility: HabitVisibility) => {
       try {
-        const prefs = await fetchPreferences();
-        if (!cancelled) {
-          setDefaultVisibility(prefs.defaultHabitVisibility);
-          setVisibilityLoading(false);
-        }
+        await visibilityMutation.mutateAsync(visibility);
       } catch {
-        if (!cancelled) {
-          setVisibilityLoading(false);
-          setVisibilityError("Could not load privacy settings");
-        }
+        // Error surfaced via visibilityMutation.isError
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleVisibilityChange = useCallback(async (visibility: HabitVisibility) => {
-    setVisibilitySaving(true);
-    setVisibilityError(null);
-    const previous = defaultVisibility;
-    setDefaultVisibility(visibility);
-    try {
-      await updateDefaultVisibility(visibility);
-    } catch {
-      setDefaultVisibility(previous);
-      setVisibilityError("Failed to update visibility");
-    } finally {
-      setVisibilitySaving(false);
-    }
-  }, [defaultVisibility]);
+    },
+    [visibilityMutation],
+  );
 
   const handleThemeChange = useCallback((newTheme: ThemePreference) => {
     setTheme(newTheme);

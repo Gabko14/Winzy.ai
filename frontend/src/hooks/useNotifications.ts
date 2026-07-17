@@ -1,152 +1,141 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   fetchNotifications,
   markNotificationRead,
   markAllNotificationsRead,
   type NotificationItem,
 } from "../api/notifications";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
 
-type NotificationsState = {
-  items: NotificationItem[];
-  page: number;
-  pageSize: number;
-  total: number;
-  loading: boolean;
-  loadingMore: boolean;
-  error: ApiError | null;
-};
-
 export function useNotifications(pageSize = 20) {
-  const [state, setState] = useState<NotificationsState>({
-    items: [],
-    page: 1,
-    pageSize,
-    total: 0,
-    loading: true,
-    loadingMore: false,
-    error: null,
+  const queryClient = useQueryClient();
+
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.notifications.list(pageSize),
+    queryFn: ({ pageParam }) => fetchNotifications(pageParam, pageSize),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const loaded = lastPage.page * lastPage.pageSize;
+      if (loaded >= lastPage.total) return undefined;
+      return lastPage.page + 1;
+    },
   });
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const load = useCallback(
-    async (page: number, append: boolean) => {
-      if (!append) {
-        setState((s) => ({ ...s, loading: true, error: null }));
-      } else {
-        setState((s) => ({ ...s, loadingMore: true }));
-      }
-
-      try {
-        const data = await fetchNotifications(page, pageSize);
-        if (!mountedRef.current) return;
-
-        setState((s) => ({
-          ...s,
-          items: append ? [...s.items, ...data.items] : data.items,
-          page: data.page,
-          pageSize: data.pageSize,
-          total: data.total,
-          loading: false,
-          loadingMore: false,
-          error: null,
-        }));
-      } catch (err) {
-        if (!mountedRef.current) return;
-        setState((s) => ({
-          ...s,
-          loading: false,
-          loadingMore: false,
-          error: err as ApiError,
-        }));
-      }
-    },
-    [pageSize],
+  const items = useMemo(
+    () => query.data?.pages.flatMap((p) => p.items) ?? [],
+    [query.data],
   );
+  const total = query.data?.pages[query.data.pages.length - 1]?.total ?? 0;
 
-  // Initial load
-  useEffect(() => {
-    load(1, false);
-  }, [load]);
-
-  const refresh = useCallback(() => load(1, false), [load]);
+  const refresh = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
 
   const loadMore = useCallback(() => {
-    const hasMore = state.items.length < state.total;
-    if (!hasMore || state.loadingMore) return;
-    load(state.page + 1, true);
-  }, [load, state.items.length, state.total, state.loadingMore, state.page]);
+    if (!query.hasNextPage || query.isFetchingNextPage) return;
+    void query.fetchNextPage();
+  }, [query]);
 
-  const markRead = useCallback(async (id: string): Promise<boolean> => {
-    // Optimistic update
-    setState((s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.id === id ? { ...item, readAt: new Date().toISOString() } : item,
-      ),
-    }));
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => markNotificationRead(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.notifications.list(pageSize) });
+      const previous = queryClient.getQueryData(queryKeys.notifications.list(pageSize));
+      queryClient.setQueryData(queryKeys.notifications.list(pageSize), (old: typeof query.data) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
+              item.id === id ? { ...item, readAt: new Date().toISOString() } : item,
+            ),
+          })),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(queryKeys.notifications.list(pageSize), ctx.previous);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.list(pageSize) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount() }),
+      ]);
+    },
+  });
 
-    try {
-      const updated = await markNotificationRead(id);
-      if (!mountedRef.current) return true;
-      setState((s) => ({
-        ...s,
-        items: s.items.map((item) => (item.id === id ? updated : item)),
-      }));
-      return true;
-    } catch {
-      if (!mountedRef.current) return false;
-      // Revert optimistic update
-      setState((s) => ({
-        ...s,
-        items: s.items.map((item) =>
-          item.id === id ? { ...item, readAt: null } : item,
-        ),
-      }));
-      return false;
-    }
-  }, []);
+  const markAllMutation = useMutation({
+    mutationFn: () => markAllNotificationsRead(),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.notifications.list(pageSize) });
+      const previous = queryClient.getQueryData(queryKeys.notifications.list(pageSize));
+      const stamp = new Date().toISOString();
+      queryClient.setQueryData(queryKeys.notifications.list(pageSize), (old: typeof query.data) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
+              item.readAt ? item : { ...item, readAt: stamp },
+            ),
+          })),
+        };
+      });
+      queryClient.setQueryData(queryKeys.notifications.unreadCount(), { unreadCount: 0 });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(queryKeys.notifications.list(pageSize), ctx.previous);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.list(pageSize) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount() }),
+      ]);
+    },
+  });
+
+  const markRead = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        await markReadMutation.mutateAsync(id);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [markReadMutation],
+  );
 
   const markAllRead = useCallback(async (): Promise<boolean> => {
-    // Capture snapshot inside setState to avoid stale closure
-    let previousItems: NotificationItem[] = [];
-    setState((s) => {
-      previousItems = s.items;
-      return {
-        ...s,
-        items: s.items.map((item) =>
-          item.readAt ? item : { ...item, readAt: new Date().toISOString() },
-        ),
-      };
-    });
-
     try {
-      await markAllNotificationsRead();
+      await markAllMutation.mutateAsync();
       return true;
     } catch {
-      if (!mountedRef.current) return false;
-      // Revert to snapshot
-      setState((s) => ({ ...s, items: previousItems }));
       return false;
     }
-  }, []);
-
-  const hasMore = state.items.length < state.total;
+  }, [markAllMutation]);
 
   return {
-    items: state.items,
-    total: state.total,
-    loading: state.loading,
-    loadingMore: state.loadingMore,
-    error: state.error,
-    hasMore,
+    items: items as NotificationItem[],
+    total,
+    loading: query.isPending,
+    loadingMore: query.isFetchingNextPage,
+    error: (query.error as ApiError | null) ?? null,
+    hasMore: Boolean(query.hasNextPage),
     refresh,
     loadMore,
     markRead,

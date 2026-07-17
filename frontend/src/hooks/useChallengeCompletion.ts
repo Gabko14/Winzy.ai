@@ -1,205 +1,138 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchChallenges,
-  fetchChallengesByStatus,
   claimChallenge,
   type ChallengeDetail,
 } from "../api/challenges";
+import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
+import { challengesListQueryOptions } from "./useChallenges";
 
 const POLL_INTERVAL_MS = 30_000;
 
 type ChallengeCompletionState = {
-  /** Queue of challenges waiting to be celebrated */
   queue: ChallengeDetail[];
-  /** Whether a claim is in flight */
   claiming: boolean;
-  /** Last claim error (shown as retry in the overlay) */
   claimError: ApiError | null;
 };
 
 /**
- * Detects newly completed challenges by polling and surfaces them
- * for celebration one at a time. Provides a claim action for the
- * currently displayed challenge.
- *
- * Detection: polls challenges every 30s. When a challenge with
- * status "completed" appears that hasn't been seen before, it's
- * queued for celebration.
- *
- * @param isAuthenticated - Gate polling on auth status. When false, polling stops
- *   and the queue is cleared so public/unauthenticated surfaces don't hit protected APIs.
+ * Detects newly completed challenges via the shared challenges list query
+ * (refetchInterval) and surfaces them for celebration one at a time.
  */
 export function useChallengeCompletion(isAuthenticated = true) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<ChallengeCompletionState>({
     queue: [],
     claiming: false,
     claimError: null,
   });
 
-  // Track IDs we've already seen as completed (or claimed) to avoid re-celebrating
   const seenCompletedIds = useRef(new Set<string>());
-  const mountedRef = useRef(true);
   const initialLoadDone = useRef(false);
-  const checkInFlight = useRef(false);
-  // Tracks when we last polled — used with the `since` server filter
-  const lastPollTime = useRef<string | undefined>(undefined);
-  // Prevents a slow in-flight fetch from writing stale data after auth drops
-  const cancelledRef = useRef(false);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const query = useQuery({
+    ...challengesListQueryOptions(),
+    enabled: isAuthenticated,
+    refetchInterval: isAuthenticated ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+  });
 
-  const checkForCompletions = useCallback(async () => {
-    // Guard against concurrent checks (poll + triggerCheck racing)
-    if (checkInFlight.current) return;
-    checkInFlight.current = true;
-
-    try {
-      // First load: fetch all to seed the seen set.
-      // Subsequent polls: use server-side status+since filter.
-      // Capture timestamp BEFORE fetch to avoid clock-skew gaps — if the
-      // client clock is slightly ahead of the server, setting it after the
-      // fetch could miss completions. The seenCompletedIds set deduplicates
-      // any overlap from the slight backwards reach.
-      const pollTimestamp = new Date().toISOString();
-      const data = initialLoadDone.current
-        ? await fetchChallengesByStatus("completed", lastPollTime.current)
-        : await fetchChallenges(1, 100);
-
-      if (!mountedRef.current || cancelledRef.current) return;
-
-      lastPollTime.current = pollTimestamp;
-
-      // On first load, just seed the seen set — don't celebrate pre-existing completions
-      if (!initialLoadDone.current) {
-        initialLoadDone.current = true;
-        for (const c of data.items) {
-          if (c.status === "completed" || c.status === "claimed") {
-            seenCompletedIds.current.add(c.id);
-          }
-        }
-        return;
-      }
-
-      const newlyCompleted = data.items.filter(
-        (c) =>
-          c.status === "completed" && !seenCompletedIds.current.has(c.id),
-      );
-
-      if (newlyCompleted.length > 0) {
-        for (const c of newlyCompleted) {
-          seenCompletedIds.current.add(c.id);
-        }
-        setState((s) => ({
-          ...s,
-          queue: [...s.queue, ...newlyCompleted],
-        }));
-      }
-    } catch {
-      // Polling failure is non-fatal — just skip this cycle
-    } finally {
-      checkInFlight.current = false;
-    }
-  }, []);
-
-  // Clear state when auth drops
   useEffect(() => {
     if (!isAuthenticated) {
-      cancelledRef.current = true;
       setState({ queue: [], claiming: false, claimError: null });
       initialLoadDone.current = false;
-      checkInFlight.current = false;
       seenCompletedIds.current.clear();
-      lastPollTime.current = undefined;
     }
   }, [isAuthenticated]);
 
-  // Initial load + polling with page visibility pause
   useEffect(() => {
-    if (!isAuthenticated) return;
-    cancelledRef.current = false;
+    if (!isAuthenticated || !query.data) return;
 
-    checkForCompletions();
-    let interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
+    const items = query.data.items;
 
-    // Pause polling when tab is backgrounded (web only)
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        clearInterval(interval);
-      } else {
-        // Resume: check immediately then restart interval
-        checkForCompletions();
-        interval = setInterval(checkForCompletions, POLL_INTERVAL_MS);
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      for (const c of items) {
+        if (c.status === "completed" || c.status === "claimed") {
+          seenCompletedIds.current.add(c.id);
+        }
       }
+      return;
     }
 
-    if (Platform.OS === "web" && typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", handleVisibilityChange);
+    const newlyCompleted = items.filter(
+      (c) => c.status === "completed" && !seenCompletedIds.current.has(c.id),
+    );
+
+    if (newlyCompleted.length === 0) return;
+
+    for (const c of newlyCompleted) {
+      seenCompletedIds.current.add(c.id);
     }
+    setState((s) => ({
+      ...s,
+      queue: [...s.queue, ...newlyCompleted],
+    }));
+  }, [query.data, isAuthenticated]);
 
-    return () => {
-      clearInterval(interval);
-      if (Platform.OS === "web" && typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-      }
-    };
-  }, [checkForCompletions, isAuthenticated]);
-
-  /** The challenge currently being celebrated (front of queue) */
   const current = state.queue.length > 0 ? state.queue[0] : null;
 
-  /** Claim the reward for the current challenge and dismiss it */
-  const claim = useCallback(async () => {
-    if (!current) return;
-
-    setState((s) => ({ ...s, claiming: true, claimError: null }));
-
-    try {
-      await claimChallenge(current.id);
-      if (!mountedRef.current) return;
-
-      // Remove from queue
+  const claimMutation = useMutation({
+    mutationFn: (id: string) => claimChallenge(id),
+    onSuccess: async (_data, id) => {
+      seenCompletedIds.current.add(id);
       setState((s) => ({
         ...s,
-        queue: s.queue.slice(1),
+        queue: s.queue.filter((c) => c.id !== id),
         claiming: false,
         claimError: null,
       }));
-    } catch (err) {
-      if (!mountedRef.current) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.challenges.list() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed.list() }),
+      ]);
+    },
+    onError: (err) => {
       setState((s) => ({
         ...s,
         claiming: false,
-        claimError: err as ApiError,
+        claimError: err as unknown as ApiError,
       }));
-    }
-  }, [current]);
+    },
+  });
 
-  /** Dismiss without claiming (user can claim later from MyChallenges) */
+  const claim = useCallback(async () => {
+    if (!current || claimMutation.isPending) return;
+    setState((s) => ({ ...s, claiming: true, claimError: null }));
+    try {
+      await claimMutation.mutateAsync(current.id);
+    } catch {
+      // onError already recorded claimError
+    }
+  }, [current, claimMutation]);
+
   const dismiss = useCallback(() => {
+    if (!current) return;
+    seenCompletedIds.current.add(current.id);
     setState((s) => ({
       ...s,
       queue: s.queue.slice(1),
       claimError: null,
     }));
-  }, []);
+  }, [current]);
 
-  /** Force a check — call this when a push notification arrives */
   const triggerCheck = useCallback(() => {
-    checkForCompletions();
-  }, [checkForCompletions]);
+    if (!isAuthenticated) return;
+    void query.refetch();
+  }, [isAuthenticated, query]);
 
   return {
     current,
-    claiming: state.claiming,
-    claimError: state.claimError,
+    queueLength: state.queue.length,
     remainingCount: Math.max(0, state.queue.length - 1),
+    claiming: state.claiming || claimMutation.isPending,
+    claimError: state.claimError,
     claim,
     dismiss,
     triggerCheck,

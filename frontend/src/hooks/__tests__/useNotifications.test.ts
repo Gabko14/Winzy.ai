@@ -1,6 +1,7 @@
-import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { act, waitFor } from "@testing-library/react-native";
 import { useNotifications } from "../useNotifications";
 import type { NotificationItem, NotificationsPage } from "../../api/notifications";
+import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
 
 jest.mock("../../api/notifications", () => ({
   fetchNotifications: jest.fn(),
@@ -25,8 +26,13 @@ function makeNotification(overrides: Partial<NotificationItem> = {}): Notificati
   };
 }
 
-function makePage(items: NotificationItem[], total?: number, page = 1): NotificationsPage {
-  return { items, page, pageSize: 20, total: total ?? items.length };
+function makePage(
+  items: NotificationItem[],
+  total?: number,
+  page = 1,
+  pageSize = 20,
+): NotificationsPage {
+  return { items, page, pageSize, total: total ?? items.length };
 }
 
 beforeEach(() => {
@@ -38,7 +44,7 @@ describe("useNotifications", () => {
     const items = [makeNotification(), makeNotification()];
     fetchNotifications.mockResolvedValue(makePage(items, 2));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     expect(result.current.loading).toBe(true);
 
@@ -55,7 +61,7 @@ describe("useNotifications", () => {
     const error = { status: 500, code: "server_error", message: "Server error" };
     fetchNotifications.mockRejectedValue(error);
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -68,7 +74,7 @@ describe("useNotifications", () => {
   it("returns empty list", async () => {
     fetchNotifications.mockResolvedValue(makePage([], 0));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -83,10 +89,10 @@ describe("useNotifications", () => {
     const page1 = [makeNotification({ id: "1" }), makeNotification({ id: "2" })];
     const page2 = [makeNotification({ id: "3" })];
     fetchNotifications
-      .mockResolvedValueOnce(makePage(page1, 3, 1))
-      .mockResolvedValueOnce(makePage(page2, 3, 2));
+      .mockResolvedValueOnce(makePage(page1, 3, 1, 2))
+      .mockResolvedValueOnce(makePage(page2, 3, 2, 2));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -109,7 +115,7 @@ describe("useNotifications", () => {
   it("does not loadMore when already loading or no more items", async () => {
     fetchNotifications.mockResolvedValue(makePage([makeNotification()], 1));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -121,29 +127,32 @@ describe("useNotifications", () => {
       result.current.loadMore();
     });
 
-    // Should not have made a second call
     expect(fetchNotifications).toHaveBeenCalledTimes(1);
   });
 
   it("markRead optimistically updates then confirms", async () => {
     const notification = makeNotification({ id: "n1", readAt: null });
-    fetchNotifications.mockResolvedValue(makePage([notification], 1));
-    markNotificationRead.mockResolvedValue({ ...notification, readAt: "2026-01-01T00:00:00Z" });
+    const readNotification = { ...notification, readAt: "2026-01-01T00:00:00Z" };
+    fetchNotifications
+      .mockResolvedValueOnce(makePage([notification], 1))
+      .mockResolvedValue(makePage([readNotification], 1));
+    markNotificationRead.mockResolvedValue(readNotification);
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     await act(async () => {
-      result.current.markRead("n1");
+      await result.current.markRead("n1");
     });
 
-    // Should be optimistically marked as read (readAt is non-null)
     await waitFor(() => {
       expect(result.current.items[0].readAt).not.toBeNull();
     });
+
+    expect(markNotificationRead).toHaveBeenCalledWith("n1");
   });
 
   it("markRead reverts on error", async () => {
@@ -151,15 +160,18 @@ describe("useNotifications", () => {
     fetchNotifications.mockResolvedValue(makePage([notification], 1));
     markNotificationRead.mockRejectedValue(new Error("Network error"));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
+    let success = true;
     await act(async () => {
-      result.current.markRead("n1");
+      success = await result.current.markRead("n1");
     });
+
+    expect(success).toBe(false);
 
     await waitFor(() => {
       expect(result.current.items[0].readAt).toBeNull();
@@ -172,21 +184,30 @@ describe("useNotifications", () => {
       makeNotification({ id: "n2", readAt: "2026-01-01T00:00:00Z" }),
       makeNotification({ id: "n3", readAt: null }),
     ];
-    fetchNotifications.mockResolvedValue(makePage(items, 3));
+    const readItems = items.map((item) =>
+      item.readAt ? item : { ...item, readAt: "2026-01-02T00:00:00Z" },
+    );
+    fetchNotifications
+      .mockResolvedValueOnce(makePage(items, 3))
+      .mockResolvedValue(makePage(readItems, 3));
     markAllNotificationsRead.mockResolvedValue({ markedAsRead: 2 });
 
-    const { result } = renderHook(() => useNotifications());
+    const { result, queryClient } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     await act(async () => {
-      result.current.markAllRead();
+      await result.current.markAllRead();
     });
 
     await waitFor(() => {
       expect(result.current.items.every((item) => item.readAt !== null)).toBe(true);
+    });
+
+    expect(queryClient.getQueryData(["notifications", "unread-count"])).toEqual({
+      unreadCount: 0,
     });
   });
 
@@ -198,15 +219,18 @@ describe("useNotifications", () => {
     fetchNotifications.mockResolvedValue(makePage(items, 2));
     markAllNotificationsRead.mockRejectedValue(new Error("Server error"));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
+    let success = true;
     await act(async () => {
-      result.current.markAllRead();
+      success = await result.current.markAllRead();
     });
+
+    expect(success).toBe(false);
 
     await waitFor(() => {
       expect(result.current.items.filter((item) => item.readAt === null)).toHaveLength(2);
@@ -220,14 +244,14 @@ describe("useNotifications", () => {
       .mockResolvedValueOnce(makePage(initial, 1))
       .mockResolvedValueOnce(makePage(refreshed, 1));
 
-    const { result } = renderHook(() => useNotifications());
+    const { result } = renderHookWithQueryClient(() => useNotifications());
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
     await act(async () => {
-      result.current.refresh();
+      await result.current.refresh();
     });
 
     await waitFor(() => {
