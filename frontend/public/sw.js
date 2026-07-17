@@ -118,9 +118,23 @@ self.addEventListener("notificationclick", (event) => {
 
   const targetUrl = event.notification.data?.url || "/";
 
+  function notifParamFromUrl(url) {
+    try {
+      const parsed = new URL(url, self.location.origin);
+      const key = parsed.pathname.replace(/^\//, "").toLowerCase();
+      if (key === "friends" || key === "friend") return "friends";
+      if (key === "challenges" || key === "challenge") return "challenges";
+      if (key === "feed" || key === "activity") return "feed";
+    } catch {
+      // fall through
+    }
+    return "feed";
+  }
+
+  const coldStartUrl = "/?notif=" + encodeURIComponent(notifParamFromUrl(targetUrl));
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // If the app is already open, focus it and navigate
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && "focus" in client) {
           client.focus();
@@ -128,8 +142,7 @@ self.addEventListener("notificationclick", (event) => {
           return;
         }
       }
-      // Otherwise open a new window
-      return self.clients.openWindow(targetUrl);
+      return self.clients.openWindow(coldStartUrl);
     }),
   );
 });

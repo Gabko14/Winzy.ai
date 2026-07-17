@@ -5,6 +5,10 @@ import { AuthProvider } from "./src/hooks/useAuth";
 import { useQueryFocusManager } from "./src/hooks/useQueryFocusManager";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { registerServiceWorker, injectManifestLink } from "./src/pwa/register-sw";
+import { startNotificationClickCapture } from "./src/pwa/notificationClicks";
+
+// Capture SW notification clicks + ?notif= before React mounts (warm/cold race).
+startNotificationClickCapture();
 
 function makeQueryClient() {
   return new QueryClient({

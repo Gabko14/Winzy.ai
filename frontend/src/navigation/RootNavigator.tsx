@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { useAuth } from "../hooks/useAuth";
 import { AuthNavigator } from "./AuthNavigator";
@@ -40,6 +40,7 @@ import { useOverlayRouter } from "./useOverlayRouter";
 import { useHistorySync } from "./useHistorySync";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { OverlayShell } from "../components/OverlayShell";
+import { subscribeNotificationNavigation } from "../pwa/notificationClicks";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -146,6 +147,23 @@ export function RootNavigator() {
     historySync.syncTabChange(activeTab, tabId);
     setActiveTab(tabId);
   }, [historySync, activeTab]);
+
+  const selectTabNavRef = useRef(selectTab);
+  selectTabNavRef.current = selectTab;
+  const overlayNavRef = useRef(overlay);
+  overlayNavRef.current = overlay;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return subscribeNotificationNavigation((dest) => {
+      overlayNavRef.current.closeAll();
+      if (dest.kind === "tab") {
+        selectTabNavRef.current(dest.tab);
+        return;
+      }
+      overlayNavRef.current.push(dest.overlay);
+    });
+  }, [isAuthenticated]);
 
   const handleTabPress = useCallback((tabId: TabId) => {
     overlay.closeAll();
