@@ -94,9 +94,14 @@ Content-Type: application/json
 DELETE {{baseUrl}}/habits/{{habitId}}/completions/2026-03-15
 Authorization: Bearer {{accessToken}}
 
-### 10. Get habit stats
+### 10. Get habit stats (single)
 # X-Timezone header is required — returns 400 without it
 GET {{baseUrl}}/habits/{{habitId}}/stats
+Authorization: Bearer {{accessToken}}
+X-Timezone: Europe/Vienna
+
+### 10b. Get habit stats (batch — all active habits)
+GET {{baseUrl}}/habits/stats
 Authorization: Bearer {{accessToken}}
 X-Timezone: Europe/Vienna
 

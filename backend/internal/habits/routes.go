@@ -12,12 +12,13 @@ import "net/http"
 // endpoints become direct in-process calls once other modules need them,
 // per the epic).
 //
-// The literal "GET /habits/completions" route is registered so it takes
-// precedence over the wildcard "GET /habits/{id}" for that exact path —
-// net/http's ServeMux (Go 1.22+) resolves this correctly regardless of
-// registration order (a longer literal prefix always wins over an
-// overlapping wildcard at the SAME path position), but it is listed first
-// here for readability.
+// The literal "GET /habits/completions" and "GET /habits/stats" routes are
+// registered so they take precedence over the wildcard "GET /habits/{id}"
+// for those exact paths — net/http's ServeMux (Go 1.22+) resolves this
+// correctly regardless of registration order (a longer literal prefix
+// always wins over an overlapping wildcard at the SAME path position), but
+// they are listed first here for readability. Without the /habits/stats
+// literal, "stats" would be captured as {id} and 404 as a non-UUID.
 //
 // GET /habits/{id}/stats, GET /habits/{id}/promise, and GET
 // /habits/public/{username} are NOT three separate registrations, despite
@@ -44,6 +45,7 @@ func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("GET /habits", h.ListHabits)
 	mux.HandleFunc("PUT /habits/order", h.OrderHabits)
 	mux.HandleFunc("GET /habits/completions", h.CompletionsInRange)
+	mux.HandleFunc("GET /habits/stats", h.BatchStats)
 	mux.HandleFunc("GET /habits/{a}/{b}", h.habitOrPublicGET)
 	mux.HandleFunc("GET /habits/public/{username}/flame.svg", h.FlameBadge)
 	mux.HandleFunc("GET /habits/{id}", h.GetHabit)

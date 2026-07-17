@@ -247,6 +247,22 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/habits/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listHabitStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/habits/{id}": {
         parameters: {
             query?: never;
@@ -1935,6 +1951,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CompletionsRangeResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listHabitStats: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description IANA timezone id required by owner-facing habit stats/promise endpoints */
+                "X-Timezone": components["parameters"]["XTimezone"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stats for every active habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitStats"][];
                 };
             };
             400: components["responses"]["Error"];

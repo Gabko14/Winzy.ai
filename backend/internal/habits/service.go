@@ -620,6 +620,50 @@ func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone stri
 		return HabitStatsResponse{}, err
 	}
 
+	return buildHabitStats(habit, dates, loc), nil
+}
+
+// HabitsStats builds GET /habits/stats — one HabitStatsResponse per active
+// habit, same shape/math as HabitStats, with completions loaded in a single
+// batch query (no N round-trips, no caching).
+func (s *Service) HabitsStats(ctx context.Context, userID, timezone string) ([]HabitStatsResponse, error) {
+	loc, err := resolveTimezone(timezone)
+	if err != nil {
+		return nil, err
+	}
+
+	habitsList, err := listHabits(ctx, s.pool, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(habitsList) == 0 {
+		return []HabitStatsResponse{}, nil
+	}
+
+	ids := make([]string, len(habitsList))
+	for i, h := range habitsList {
+		ids[i] = h.ID
+	}
+	byHabit, err := batchHabitCompletionDates(ctx, s.pool, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]HabitStatsResponse, len(habitsList))
+	for i, h := range habitsList {
+		dates := byHabit[h.ID]
+		if dates == nil {
+			dates = []DatedCompletion{}
+		}
+		out[i] = buildHabitStats(h, dates, loc)
+	}
+	return out, nil
+}
+
+// buildHabitStats is the shared flame/consistency projection for both the
+// per-habit and batch stats endpoints — one code path so the two can never
+// drift (winzy.ai-sp8f).
+func buildHabitStats(habit Habit, dates []DatedCompletion, loc *time.Location) HabitStatsResponse {
 	consistency := Consistency(habit, dates, loc)
 	flame := GetFlameLevel(consistency, nil)
 
@@ -662,7 +706,7 @@ func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone stri
 	}
 
 	return HabitStatsResponse{
-		HabitID:             habitID,
+		HabitID:             habit.ID,
 		Consistency:         consistency,
 		FlameLevel:          flame.String(),
 		TotalCompletions:    len(dates),
@@ -673,7 +717,7 @@ func (s *Service) HabitStats(ctx context.Context, userID, habitID, timezone stri
 		WindowStart:         formatISODate(windowStart.t()),
 		Today:               formatISODate(today.t()),
 		CompletedDates:      entries,
-	}, nil
+	}
 }
 
 // ConsistencyForDateRange is the in-process replacement for the old

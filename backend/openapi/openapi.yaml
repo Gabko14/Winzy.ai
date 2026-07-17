@@ -382,6 +382,26 @@ paths:
         "401":
           description: Unauthenticated
 
+  /habits/stats:
+    get:
+      tags: [habits]
+      operationId: listHabitStats
+      parameters:
+        - $ref: "#/components/parameters/XTimezone"
+      responses:
+        "200":
+          description: Stats for every active habit
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HabitStats"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          description: Unauthenticated
+
   /habits/{id}:
     parameters:
       - $ref: "#/components/parameters/HabitId"

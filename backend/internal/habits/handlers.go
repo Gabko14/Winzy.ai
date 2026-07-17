@@ -262,6 +262,24 @@ func (h *Handlers) Stats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
+// BatchStats handles GET /habits/stats — same X-Timezone contract as Stats.
+func (h *Handlers) BatchStats(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+
+	timezone := r.Header.Get("X-Timezone")
+	if strings.TrimSpace(timezone) == "" {
+		writeError(w, http.StatusBadRequest, "X-Timezone header is required")
+		return
+	}
+
+	stats, err := h.service.HabitsStats(r.Context(), userID, timezone)
+	if err != nil {
+		writeHabitsError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 // DeleteCompletion handles DELETE /habits/{id}/completions/{date}.
 func (h *Handlers) DeleteCompletion(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())

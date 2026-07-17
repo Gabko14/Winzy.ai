@@ -349,6 +349,41 @@ func habitCompletionDates(ctx context.Context, db querier, habitID string) ([]Da
 	return collectDatedCompletions(rows)
 }
 
+// batchHabitCompletionDates loads DatedCompletion rows for every habit in
+// habitIDs in one query, grouped by habit_id, each slice ordered by
+// local_date — the batch counterpart of habitCompletionDates for
+// GET /habits/stats (winzy.ai-sp8f).
+func batchHabitCompletionDates(ctx context.Context, db querier, habitIDs []string) (map[string][]DatedCompletion, error) {
+	result := make(map[string][]DatedCompletion, len(habitIDs))
+	if len(habitIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := db.Query(ctx, `
+		SELECT habit_id::text, local_date, completion_kind FROM completions
+		WHERE habit_id = ANY($1::uuid[])
+		ORDER BY habit_id, local_date`,
+		habitIDs)
+	if err != nil {
+		return nil, fmt.Errorf("habits: batch listing completion dates: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var habitID string
+		var localDate time.Time
+		var kind string
+		if err := rows.Scan(&habitID, &localDate, &kind); err != nil {
+			return nil, fmt.Errorf("habits: scanning batch completion date: %w", err)
+		}
+		result[habitID] = append(result[habitID], DatedCompletion{LocalDate: localDate, Kind: completionKindFromDB(kind)})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("habits: iterating batch completion dates: %w", err)
+	}
+	return result, nil
+}
+
 // findActiveHabitByID looks up a non-archived habit by id regardless of
 // owner — the in-process replacement for InternalGetConsistency's
 // `db.Habits.FirstOrDefaultAsync(h => h.Id == habitId && h.ArchivedAt == null)`
