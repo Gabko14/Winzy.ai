@@ -5,11 +5,16 @@ import {
   createTodo as apiCreateTodo,
   completeTodo as apiCompleteTodo,
   uncompleteTodo as apiUncompleteTodo,
+  updateTodo as apiUpdateTodo,
+  deleteTodo as apiDeleteTodo,
+  orderTodos as apiOrderTodos,
   type Todo,
   type CreateTodoRequest,
+  type UpdateTodoRequest,
 } from "../api/todos";
 import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
+import { isApiError } from "../api/types";
 import { localTodayISO } from "../utils/completionCycle";
 
 const EXIT_LINGER_MS = 450;
@@ -261,5 +266,161 @@ export function useTodosToday() {
     toggleComplete,
     quickAdd,
     refresh: () => query.refetch(),
+  };
+}
+
+/**
+ * Reapply a user's intended open-todo order onto a freshly fetched list.
+ * Keeps intended relative order for ids that still exist; appends any new
+ * open ids (from another device) at the end.
+ */
+export function reapplyOrderIntent(intendedIds: string[], freshOpen: Todo[]): string[] {
+  const freshIds = freshOpen.map((t) => t.id);
+  const freshSet = new Set(freshIds);
+  const kept = intendedIds.filter((id) => freshSet.has(id));
+  const extras = freshIds.filter((id) => !kept.includes(id));
+  return [...kept, ...extras];
+}
+
+function sortOpenByPosition(a: Todo, b: Todo): number {
+  if (a.position !== b.position) return a.position - b.position;
+  return a.id.localeCompare(b.id);
+}
+
+function sortCompletedDesc(a: Todo, b: Todo): number {
+  const ac = a.completedAt ?? "";
+  const bc = b.completedAt ?? "";
+  if (ac !== bc) return bc.localeCompare(ac);
+  return b.id.localeCompare(a.id);
+}
+
+function applyLocalOrder(list: Todo[], orderedIds: string[]): Todo[] {
+  const byId = new Map(list.map((t) => [t.id, t]));
+  return orderedIds
+    .map((id, index) => {
+      const todo = byId.get(id);
+      return todo ? { ...todo, position: index } : null;
+    })
+    .filter((t): t is Todo => t != null);
+}
+
+export function useTodosManage() {
+  const queryClient = useQueryClient();
+  const openKey = queryKeys.todos.list("open");
+  const completedKey = queryKeys.todos.list("completed");
+
+  const openQuery = useQuery(todosListQueryOptions("open"));
+  const completedQuery = useQuery(todosListQueryOptions("completed"));
+
+  const openTodos = useMemo(
+    () => [...(openQuery.data ?? [])].sort(sortOpenByPosition),
+    [openQuery.data],
+  );
+  const completedTodos = useMemo(
+    () => [...(completedQuery.data ?? [])].sort(sortCompletedDesc),
+    [completedQuery.data],
+  );
+
+  const invalidateAll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: openKey });
+    void queryClient.invalidateQueries({ queryKey: completedKey });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.todos.list("all") });
+  }, [queryClient, openKey, completedKey]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, request }: { id: string; request: UpdateTodoRequest }) =>
+      apiUpdateTodo(id, request),
+    onSuccess: (todo) => {
+      queryClient.setQueryData<Todo[]>(openKey, (old) => {
+        if (!old) return old;
+        return old.map((t) => (t.id === todo.id ? todo : t));
+      });
+      invalidateAll();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiDeleteTodo(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: openKey });
+      await queryClient.cancelQueries({ queryKey: completedKey });
+      const prevOpen = queryClient.getQueryData<Todo[]>(openKey);
+      const prevCompleted = queryClient.getQueryData<Todo[]>(completedKey);
+      queryClient.setQueryData<Todo[]>(openKey, (old) => removeFromOpenList(old, id));
+      queryClient.setQueryData<Todo[]>(completedKey, (old) => removeFromOpenList(old, id));
+      return { prevOpen, prevCompleted };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prevOpen !== undefined) queryClient.setQueryData(openKey, ctx.prevOpen);
+      if (ctx?.prevCompleted !== undefined) {
+        queryClient.setQueryData(completedKey, ctx.prevCompleted);
+      }
+    },
+    onSettled: () => invalidateAll(),
+  });
+
+  const uncompleteMutation = useMutation({
+    mutationFn: (id: string) => apiUncompleteTodo(id),
+    onSuccess: (todo) => {
+      queryClient.setQueryData<Todo[]>(completedKey, (old) => removeFromOpenList(old, todo.id));
+      queryClient.setQueryData<Todo[]>(openKey, (old) => {
+        if (!old) return [todo];
+        if (old.some((t) => t.id === todo.id)) {
+          return old.map((t) => (t.id === todo.id ? todo : t));
+        }
+        return [...old, todo];
+      });
+      invalidateAll();
+    },
+  });
+
+  const orderTodos = useCallback(
+    async (intendedIds: string[]): Promise<{ retried: boolean }> => {
+      try {
+        await apiOrderTodos({ todoIds: intendedIds });
+        queryClient.setQueryData<Todo[]>(openKey, (old) =>
+          old ? applyLocalOrder(old, intendedIds) : old,
+        );
+        invalidateAll();
+        return { retried: false };
+      } catch (err) {
+        if (!isApiError(err) || err.code !== "conflict") {
+          throw err;
+        }
+        const fresh = await fetchTodos("open");
+        queryClient.setQueryData(openKey, fresh);
+        const retryIds = reapplyOrderIntent(intendedIds, fresh);
+        try {
+          await apiOrderTodos({ todoIds: retryIds });
+          queryClient.setQueryData<Todo[]>(openKey, (old) =>
+            old ? applyLocalOrder(old, retryIds) : applyLocalOrder(fresh, retryIds),
+          );
+          invalidateAll();
+          return { retried: true };
+        } catch (err2) {
+          invalidateAll();
+          throw err2;
+        }
+      }
+    },
+    [queryClient, openKey, invalidateAll],
+  );
+
+  return {
+    openTodos,
+    completedTodos,
+    loading: openQuery.isPending || completedQuery.isPending,
+    error: (openQuery.error as ApiError | null) ?? (completedQuery.error as ApiError | null) ?? null,
+    updating: updateMutation.isPending,
+    deleting: deleteMutation.isPending,
+    ordering: false,
+    update: (id: string, request: UpdateTodoRequest) =>
+      updateMutation.mutateAsync({ id, request }),
+    remove: (id: string) => deleteMutation.mutateAsync(id),
+    uncomplete: (id: string) => uncompleteMutation.mutateAsync(id),
+    orderTodos,
+    refresh: async () => {
+      await Promise.all([openQuery.refetch(), completedQuery.refetch()]);
+    },
   };
 }

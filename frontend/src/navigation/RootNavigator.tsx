@@ -29,6 +29,7 @@ import { MyChallengesScreen } from "../screens/MyChallengesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { WitnessLinksScreen } from "../screens/WitnessLinksScreen";
 import { WitnessViewerScreen } from "../screens/WitnessViewerScreen";
+import { TodosManageScreen } from "../screens/TodosManageScreen";
 import { fetchHabit, archiveHabit } from "../api/habits";
 import { claimChallengeInvite } from "../api/challenges";
 import { queryKeys } from "../api/queryKeys";
@@ -166,6 +167,7 @@ export function RootNavigator() {
   const goToChallengeInvite = useCallback(() => overlay.push("createChallengeInvite"), [overlay]);
   const goToSettings = useCallback(() => overlay.push("settings"), [overlay]);
   const goToWitnessLinks = useCallback(() => overlay.push("witnessLinks"), [overlay]);
+  const goToTodos = useCallback(() => overlay.push("todos"), [overlay]);
   const handleEditHabit = useCallback(async (habitId: string) => {
     try {
       const habit = await fetchHabit(habitId);
@@ -594,6 +596,14 @@ export function RootNavigator() {
     );
   }
 
+  if (overlay.current === "todos") {
+    return (
+      <OverlayShell>
+        <TodosManageScreen onBack={overlay.closeAll} />
+      </OverlayShell>
+    );
+  }
+
   if (overlay.current === "stats" && overlay.params.habitId) {
     return (
       <OverlayShell>
@@ -651,6 +661,7 @@ export function RootNavigator() {
             onCreateHabit={goToHabits}
             onHabitPress={handleHabitPress}
             onNotifications={goToNotifications}
+            onManageTodos={goToTodos}
             unreadNotificationCount={unreadCount.count}
           />
         </ErrorBoundary>

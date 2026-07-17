@@ -17,9 +17,10 @@ import {
 type Props = {
   /** When true, always offer a quiet entry point even if the section is collapsed. */
   allowReveal?: boolean;
+  onManage?: () => void;
 };
 
-export function TodayTodosSection({ allowReveal = true }: Props) {
+export function TodayTodosSection({ allowReveal = true, onManage }: Props) {
   const colors = lightTheme;
   const {
     items,
@@ -72,6 +73,17 @@ export function TodayTodosSection({ allowReveal = true }: Props) {
     <View style={styles.section} testID="today-todos-section">
       <View style={styles.headerRow}>
         <Text style={[styles.header, { color: colors.textSecondary }]}>To-dos</Text>
+        {onManage && (
+          <Pressable
+            onPress={onManage}
+            accessibilityRole="button"
+            accessibilityLabel="Manage to-dos"
+            testID="todos-manage-button"
+            hitSlop={8}
+          >
+            <Text style={[styles.manageText, { color: colors.textTertiary }]}>Manage</Text>
+          </Pressable>
+        )}
       </View>
 
       {items.map((item) => (
@@ -213,6 +225,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.3,
     textTransform: "uppercase",
+  },
+  manageText: {
+    ...typography.caption,
+    fontWeight: "500",
   },
   row: {
     flexDirection: "row",

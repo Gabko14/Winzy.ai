@@ -3,6 +3,8 @@ import {
   classifyTodoForToday,
   weekdayShortLabel,
   useTodosToday,
+  useTodosManage,
+  reapplyOrderIntent,
 } from "../useTodos";
 import type { Todo } from "../../api/todos";
 import { renderHookWithQueryClient } from "../../test/renderWithQueryClient";
@@ -12,10 +14,18 @@ jest.mock("../../api/todos", () => ({
   createTodo: jest.fn(),
   completeTodo: jest.fn(),
   uncompleteTodo: jest.fn(),
+  updateTodo: jest.fn(),
+  deleteTodo: jest.fn(),
+  orderTodos: jest.fn(),
 }));
 
-const { fetchTodos, createTodo, completeTodo, uncompleteTodo } =
-  jest.requireMock("../../api/todos");
+const {
+  fetchTodos,
+  createTodo,
+  completeTodo,
+  uncompleteTodo,
+  orderTodos: apiOrderTodos,
+} = jest.requireMock("../../api/todos");
 
 function makeTodo(overrides: Partial<Todo> = {}): Todo {
   return {
@@ -222,5 +232,86 @@ describe("useTodosToday", () => {
     expect(uncompleteTodo).toHaveBeenCalledWith("t1");
     expect(result.current.items[0].exiting).toBe(false);
     expect(result.current.items[0].todo.completedAt).toBeNull();
+  });
+});
+
+describe("reapplyOrderIntent", () => {
+  it("preserves intent and appends newcomers", () => {
+    expect(
+      reapplyOrderIntent(
+        ["a", "b"],
+        [makeTodo({ id: "b" }), makeTodo({ id: "c" }), makeTodo({ id: "a" })],
+      ),
+    ).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("useTodosManage — order 409 retry", () => {
+  it("refetches and retries once on conflict, then succeeds", async () => {
+    mockToday("2026-07-17");
+    const a = makeTodo({ id: "a", position: 0 });
+    const b = makeTodo({ id: "b", position: 1 });
+    const c = makeTodo({ id: "c", position: 2 });
+
+    fetchTodos.mockImplementation(async (status?: string) => {
+      if (status === "completed") return [];
+      return [a, b];
+    });
+    apiOrderTodos.mockReset();
+
+    const { result } = renderHookWithQueryClient(() => useTodosManage());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    apiOrderTodos
+      .mockRejectedValueOnce({ status: 409, code: "conflict", message: "stale" })
+      .mockResolvedValueOnce(undefined);
+    fetchTodos.mockImplementation(async (status?: string) => {
+      if (status === "completed") return [];
+      return [b, c, a];
+    });
+
+    let outcome: { retried: boolean } | undefined;
+    await act(async () => {
+      outcome = await result.current.orderTodos(["a", "b"]);
+    });
+
+    expect(outcome).toEqual({ retried: true });
+    expect(apiOrderTodos).toHaveBeenCalledTimes(2);
+    expect(apiOrderTodos.mock.calls[1][0]).toEqual({
+      todoIds: ["a", "b", "c"],
+    });
+  });
+
+  it("throws after a second conflict so the UI can surface an error", async () => {
+    mockToday("2026-07-17");
+    fetchTodos.mockImplementation(async (status?: string) => {
+      if (status === "completed") return [];
+      return [makeTodo({ id: "a" }), makeTodo({ id: "b" })];
+    });
+    apiOrderTodos.mockReset();
+
+    const { result } = renderHookWithQueryClient(() => useTodosManage());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    const conflict = { status: 409, code: "conflict" as const, message: "stale" };
+    apiOrderTodos.mockRejectedValue(conflict);
+
+    let caught: unknown;
+    await act(async () => {
+      try {
+        await result.current.orderTodos(["b", "a"]);
+      } catch (err) {
+        caught = err;
+      }
+    });
+
+    expect(caught).toMatchObject({ code: "conflict" });
+    expect(apiOrderTodos).toHaveBeenCalledTimes(2);
   });
 });

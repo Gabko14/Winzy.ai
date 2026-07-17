@@ -26,10 +26,17 @@ type Props = {
   onCreateHabit?: () => void;
   onHabitPress?: (habitId: string) => void;
   onNotifications?: () => void;
+  onManageTodos?: () => void;
   unreadNotificationCount?: number;
 };
 
-export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unreadNotificationCount }: Props) {
+export function TodayScreen({
+  onCreateHabit,
+  onHabitPress,
+  onNotifications,
+  onManageTodos,
+  unreadNotificationCount,
+}: Props) {
   const colors = lightTheme;
   const {
     items,
@@ -109,7 +116,7 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
           />
         </View>
         <View style={styles.todosEmptyPad}>
-          <TodayTodosSection />
+          <TodayTodosSection onManage={onManageTodos} />
         </View>
       </View>
     );
@@ -148,7 +155,7 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
         renderItem={renderHabit}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        ListFooterComponent={<TodayTodosSection />}
+        ListFooterComponent={<TodayTodosSection onManage={onManageTodos} />}
         refreshControl={
           <RefreshControl
             refreshing={loading}
