@@ -74,6 +74,35 @@ describe("NotificationRow", () => {
     });
   });
 
+  it("renders habitcompleted with actor display name and habit name", () => {
+    const notification = makeNotification({
+      type: "habitcompleted",
+      data: { displayName: "Gabo", habitName: "Meditation" },
+    });
+    const onPress = jest.fn();
+
+    const { getByText } = render(
+      <NotificationRow notification={notification} onPress={onPress} />,
+    );
+
+    expect(getByText("Gabo completed Meditation")).toBeTruthy();
+    expect(getByText("Gabo just completed Meditation. Stay inspired!")).toBeTruthy();
+  });
+
+  it("falls back to A friend when habitcompleted has no displayName", () => {
+    const notification = makeNotification({
+      type: "habitcompleted",
+      data: { habitName: "Meditation" },
+    });
+    const onPress = jest.fn();
+
+    const { getByText } = render(
+      <NotificationRow notification={notification} onPress={onPress} />,
+    );
+
+    expect(getByText("A friend completed Meditation")).toBeTruthy();
+  });
+
   it("renders challenge completed with reward in body", () => {
     const notification = makeNotification({
       type: "challengecompleted",

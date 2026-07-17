@@ -100,7 +100,7 @@ func run() error {
 	challengesService := challenges.NewService(pool, registry, exportRegistry, authService, socialService, habitsService, logger, cfg.CORSOrigin)
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
-	notificationsService := notifications.NewService(pool, registry, exportRegistry, socialService, notifications.VAPIDConfig{
+	notificationsService := notifications.NewService(pool, registry, exportRegistry, socialService, authService, notifications.VAPIDConfig{
 		Subject:    cfg.VAPIDSubject,
 		PublicKey:  cfg.VAPIDPublicKey,
 		PrivateKey: cfg.VAPIDPrivateKey,

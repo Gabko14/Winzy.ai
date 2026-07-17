@@ -45,11 +45,23 @@ function getNotificationContent(type: NotificationType, data: Record<string, unk
           : "Great work! You crushed that challenge.",
       };
     }
-    case "habitcompleted":
+    case "habitcompleted": {
+      const rawName = data.displayName;
+      const name =
+        typeof rawName === "string" && rawName.trim() ? rawName.trim() : "A friend";
+      const habitName =
+        typeof data.habitName === "string" ? data.habitName.trim() : "";
+      if (habitName) {
+        return {
+          title: `${name} completed ${habitName}`,
+          body: `${name} just completed ${habitName}. Stay inspired!`,
+        };
+      }
       return {
-        title: "A friend logged a habit",
+        title: `${name} logged a habit`,
         body: "Your friend is keeping their flame alive. Stay inspired!",
       };
+    }
     default:
       return {
         title: "Notification",

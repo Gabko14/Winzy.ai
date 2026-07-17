@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
@@ -22,6 +23,7 @@ type Service struct {
 	registry           *events.Registry
 	logger             *slog.Logger
 	social             *social.Service
+	auth               *auth.Service
 	delivery           *DeliveryService
 	reminders          *ReminderScheduler
 	vapidPublicKey     string
@@ -39,11 +41,14 @@ type VAPIDConfig struct {
 }
 
 // NewService wires handlers, export, and optional web-push delivery.
+// authSvc is used to resolve actor display names for friend-activity copy
+// (one BatchProfiles lookup per HabitCompleted — same pattern as activity/challenges).
 func NewService(
 	pool *pgxpool.Pool,
 	registry *events.Registry,
 	exportReg *export.Registry,
 	socialSvc *social.Service,
+	authSvc *auth.Service,
 	vapid VAPIDConfig,
 	logger *slog.Logger,
 ) *Service {
@@ -52,6 +57,7 @@ func NewService(
 		registry: registry,
 		logger:   logger,
 		social:   socialSvc,
+		auth:     authSvc,
 		now:      func() time.Time { return time.Now().UTC() },
 	}
 
@@ -249,7 +255,10 @@ func (s *Service) handleHabitCompleted(ctx context.Context, event events.HabitCo
 	}
 
 	dateStr := time.Date(event.Date.Year(), event.Date.Month(), event.Date.Day(), 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-	title, body := buildHabitPushText(event)
+	displayName := s.resolveActorDisplayName(ctx, event.UserID, event.DisplayName)
+	enriched := event
+	enriched.DisplayName = displayName
+	title, body := buildHabitPushText(enriched)
 
 	var jobs []deliveryJob
 	filtered := resolved - len(eligible)
@@ -262,6 +271,8 @@ func (s *Service) handleHabitCompleted(ctx context.Context, event events.HabitCo
 			"habitId":     event.HabitID,
 			"date":        dateStr,
 			"consistency": event.Consistency,
+			"displayName": displayName,
+			"habitName":   event.HabitName,
 		})
 		keyCopy := key
 		n, inserted, err := insertNotificationIdempotent(ctx, q, Notification{
@@ -296,6 +307,34 @@ func (s *Service) handleHabitCompleted(ctx context.Context, event events.HabitCo
 
 	s.scheduleDelivery(jobs)
 	return nil
+}
+
+// resolveActorDisplayName prefers an emit-site DisplayName, then auth
+// BatchProfiles (displayName, else username). Empty means deleted/unknown
+// — buildHabitPushText falls back to "A friend".
+func (s *Service) resolveActorDisplayName(ctx context.Context, userID, eventDisplayName string) string {
+	if name := strings.TrimSpace(eventDisplayName); name != "" {
+		return name
+	}
+	if s.auth == nil {
+		return ""
+	}
+	profiles, err := s.auth.BatchProfiles(ctx, []string{userID})
+	if err != nil {
+		s.logger.WarnContext(ctx, "actor profile lookup failed — using generic friend copy",
+			"user_id", userID, "error", err)
+		return ""
+	}
+	if len(profiles) == 0 {
+		return ""
+	}
+	p := profiles[0]
+	if p.DisplayName != nil {
+		if name := strings.TrimSpace(*p.DisplayName); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(p.Username)
 }
 
 func buildHabitPushText(event events.HabitCompleted) (string, string) {

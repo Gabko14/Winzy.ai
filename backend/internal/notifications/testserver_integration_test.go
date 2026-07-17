@@ -63,7 +63,7 @@ func newTestStack(t *testing.T) testStack {
 	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger, "http://localhost:8081")
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
-	notificationsService := notifications.NewService(pool, registry, exportReg, socialService, notifications.VAPIDConfig{}, logger)
+	notificationsService := notifications.NewService(pool, registry, exportReg, socialService, authService, notifications.VAPIDConfig{}, logger)
 	notificationsService.SetSkipVisibilityPoll(true)
 	notificationsHandlers := notifications.NewHandlers(notificationsService)
 

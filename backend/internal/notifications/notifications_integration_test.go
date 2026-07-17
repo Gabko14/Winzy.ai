@@ -164,6 +164,101 @@ func TestHabitCompleted_FanOut_FiltersAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestHabitCompleted_FanOut_ResolvesActorDisplayName(t *testing.T) {
+	t.Parallel()
+	stack := newTestStack(t)
+
+	displayName := "Gabo"
+	actor, err := stack.authService.Register(context.Background(), "gabo@example.com", "gabouser", "Password123!", &displayName)
+	if err != nil {
+		t.Fatalf("Register actor: %v", err)
+	}
+	friend := registerUser(t, stack.authService, "viewer@example.com", "vieweruser")
+	makeFriends(t, stack, actor.User.ID, friend.User.ID)
+
+	habitID := "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	date := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
+	// No DisplayName on the event — handler must resolve via BatchProfiles.
+	if err := events.Emit(context.Background(), stack.registry, events.HabitCompleted{
+		UserID: actor.User.ID, HabitID: habitID, Date: date,
+		Consistency: 0.8, HabitName: "Meditation",
+	}); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+
+	code, body := doRequest(t, stack.srv, testRequest{
+		method: "GET", path: "/notifications",
+		headers: bearerFor(t, stack.tokens, friend.User.ID),
+	})
+	if code != 200 {
+		t.Fatalf("list status=%d body=%v", code, body)
+	}
+	item := findItemByType(body, "habitcompleted")
+	if item == nil {
+		t.Fatalf("no habitcompleted item; body=%v", body)
+	}
+	data, ok := item["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data not object: %T %v", item["data"], item["data"])
+	}
+	if data["displayName"] != "Gabo" {
+		t.Fatalf("displayName=%v want Gabo", data["displayName"])
+	}
+	if data["habitName"] != "Meditation" {
+		t.Fatalf("habitName=%v want Meditation", data["habitName"])
+	}
+	if data["fromUserId"] != actor.User.ID {
+		t.Fatalf("fromUserId=%v", data["fromUserId"])
+	}
+}
+
+func TestHabitCompleted_FanOut_FallsBackToUsernameWithoutDisplayName(t *testing.T) {
+	t.Parallel()
+	stack := newTestStack(t)
+	actor := registerUser(t, stack.authService, "gone@example.com", "goneuser")
+	friend := registerUser(t, stack.authService, "stay@example.com", "stayuser")
+	makeFriends(t, stack, actor.User.ID, friend.User.ID)
+
+	habitID := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	if err := events.Emit(context.Background(), stack.registry, events.HabitCompleted{
+		UserID: actor.User.ID, HabitID: habitID,
+		Date:      time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC),
+		HabitName: "Run",
+	}); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+
+	code, body := doRequest(t, stack.srv, testRequest{
+		method: "GET", path: "/notifications",
+		headers: bearerFor(t, stack.tokens, friend.User.ID),
+	})
+	if code != 200 {
+		t.Fatalf("list status=%d body=%v", code, body)
+	}
+	item := findItemByType(body, "habitcompleted")
+	if item == nil {
+		t.Fatalf("no habitcompleted item; body=%v", body)
+	}
+	data, ok := item["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data not object: %T %v", item["data"], item["data"])
+	}
+	if data["displayName"] != "goneuser" {
+		t.Fatalf("displayName=%v want goneuser (username fallback)", data["displayName"])
+	}
+}
+
+func findItemByType(body map[string]any, typ string) map[string]any {
+	items, _ := body["items"].([]any)
+	for _, it := range items {
+		m, ok := it.(map[string]any)
+		if ok && m["type"] == typ {
+			return m
+		}
+	}
+	return nil
+}
+
 func countType(body map[string]any, typ string) int {
 	items, _ := body["items"].([]any)
 	n := 0

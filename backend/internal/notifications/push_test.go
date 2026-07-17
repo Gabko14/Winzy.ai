@@ -69,6 +69,10 @@ func TestBuildHabitPushText(t *testing.T) {
 	if title != "A friend completed a habit!" {
 		t.Fatalf("default title = %q", title)
 	}
+	title, body = buildHabitPushText(events.HabitCompleted{HabitName: "Meditation"})
+	if title != "A friend completed Meditation!" || body != "A friend just completed Meditation" {
+		t.Fatalf("nameless with habit = %q / %q", title, body)
+	}
 }
 
 func TestWebPushSender_StatusHandling(t *testing.T) {
