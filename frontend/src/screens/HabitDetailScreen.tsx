@@ -31,6 +31,7 @@ import { PromiseSection } from "../components/PromiseSection";
 import { visibilityLabel } from "../components/VisibilityPicker";
 import { isApiError } from "../api";
 import type { FlameLevel, CompletionKind } from "../api/habits";
+import { nextCompletionCycle } from "../utils/completionCycle";
 
 type Props = {
   habitId: string;
@@ -311,24 +312,9 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
   const handleToggleDate = useCallback(
     async (date: string) => {
       const currentKind = completedDates.get(date);
-      const wasCompleted = currentKind != null;
       const hasMinimum = !!habit?.minimumDescription;
-
-      // Cycle: none -> full -> minimum (if has minimum) -> none
-      // For habits without minimum: none -> full -> none
-      let action: "complete" | "uncomplete" | "updateKind";
-      let targetKind: CompletionKind | null;
-
-      if (!wasCompleted) {
-        action = "complete";
-        targetKind = "full";
-      } else if (hasMinimum && currentKind === "full") {
-        action = "updateKind";
-        targetKind = "minimum";
-      } else {
-        action = "uncomplete";
-        targetKind = null;
-      }
+      const cycle = nextCompletionCycle(currentKind, hasMinimum);
+      const targetKind = cycle.action === "uncomplete" ? null : cycle.kind;
 
       // Clear any previous error when starting a new toggle
       setToggleError(null);
@@ -346,10 +332,10 @@ export function HabitDetailScreen({ habitId, onBack, onEdit, onArchive, onViewSt
       });
 
       try {
-        if (action === "uncomplete") {
+        if (cycle.action === "uncomplete") {
           await uncomplete(date);
-        } else if (action === "updateKind") {
-          await updateKind(date, "minimum");
+        } else if (cycle.action === "updateKind") {
+          await updateKind(date, cycle.kind);
         } else {
           await complete(date);
         }

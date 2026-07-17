@@ -12,8 +12,18 @@ const mockUseTodayHabits = {
   completing: new Set<string>(),
   completedCount: 0,
   totalCount: 0,
+  today: "2026-03-09",
+  undo: null as null | {
+    habitId: string;
+    date: string;
+    previousKind: "full" | "minimum" | null;
+    message: string;
+  },
   refresh: jest.fn(),
   toggleCompletion: jest.fn(),
+  toggleDay: jest.fn(),
+  undoLast: jest.fn(),
+  dismissUndo: jest.fn(),
 };
 
 jest.mock("../../hooks/useTodayHabits", () => ({
@@ -40,6 +50,7 @@ function makeHabit(overrides: Partial<TodayHabit> = {}): TodayHabit {
     completedTodayKind: overrides.completedTodayKind ?? null,
     flameLevel: overrides.flameLevel ?? ("none" as FlameLevel),
     consistency: overrides.consistency ?? 0,
+    weekDays: overrides.weekDays ?? [],
   };
 }
 
@@ -51,6 +62,8 @@ beforeEach(() => {
   mockUseTodayHabits.completing = new Set();
   mockUseTodayHabits.completedCount = 0;
   mockUseTodayHabits.totalCount = 0;
+  mockUseTodayHabits.today = "2026-03-09";
+  mockUseTodayHabits.undo = null;
 });
 
 describe("TodayScreen", () => {
@@ -179,6 +192,40 @@ describe("TodayScreen", () => {
 
     fireEvent.press(getByTestId("toggle-h1"));
     expect(mockUseTodayHabits.toggleCompletion).toHaveBeenCalledWith("h1", undefined);
+  });
+
+  it("renders week strip and forwards past-day taps", () => {
+    const items = [
+      makeHabit({ habit: { id: "h1", name: "Run" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.items = items;
+    mockUseTodayHabits.totalCount = 1;
+    mockUseTodayHabits.today = "2026-03-09";
+
+    const { getByTestId } = render(<TodayScreen />);
+
+    expect(getByTestId("week-strip-h1")).toBeTruthy();
+    fireEvent.press(getByTestId("week-cell-h1-2026-03-08"));
+    expect(mockUseTodayHabits.toggleDay).toHaveBeenCalledWith("h1", "2026-03-08");
+  });
+
+  it("shows undo chip and calls undoLast", () => {
+    mockUseTodayHabits.items = [
+      makeHabit({ habit: { id: "h1", name: "Run" } as TodayHabit["habit"] }),
+    ];
+    mockUseTodayHabits.totalCount = 1;
+    mockUseTodayHabits.undo = {
+      habitId: "h1",
+      date: "2026-03-08",
+      previousKind: null,
+      message: "Marked Sunday",
+    };
+
+    const { getByTestId } = render(<TodayScreen />);
+
+    expect(getByTestId("undo-chip")).toBeTruthy();
+    fireEvent.press(getByTestId("undo-chip-action"));
+    expect(mockUseTodayHabits.undoLast).toHaveBeenCalled();
   });
 
   it("shows completed habit with visual feedback", () => {

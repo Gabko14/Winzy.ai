@@ -18,6 +18,7 @@ import {
 import { spacing, radii, typography, lightTheme, shadows } from "../design-system";
 import { useTodayHabits, type TodayHabit } from "../hooks/useTodayHabits";
 import { UnreadBadge } from "../components/notifications";
+import { WeekStrip } from "../components/WeekStrip";
 import type { FlameLevel, CompletionKind } from "../api/habits";
 
 type Props = {
@@ -36,8 +37,13 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
     completing,
     completedCount,
     totalCount,
+    today,
+    undo,
     refresh,
     toggleCompletion,
+    toggleDay,
+    undoLast,
+    dismissUndo,
   } = useTodayHabits();
 
   const handleToggle = useCallback(
@@ -47,16 +53,25 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
     [toggleCompletion],
   );
 
+  const handleToggleDay = useCallback(
+    (habitId: string, date: string) => {
+      toggleDay(habitId, date);
+    },
+    [toggleDay],
+  );
+
   const renderHabit = useCallback(
     ({ item }: { item: TodayHabit }) => (
       <HabitRow
         item={item}
-        completing={completing.has(item.habit.id)}
+        today={today}
+        completing={completing}
         onToggle={handleToggle}
+        onToggleDay={handleToggleDay}
         onPress={onHabitPress}
       />
     ),
-    [completing, handleToggle, onHabitPress],
+    [today, completing, handleToggle, handleToggleDay, onHabitPress],
   );
 
   const keyExtractor = useCallback((item: TodayHabit) => item.habit.id, []);
@@ -138,6 +153,30 @@ export function TodayScreen({ onCreateHabit, onHabitPress, onNotifications, unre
         }
         testID="today-habits-list"
       />
+
+      {undo && (
+        <View style={[styles.undoChip, { backgroundColor: colors.textPrimary }]} testID="undo-chip">
+          <Text style={styles.undoMessage}>{undo.message} — </Text>
+          <Pressable
+            onPress={undoLast}
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
+            testID="undo-chip-action"
+          >
+            <Text style={[styles.undoAction, { color: colors.brandPrimary }]}>Undo</Text>
+          </Pressable>
+          <Pressable
+            onPress={dismissUndo}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss undo"
+            hitSlop={8}
+            style={styles.undoDismiss}
+            testID="undo-chip-dismiss"
+          >
+            <Text style={styles.undoDismissText}>{"\u00D7"}</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -195,16 +234,19 @@ const MINIMUM_COLOR = "#F59E0B";
 
 type HabitRowProps = {
   item: TodayHabit;
-  completing: boolean;
+  today: string;
+  completing: Set<string>;
   onToggle: (habitId: string, kind?: CompletionKind) => void;
+  onToggleDay: (habitId: string, date: string) => void;
   onPress?: (habitId: string) => void;
 };
 
-function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
+function HabitRow({ item, today, completing, onToggle, onToggleDay, onPress }: HabitRowProps) {
   const colors = lightTheme;
-  const { habit, completedToday, completedTodayKind, flameLevel, consistency } = item;
+  const { habit, completedToday, completedTodayKind, flameLevel, consistency, weekDays } = item;
   const hasMinimum = !!habit.minimumDescription;
   const isMinimumCompletion = completedTodayKind === "minimum";
+  const todayBusy = completing.has(`${habit.id}:${today}`);
 
   // Choose checkbox color based on completion kind
   const checkboxColor = completedToday
@@ -227,7 +269,7 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
         {!hasMinimum && (
           <Pressable
             onPress={() => onToggle(habit.id)}
-            disabled={completing}
+            disabled={todayBusy}
             hitSlop={8}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: completedToday }}
@@ -241,7 +283,7 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
                   backgroundColor: checkboxColor,
                   borderColor: checkboxBorder,
                 },
-                completing && styles.checkboxDisabled,
+                todayBusy && styles.checkboxDisabled,
               ]}
             >
               {completedToday && (
@@ -256,8 +298,8 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
           <View style={styles.dualButtons} testID={`dual-buttons-${habit.id}`}>
             <Pressable
               onPress={() => onToggle(habit.id, "full")}
-              disabled={completing}
-              style={[styles.dualButton, { backgroundColor: colors.success, opacity: completing ? 0.5 : 1 }]}
+              disabled={todayBusy}
+              style={[styles.dualButton, { backgroundColor: colors.success, opacity: todayBusy ? 0.5 : 1 }]}
               accessibilityRole="button"
               accessibilityLabel={`Mark ${habit.name} as fully done`}
               testID={`toggle-full-${habit.id}`}
@@ -266,8 +308,8 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
             </Pressable>
             <Pressable
               onPress={() => onToggle(habit.id, "minimum")}
-              disabled={completing}
-              style={[styles.dualButton, { backgroundColor: MINIMUM_COLOR, opacity: completing ? 0.5 : 1 }]}
+              disabled={todayBusy}
+              style={[styles.dualButton, { backgroundColor: MINIMUM_COLOR, opacity: todayBusy ? 0.5 : 1 }]}
               accessibilityRole="button"
               accessibilityLabel={`Log minimum: ${habit.minimumDescription}`}
               testID={`toggle-minimum-${habit.id}`}
@@ -281,7 +323,7 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
         {hasMinimum && completedToday && (
           <Pressable
             onPress={() => onToggle(habit.id)}
-            disabled={completing}
+            disabled={todayBusy}
             hitSlop={8}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: true }}
@@ -295,7 +337,7 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
                   backgroundColor: checkboxColor,
                   borderColor: checkboxBorder,
                 },
-                completing && styles.checkboxDisabled,
+                todayBusy && styles.checkboxDisabled,
               ]}
             >
               <Text style={styles.checkmark}>{isMinimumCompletion ? "~" : "\u2713"}</Text>
@@ -333,6 +375,14 @@ function HabitRow({ item, completing, onToggle, onPress }: HabitRowProps) {
         {/* Flame indicator */}
         <Flame flameLevel={flameLevel as FlameLevel} size="sm" consistency={consistency} />
       </Pressable>
+
+      <WeekStrip
+        habit={habit}
+        weekDays={weekDays}
+        today={today}
+        completing={completing}
+        onToggleDay={onToggleDay}
+      />
     </Card>
   );
 }
@@ -484,5 +534,37 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "600",
     lineHeight: 30,
+  },
+  undoChip: {
+    position: "absolute",
+    left: spacing.xl,
+    right: spacing.xl,
+    bottom: spacing.xl,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.md,
+    zIndex: 20,
+    elevation: 6,
+  },
+  undoMessage: {
+    color: "#FFFFFF",
+    ...typography.bodySmall,
+    flexShrink: 1,
+  },
+  undoAction: {
+    ...typography.bodySmall,
+    fontWeight: "700",
+  },
+  undoDismiss: {
+    marginLeft: "auto",
+    paddingLeft: spacing.sm,
+  },
+  undoDismissText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    lineHeight: 20,
+    opacity: 0.7,
   },
 });

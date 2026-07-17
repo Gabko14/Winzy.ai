@@ -45,15 +45,15 @@ test.describe("Browser back button", () => {
     await registerAndReachToday(page, uniqueUser);
 
     await page.getByTestId("tab-profile").click();
-    await expect(page.getByTestId("profile-screen").or(page.getByText("Profile"))).toBeVisible({
+    await expect(page.getByTestId("profile-screen")).toBeVisible({
       timeout: 10_000,
     });
 
     const settingsBtn = page.getByText("Settings").or(page.getByTestId("settings-press"));
     await settingsBtn.first().click();
-    await expect(
-      page.getByText("Settings").or(page.getByTestId("settings-screen")),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("settings-screen")).toBeVisible({
+      timeout: 10_000,
+    });
 
     await page.goBack();
 

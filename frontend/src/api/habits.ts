@@ -68,3 +68,16 @@ export function updateCompletion(
     completionKind,
   });
 }
+
+export type CompletionsRangeResponse = Schemas["CompletionsRangeResponse"];
+export type HabitCompletionsInRange = Schemas["HabitCompletionsInRange"];
+export type CompletionDayEntry = Schemas["CompletionDayEntry"];
+
+export function fetchCompletionsRange(
+  from: string,
+  to: string,
+): Promise<CompletionsRangeResponse> {
+  return api.get<CompletionsRangeResponse>(
+    `/habits/completions?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
