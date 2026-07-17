@@ -18,6 +18,7 @@ tags:
   - name: challenges
   - name: notifications
   - name: activity
+  - name: todos
 paths:
   /health:
     get:
@@ -254,9 +255,15 @@ paths:
   /habits/completions:
     get:
       tags: [habits]
-      operationId: completionsByDate
+      operationId: completionsInRange
       parameters:
-        - name: date
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
           in: query
           required: true
           schema:
@@ -264,13 +271,15 @@ paths:
             format: date
       responses:
         "200":
-          description: Completions for date
+          description: Completions for inclusive date range (max 31 days)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CompletionsByDateResponse"
+                $ref: "#/components/schemas/CompletionsRangeResponse"
         "400":
           $ref: "#/components/responses/Error"
+        "401":
+          description: Unauthenticated
 
   /habits/{id}:
     parameters:
@@ -1060,6 +1069,125 @@ paths:
         "400":
           $ref: "#/components/responses/Error"
 
+  /todos:
+    get:
+      tags: [todos]
+      operationId: listTodos
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, completed, all]
+            default: open
+      responses:
+        "200":
+          description: Todos list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+        "400":
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [todos]
+      operationId: createTodo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTodoRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        "400":
+          $ref: "#/components/responses/Error"
+
+  /todos/order:
+    put:
+      tags: [todos]
+      operationId: orderTodos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderTodosRequest"
+      responses:
+        "204":
+          description: Reordered
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /todos/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TodoId"
+    put:
+      tags: [todos]
+      operationId: updateTodo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTodoRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          description: Not found
+    delete:
+      tags: [todos]
+      operationId: deleteTodo
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /todos/{id}/complete:
+    parameters:
+      - $ref: "#/components/parameters/TodoId"
+    post:
+      tags: [todos]
+      operationId: completeTodo
+      responses:
+        "200":
+          description: Completed (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        "404":
+          description: Not found
+    delete:
+      tags: [todos]
+      operationId: uncompleteTodo
+      responses:
+        "200":
+          description: Uncompleted (idempotent; appends to end of open list)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        "404":
+          description: Not found
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1069,6 +1197,13 @@ components:
 
   parameters:
     HabitId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TodoId:
       name: id
       in: path
       required: true
@@ -1454,34 +1589,60 @@ components:
           items:
             $ref: "#/components/schemas/CompletionDateEntry"
 
-    CompletionsByDateResponse:
+    CompletionsRangeResponse:
       type: object
-      required: [date, habits]
+      required: [from, to, habits]
       properties:
-        date:
+        from:
+          type: string
+          format: date
+        to:
           type: string
           format: date
         habits:
           type: array
           items:
-            type: object
-            required: [id, name, icon, color, minimumDescription, completed, completionKind]
-            properties:
-              id:
-                type: string
-                format: uuid
-              name:
-                type: string
-              icon:
-                type: ["string", "null"]
-              color:
-                type: ["string", "null"]
-              minimumDescription:
-                type: ["string", "null"]
-              completed:
-                type: boolean
-              completionKind:
-                type: ["string", "null"]
+            $ref: "#/components/schemas/HabitCompletionsInRange"
+
+    HabitCompletionsInRange:
+      type: object
+      required:
+        [id, name, icon, color, frequency, customDays, minimumDescription, days]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        color:
+          type: ["string", "null"]
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: ["array", "null"]
+          items:
+            type: integer
+        minimumDescription:
+          type: ["string", "null"]
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompletionDayEntry"
+
+    CompletionDayEntry:
+      type: object
+      required: [date, completed, completionKind]
+      properties:
+        date:
+          type: string
+          format: date
+        completed:
+          type: boolean
+        completionKind:
+          type: ["string", "null"]
+          enum: [full, minimum, null]
 
     PromiseStatus:
       type: string
@@ -2204,3 +2365,61 @@ components:
           type: ["string", "null"]
         hasMore:
           type: boolean
+
+    Todo:
+      type: object
+      required: [id, title, dueDate, position, completedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+          format: date
+        position:
+          type: integer
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTodoRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+        dueDate:
+          type: string
+          format: date
+
+    UpdateTodoRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+        dueDate:
+          type: ["string", "null"]
+          format: date
+          description: Explicit null clears the due date; omit to leave unchanged
+
+    OrderTodosRequest:
+      type: object
+      required: [todoIds]
+      properties:
+        todoIds:
+          type: array
+          items:
+            type: string
+            format: uuid

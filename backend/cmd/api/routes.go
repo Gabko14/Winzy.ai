@@ -9,6 +9,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/notifications"
 	"github.com/Gabko14/winzy/backend/internal/social"
+	"github.com/Gabko14/winzy/backend/internal/todos"
 )
 
 // routeMux is satisfied by *http.ServeMux and by the recording registrar in
@@ -28,6 +29,7 @@ type apiHandlers struct {
 	challenges    *challenges.Handlers
 	notifications *notifications.Handlers
 	activity      *activity.Handlers
+	todos         *todos.Handlers
 }
 
 // registerAPIRoutes mounts every public HTTP route on mux. Pure registration
@@ -40,4 +42,5 @@ func registerAPIRoutes(mux routeMux, h apiHandlers) {
 	challenges.RegisterRoutes(mux, h.challenges)
 	notifications.RegisterRoutes(mux, h.notifications)
 	activity.RegisterRoutes(mux, h.activity)
+	todos.RegisterRoutes(mux, h.todos)
 }

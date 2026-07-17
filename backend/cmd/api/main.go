@@ -26,6 +26,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/notifications"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 	"github.com/Gabko14/winzy/backend/internal/social"
+	"github.com/Gabko14/winzy/backend/internal/todos"
 	"github.com/Gabko14/winzy/backend/internal/web"
 )
 
@@ -109,6 +110,9 @@ func run() error {
 	activityService := activity.NewService(pool, registry, exportRegistry, authService, socialService, logger)
 	activityHandlers := activity.NewHandlers(activityService)
 
+	todosService := todos.NewService(pool, registry, exportRegistry, logger)
+	todosHandlers := todos.NewHandlers(todosService)
+
 	mux := http.NewServeMux()
 	registerAPIRoutes(mux, apiHandlers{
 		health:        health.Handler(pool),
@@ -118,6 +122,7 @@ func run() error {
 		challenges:    challengesHandlers,
 		notifications: notificationsHandlers,
 		activity:      activityHandlers,
+		todos:         todosHandlers,
 	})
 
 	// Public-route allowlist: auth's own slice, GET /health (every service's

@@ -187,7 +187,7 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        get: operations["completionsByDate"];
+        get: operations["completionsInRange"];
         put?: never;
         post?: never;
         delete?: never;
@@ -751,6 +751,74 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/todos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listTodos"];
+        put?: never;
+        post: operations["createTodo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/todos/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["orderTodos"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/todos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateTodo"];
+        post?: never;
+        delete: operations["deleteTodo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/todos/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["completeTodo"];
+        delete: operations["uncompleteTodo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -916,19 +984,30 @@ export type components = {
             today: string;
             completedDates: components["schemas"]["CompletionDateEntry"][];
         };
-        CompletionsByDateResponse: {
+        CompletionsRangeResponse: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+            habits: components["schemas"]["HabitCompletionsInRange"][];
+        };
+        HabitCompletionsInRange: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            icon: string | null;
+            color: string | null;
+            frequency: components["schemas"]["FrequencyType"];
+            customDays: number[] | null;
+            minimumDescription: string | null;
+            days: components["schemas"]["CompletionDayEntry"][];
+        };
+        CompletionDayEntry: {
             /** Format: date */
             date: string;
-            habits: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-                icon: string | null;
-                color: string | null;
-                minimumDescription: string | null;
-                completed: boolean;
-                completionKind: string | null;
-            }[];
+            completed: boolean;
+            /** @enum {string|null} */
+            completionKind: "full" | "minimum" | null;
         };
         /** @enum {string} */
         PromiseStatus: "active" | "kept" | "endedbelow" | "cancelled";
@@ -1255,6 +1334,36 @@ export type components = {
             nextCursor: string | null;
             hasMore: boolean;
         };
+        Todo: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** Format: date */
+            dueDate: string | null;
+            position: number;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateTodoRequest: {
+            title: string;
+            /** Format: date */
+            dueDate?: string;
+        };
+        UpdateTodoRequest: {
+            title?: string;
+            /**
+             * Format: date
+             * @description Explicit null clears the due date; omit to leave unchanged
+             */
+            dueDate?: string | null;
+        };
+        OrderTodosRequest: {
+            todoIds: string[];
+        };
     };
     responses: {
         /** @description Plain error body */
@@ -1278,6 +1387,7 @@ export type components = {
     };
     parameters: {
         HabitId: string;
+        TodoId: string;
         FriendId: string;
         RequestId: string;
         /** @description IANA timezone id required by owner-facing habit stats/promise endpoints */
@@ -1614,10 +1724,11 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    completionsByDate: {
+    completionsInRange: {
         parameters: {
             query: {
-                date: string;
+                from: string;
+                to: string;
             };
             header?: never;
             path?: never;
@@ -1625,16 +1736,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Completions for date */
+            /** @description Completions for inclusive date range (max 31 days) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CompletionsByDateResponse"];
+                    "application/json": components["schemas"]["CompletionsRangeResponse"];
                 };
             };
             400: components["responses"]["Error"];
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getHabit: {
@@ -2853,6 +2971,197 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    listTodos: {
+        parameters: {
+            query?: {
+                status?: "open" | "completed" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Todos list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Todo"][];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    createTodo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTodoRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Todo"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    orderTodos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderTodosRequest"];
+            };
+        };
+        responses: {
+            /** @description Reordered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    updateTodo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTodoRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Todo"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteTodo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    completeTodo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed (idempotent) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Todo"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    uncompleteTodo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TodoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uncompleted (idempotent; appends to end of open list) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Todo"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }

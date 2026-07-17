@@ -16,6 +16,7 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/habits"
 	"github.com/Gabko14/winzy/backend/internal/notifications"
 	"github.com/Gabko14/winzy/backend/internal/social"
+	"github.com/Gabko14/winzy/backend/internal/todos"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,6 +54,7 @@ func TestOpenAPIRoutes_BidirectionalDrift(t *testing.T) {
 		challenges:    &challenges.Handlers{},
 		notifications: &notifications.Handlers{},
 		activity:      &activity.Handlers{},
+		todos:         &todos.Handlers{},
 	})
 
 	if len(rec.patterns) == 0 {
