@@ -1,5 +1,11 @@
-import { createChallengeInvite, listChallengeInvites, revokeChallengeInvite } from "../challenges";
-import { api } from "../client";
+import {
+  createChallengeInvite,
+  listChallengeInvites,
+  revokeChallengeInvite,
+  viewChallengeInvite,
+  claimChallengeInvite,
+} from "../challenges";
+import { api, apiRequest } from "../client";
 
 jest.mock("../client", () => ({
   api: {
@@ -7,9 +13,11 @@ jest.mock("../client", () => ({
     post: jest.fn(),
     delete: jest.fn(),
   },
+  apiRequest: jest.fn(),
 }));
 
 const mockedApi = api as jest.Mocked<typeof api>;
+const mockedApiRequest = apiRequest as jest.MockedFunction<typeof apiRequest>;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -40,5 +48,26 @@ describe("challenge invite API", () => {
     mockedApi.delete.mockResolvedValue(undefined);
     await revokeChallengeInvite("inv-1");
     expect(mockedApi.delete).toHaveBeenCalledWith("/challenges/invites/inv-1");
+  });
+
+  it("views a public invite without auth", async () => {
+    mockedApiRequest.mockResolvedValue({
+      creatorDisplayName: "Alex",
+      habitName: "Run",
+      habitIcon: null,
+      milestoneType: "consistencyTarget",
+      targetValue: 60,
+      periodDays: 30,
+      rewardDescription: "Coffee",
+      status: "pending",
+    });
+    await viewChallengeInvite("tok");
+    expect(mockedApiRequest).toHaveBeenCalledWith("/challenges/invites/tok", { noAuth: true });
+  });
+
+  it("POSTs claimChallengeInvite", async () => {
+    mockedApi.post.mockResolvedValue({ id: "c1" });
+    await claimChallengeInvite("tok");
+    expect(mockedApi.post).toHaveBeenCalledWith("/challenges/invites/tok/claim");
   });
 });

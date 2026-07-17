@@ -61,6 +61,7 @@ export const queryKeys = {
     list: () => ["challenges"] as const,
     detail: (id: string) => ["challenge", id] as const,
     invites: () => ["challenge-invites"] as const,
+    publicInvite: (token: string) => ["challenge-invite", token] as const,
   },
   notifications: {
     list: (pageSize = 20) => ["notifications", pageSize] as const,

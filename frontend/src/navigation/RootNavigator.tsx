@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, StyleSheet, Platform } from "react-native";
+import { View, Text, StyleSheet, Platform, Pressable } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { AuthNavigator } from "./AuthNavigator";
 import { LoadingState } from "../design-system";
-import { spacing, lightTheme } from "../design-system";
+import { spacing, lightTheme, typography } from "../design-system";
 import { StatusBar } from "expo-status-bar";
 import { OfflineIndicator } from "../components/OfflineIndicator";
 import { ProfileCompletionScreen } from "../screens/ProfileCompletionScreen";
@@ -20,6 +21,7 @@ import { AddFriendScreen } from "../screens/AddFriendScreen";
 import { FriendProfileScreen } from "../screens/FriendProfileScreen";
 import { CreateChallengeScreen } from "../screens/CreateChallengeScreen";
 import { CreateChallengeInviteScreen } from "../screens/CreateChallengeInviteScreen";
+import { ChallengeInviteScreen } from "../screens/ChallengeInviteScreen";
 import { FeedScreen } from "../screens/FeedScreen";
 import { StatsScreen } from "../screens/StatsScreen";
 import { CreateHabitScreen } from "../screens/CreateHabitScreen";
@@ -28,6 +30,8 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { WitnessLinksScreen } from "../screens/WitnessLinksScreen";
 import { WitnessViewerScreen } from "../screens/WitnessViewerScreen";
 import { fetchHabit, archiveHabit } from "../api/habits";
+import { claimChallengeInvite } from "../api/challenges";
+import { queryKeys } from "../api/queryKeys";
 import { useVisibility } from "../hooks/useVisibility";
 import { useUnreadCount } from "../hooks/useUnreadCount";
 import { usePendingFriendCount } from "../hooks/usePendingFriendCount";
@@ -42,6 +46,12 @@ import { useHistorySync } from "./useHistorySync";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { OverlayShell } from "../components/OverlayShell";
 import { subscribeNotificationNavigation } from "../pwa/notificationClicks";
+import {
+  clearPendingChallengeInviteToken,
+  getPendingChallengeInviteToken,
+} from "../utils/challengeInviteToken";
+import { kindMessageForClaimError } from "../hooks/useChallengeInviteClaim";
+import { isApiError } from "../api/types";
 
 /**
  * Extracts the username from a /@username URL path on web.
@@ -76,6 +86,22 @@ function getWitnessToken(): string | null {
 }
 
 /**
+ * Extracts the challenge-invite token from a /ci/{token} URL path on web.
+ * Returns null if the path doesn't match the pattern.
+ * Tokens are 43-char base64url strings (32 bytes), same family as witness tokens.
+ */
+function getChallengeInviteToken(): string | null {
+  if (Platform.OS !== "web") return null;
+  try {
+    const path = window.location.pathname;
+    const match = path.match(/^\/ci\/([A-Za-z0-9_-]{20,64})$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Root navigator that switches between auth and main app.
  *
  * Authenticated shell has a bottom tab bar with:
@@ -87,21 +113,28 @@ function getWitnessToken(): string | null {
 export function RootNavigator() {
   const auth = useAuth();
   const colors = lightTheme;
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabId>("today");
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [exitPublicFlame, setExitPublicFlame] = useState(false);
   const [exitWitnessView, setExitWitnessView] = useState(false);
+  const [exitChallengeInvite, setExitChallengeInvite] = useState(false);
+  const [inviteBanner, setInviteBanner] = useState<string | null>(null);
+  const [claimingPendingInvite, setClaimingPendingInvite] = useState(false);
+  const pendingClaimStartedRef = useRef<string | null>(null);
 
   const applyPopRef = useRef<() => void>(() => {});
   const setActiveTabRef = useRef<(tab: TabId) => void>(() => {});
 
   const witnessTokenForHistory = getWitnessToken();
   const publicUsernameForHistory = getPublicFlameUsername();
+  const challengeInviteTokenForHistory = getChallengeInviteToken();
   const historyEnabled =
     Platform.OS === "web" &&
     auth.status === "authenticated" &&
     !(witnessTokenForHistory && !exitWitnessView) &&
-    !(publicUsernameForHistory && !exitPublicFlame);
+    !(publicUsernameForHistory && !exitPublicFlame) &&
+    !(challengeInviteTokenForHistory && !exitChallengeInvite);
 
   const historySync = useHistorySync({
     enabled: historyEnabled,
@@ -228,6 +261,95 @@ export function RootNavigator() {
     }
   }, []);
 
+  const handleChallengeInviteCta = useCallback(() => {
+    setExitChallengeInvite(true);
+    if (Platform.OS === "web") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
+
+  const handleChallengeInviteAccepted = useCallback((habitName: string) => {
+    clearPendingChallengeInviteToken();
+    setExitChallengeInvite(true);
+    if (Platform.OS === "web") {
+      window.history.replaceState(null, "", "/");
+    }
+    setActiveTab("today");
+    setInviteBanner(`Challenge accepted — "${habitName}" is ready on Today.`);
+  }, []);
+
+  // After signup/login with a persisted invite token, claim once then land on Today.
+  // Wait until profile + welcome are done so the user arrives on the main shell.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onLanding = !!(getChallengeInviteToken() && !exitChallengeInvite);
+    if (onLanding) return;
+    if (!auth.user.displayName && !profileCompleted) return;
+    if (onboarding.loading || !onboarding.hasSeenWelcome) return;
+
+    const token = getPendingChallengeInviteToken();
+    if (!token) return;
+    if (pendingClaimStartedRef.current === token) return;
+    pendingClaimStartedRef.current = token;
+
+    let cancelled = false;
+    setClaimingPendingInvite(true);
+
+    void (async () => {
+      try {
+        await claimChallengeInvite(token);
+        if (cancelled) return;
+        clearPendingChallengeInviteToken();
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.challenges.list() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.challenges.invites() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.friends.list() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.friends.requests() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.friends.pendingCount() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() }),
+        ]);
+        setActiveTab("today");
+        setInviteBanner("Challenge accepted — your new habit is ready on Today.");
+      } catch (err) {
+        if (cancelled) return;
+        clearPendingChallengeInviteToken();
+        setInviteBanner(
+          kindMessageForClaimError(isApiError(err) ? err : null),
+        );
+      } finally {
+        if (!cancelled) setClaimingPendingInvite(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isAuthenticated,
+    exitChallengeInvite,
+    queryClient,
+    profileCompleted,
+    onboarding.loading,
+    onboarding.hasSeenWelcome,
+    auth.status === "authenticated" ? auth.user.displayName : null,
+  ]);
+
+  // Challenge invite landing: /ci/{token} (web only; auth optional)
+  const challengeInviteToken = getChallengeInviteToken();
+  if (challengeInviteToken && !exitChallengeInvite) {
+    return (
+      <>
+        <ChallengeInviteScreen
+          token={challengeInviteToken}
+          isAuthenticated={isAuthenticated}
+          onNavigateToSignUp={handleChallengeInviteCta}
+          onAccepted={handleChallengeInviteAccepted}
+        />
+        <StatusBar style="auto" />
+      </>
+    );
+  }
+
   // Witness viewer: /w/{token} route (web only, no auth required)
   const witnessToken = getWitnessToken();
   if (witnessToken && !exitWitnessView) {
@@ -298,6 +420,15 @@ export function RootNavigator() {
         <WelcomeScreen onContinue={onboarding.markWelcomeSeen} />
         <StatusBar style="auto" />
       </>
+    );
+  }
+
+  if (claimingPendingInvite) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]} testID="claiming-invite-screen">
+        <LoadingState message="Accepting your challenge..." />
+        <StatusBar style="auto" />
+      </View>
     );
   }
 
@@ -530,6 +661,22 @@ export function RootNavigator() {
   return (
     <>
       <OfflineIndicator />
+      {inviteBanner && (
+        <View
+          style={[styles.inviteBanner, { backgroundColor: colors.brandPrimary }]}
+          testID="invite-claim-banner"
+        >
+          <Text style={[styles.inviteBannerText, { color: colors.textInverse }]}>{inviteBanner}</Text>
+          <Pressable
+            onPress={() => setInviteBanner(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            testID="dismiss-invite-banner"
+          >
+            <Text style={[styles.inviteBannerDismiss, { color: colors.textInverse }]}>{"\u2715"}</Text>
+          </Pressable>
+        </View>
+      )}
       <View style={[styles.shell, { backgroundColor: colors.background }]} testID="app-shell">
         <View style={styles.content}>
           {tabContent}
@@ -570,5 +717,20 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  inviteBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+  inviteBannerText: {
+    ...typography.bodySmall,
+    flex: 1,
+  },
+  inviteBannerDismiss: {
+    fontSize: 16,
+    padding: spacing.xs,
   },
 });

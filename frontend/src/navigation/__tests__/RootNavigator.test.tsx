@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
-import { render, fireEvent, act } from "@testing-library/react-native";
+import { fireEvent, act } from "@testing-library/react-native";
+import { renderWithQueryClient as render } from "../../test/renderWithQueryClient";
 import { RootNavigator } from "../RootNavigator";
 
 // Mock all screen components to simple stubs
@@ -311,6 +312,17 @@ const mockArchiveHabit = jest.fn();
 jest.mock("../../api/habits", () => ({
   fetchHabit: (...args: unknown[]) => mockFetchHabit(...args),
   archiveHabit: (...args: unknown[]) => mockArchiveHabit(...args),
+}));
+
+jest.mock("../../api/challenges", () => ({
+  claimChallengeInvite: jest.fn().mockResolvedValue({ id: "c1" }),
+}));
+
+jest.mock("../../screens/ChallengeInviteScreen", () => ({
+  ChallengeInviteScreen: () => {
+    const RN = require("react-native");
+    return <RN.View testID="challenge-invite-screen"><RN.Text>ChallengeInvite</RN.Text></RN.View>;
+  },
 }));
 
 const mockVisibility = {

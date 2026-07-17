@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, apiRequest } from "./client";
 import type { components } from "./generated/schema";
 
 type Schemas = components["schemas"];
@@ -19,6 +19,7 @@ export type CreateChallengeInviteRequest = Schemas["CreateChallengeInviteRequest
 export type CreateChallengeInviteResponse = Schemas["CreateChallengeInviteResponse"];
 export type ChallengeInvite = Schemas["ChallengeInvite"];
 export type ChallengeInvitesResponse = Schemas["ChallengeInvitesResponse"];
+export type PublicChallengeInvite = Schemas["PublicChallengeInvite"];
 
 // --- API functions ---
 
@@ -61,4 +62,15 @@ export function listChallengeInvites(): Promise<ChallengeInvitesResponse> {
 
 export function revokeChallengeInvite(id: string): Promise<void> {
   return api.delete<void>(`/challenges/invites/${id}`);
+}
+
+export function viewChallengeInvite(token: string): Promise<PublicChallengeInvite> {
+  return apiRequest<PublicChallengeInvite>(
+    `/challenges/invites/${encodeURIComponent(token)}`,
+    { noAuth: true },
+  );
+}
+
+export function claimChallengeInvite(token: string): Promise<Challenge> {
+  return api.post<Challenge>(`/challenges/invites/${encodeURIComponent(token)}/claim`);
 }

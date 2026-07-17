@@ -67,6 +67,33 @@ export function injectManifestLink() {
   injectMetaIfMissing("og:title", "Winzy.ai");
   injectMetaIfMissing("og:description", "Track your habits, grow your flame.");
   injectMetaIfMissing("og:site_name", "Winzy.ai");
+
+  // Challenge invite landing: warmer default before the screen loads creator name
+  if (typeof window !== "undefined" && /^\/ci\//.test(window.location.pathname)) {
+    setMetaProperty("og:title", "You've been challenged on Winzy");
+    setMetaProperty(
+      "og:description",
+      "Join Winzy to accept a habit challenge from a friend.",
+    );
+  }
+}
+
+export function updateChallengeInviteOgTags(creatorDisplayName: string | null) {
+  if (Platform.OS !== "web") return;
+  if (typeof document === "undefined") return;
+
+  const name = creatorDisplayName?.trim();
+  const title = name ? `${name} challenges you on Winzy` : "You've been challenged on Winzy";
+  setMetaProperty("og:title", title);
+  setMetaProperty(
+    "og:description",
+    name
+      ? `${name} invited you to build a habit together on Winzy.`
+      : "Join Winzy to accept a habit challenge from a friend.",
+  );
+  if (typeof document !== "undefined") {
+    document.title = title;
+  }
 }
 
 function injectMetaIfMissing(property: string, content: string) {
@@ -77,4 +104,15 @@ function injectMetaIfMissing(property: string, content: string) {
   meta.setAttribute("property", property);
   meta.content = content;
   document.head.appendChild(meta);
+}
+
+function setMetaProperty(property: string, content: string) {
+  if (typeof document === "undefined") return;
+  let meta = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("property", property);
+    document.head.appendChild(meta);
+  }
+  meta.content = content;
 }
