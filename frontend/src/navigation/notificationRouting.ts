@@ -13,6 +13,12 @@ export function resolveNotificationDestination(
   urlOrKey: string | null | undefined,
 ): NotificationDestination {
   const key = normalizeNotifKey(urlOrKey);
+  if (key === "today" || key === "home" || key === "log") {
+    return { kind: "tab", tab: "today" };
+  }
+  if (key === "profile" || key === "flame") {
+    return { kind: "tab", tab: "profile" };
+  }
   if (key === "friends" || key === "friend" || key === "friend_request") {
     return { kind: "tab", tab: "friends" };
   }

@@ -25,6 +25,7 @@ import {
   weekdayLongName,
 } from "../utils/completionCycle";
 import { dayEntryFor, findHabitInRange, patchRangeDay } from "../utils/completionsRangeCache";
+import { syncAppBadgeFromCache } from "../utils/appBadge";
 
 export type TodayHabit = {
   habit: Habit;
@@ -242,6 +243,7 @@ export function useTodayHabits() {
         queryKey: queryKeys.habits.stats(vars.habitId, vars.timezone),
       });
       void client.invalidateQueries({ queryKey: rangeKey });
+      void syncAppBadgeFromCache(client, today);
     },
   });
 

@@ -35,6 +35,15 @@ describe("resolveNotificationDestination", () => {
     expect(resolveNotificationDestination("/activity")).toEqual({ kind: "tab", tab: "feed" });
   });
 
+  it("maps today / profile shortcut keys", () => {
+    expect(resolveNotificationDestination("today")).toEqual({ kind: "tab", tab: "today" });
+    expect(resolveNotificationDestination("/profile")).toEqual({
+      kind: "tab",
+      tab: "profile",
+    });
+    expect(resolveNotificationDestination("flame")).toEqual({ kind: "tab", tab: "profile" });
+  });
+
   it("falls back to Feed for unknown or missing targets", () => {
     expect(resolveNotificationDestination(undefined)).toEqual({ kind: "tab", tab: "feed" });
     expect(resolveNotificationDestination(null)).toEqual({ kind: "tab", tab: "feed" });
@@ -80,6 +89,14 @@ describe("consumeNotifSearchParam", () => {
     );
     expect(dest).toEqual({ kind: "overlay", overlay: "challenges" });
     expect(replaced).toEqual(["/"]);
+  });
+
+  it("consumes today/profile shortcut params", () => {
+    expect(consumeNotifSearchParam("?notif=today")).toEqual({ kind: "tab", tab: "today" });
+    expect(consumeNotifSearchParam("?notif=profile")).toEqual({
+      kind: "tab",
+      tab: "profile",
+    });
   });
 
   it("unknown notif values fall back to feed without crashing", () => {

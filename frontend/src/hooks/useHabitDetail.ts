@@ -10,6 +10,8 @@ import {
 } from "../api/habits";
 import { queryKeys } from "../api/queryKeys";
 import type { ApiError } from "../api/types";
+import { syncAppBadgeFromCache } from "../utils/appBadge";
+import { localTodayISO, weekStripRange } from "../utils/completionCycle";
 
 function getUserTimezone(): string {
   try {
@@ -63,11 +65,15 @@ export function useToggleCompletion(
   const queryClient = useQueryClient();
 
   const invalidateRelated = useCallback(async () => {
+    const today = localTodayISO();
+    const { from, to } = weekStripRange(today);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId, timezone) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.habits.detail(habitId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.habits.list() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.completions.range(from, to) }),
     ]);
+    await syncAppBadgeFromCache(queryClient, today);
   }, [queryClient, habitId, timezone]);
 
   const completeMutation = useMutation({

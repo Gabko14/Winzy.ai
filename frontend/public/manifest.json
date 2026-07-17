@@ -30,5 +30,33 @@
       "sizes": "1024x1024",
       "type": "image/png"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log today",
+      "short_name": "Today",
+      "description": "Open today's habits",
+      "url": "/?notif=today",
+      "icons": [
+        {
+          "src": "/assets/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "My flame",
+      "short_name": "Flame",
+      "description": "Open your profile and flame",
+      "url": "/?notif=profile",
+      "icons": [
+        {
+          "src": "/assets/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }

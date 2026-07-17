@@ -110,8 +110,38 @@ self.addEventListener("push", (event) => {
     renotify: true,
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      updateAppBadgeFromPush(payload),
+    ]),
+  );
 });
+
+/**
+ * Optional badgeCount on the push payload updates the app-icon badge.
+ * If missing, leave the badge alone (never guess from SW).
+ */
+function updateAppBadgeFromPush(payload) {
+  if (typeof payload.badgeCount !== "number" || !Number.isFinite(payload.badgeCount)) {
+    return Promise.resolve();
+  }
+  const n = Math.max(0, Math.floor(payload.badgeCount));
+  try {
+    if (n === 0) {
+      if (typeof self.navigator !== "undefined" && typeof self.navigator.clearAppBadge === "function") {
+        return self.navigator.clearAppBadge().catch(() => undefined);
+      }
+      return Promise.resolve();
+    }
+    if (typeof self.navigator !== "undefined" && typeof self.navigator.setAppBadge === "function") {
+      return self.navigator.setAppBadge(n).catch(() => undefined);
+    }
+  } catch {
+    // degrade silently
+  }
+  return Promise.resolve();
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -122,6 +152,8 @@ self.addEventListener("notificationclick", (event) => {
     try {
       const parsed = new URL(url, self.location.origin);
       const key = parsed.pathname.replace(/^\//, "").toLowerCase();
+      if (key === "today" || key === "home" || key === "") return "today";
+      if (key === "profile" || key === "flame") return "profile";
       if (key === "friends" || key === "friend") return "friends";
       if (key === "challenges" || key === "challenge") return "challenges";
       if (key === "feed" || key === "activity") return "feed";

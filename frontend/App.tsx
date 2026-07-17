@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "./src/hooks/useAuth";
 import { useQueryFocusManager } from "./src/hooks/useQueryFocusManager";
 import { useReminderTimezoneSync } from "./src/hooks/useReminderTimezoneSync";
+import { useAppBadgeSync } from "./src/hooks/useAppBadgeSync";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { registerServiceWorker, injectManifestLink } from "./src/pwa/register-sw";
 import { startNotificationClickCapture } from "./src/pwa/notificationClicks";
@@ -26,7 +27,9 @@ function makeQueryClient() {
 function AppProviders({ children }: { children: React.ReactNode }) {
   useQueryFocusManager();
   const auth = useAuth();
-  useReminderTimezoneSync(auth.status === "authenticated");
+  const authenticated = auth.status === "authenticated";
+  useReminderTimezoneSync(authenticated);
+  useAppBadgeSync(authenticated);
   return <>{children}</>;
 }
 

@@ -130,4 +130,20 @@ describe("TodayTodosSection", () => {
     fireEvent.press(getByTestId("todo-toggle-t1"));
     expect(mockToggle).toHaveBeenCalledWith("t1");
   });
+
+  it("shows manage affordance when onManage is provided", () => {
+    const onManage = jest.fn();
+    mockState.visible = true;
+    mockState.items = [
+      {
+        todo: makeTodo({ id: "t1", title: "One" }),
+        bucket: "undated",
+        exiting: false,
+      },
+    ];
+
+    const { getByTestId } = render(<TodayTodosSection onManage={onManage} />);
+    fireEvent.press(getByTestId("todos-manage-button"));
+    expect(onManage).toHaveBeenCalled();
+  });
 });
