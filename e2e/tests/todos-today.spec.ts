@@ -41,7 +41,7 @@ test.describe("Todos on Today", () => {
       await page.getByTestId("todos-reveal-button").click();
       await expect(page.getByTestId("today-todos-section")).toBeVisible({ timeout: 5_000 });
       const input = page.getByTestId("todos-quick-add");
-      await input.fill(title);
+      await input.pressSequentially(title);
       await input.press("Enter");
       await expect(page.getByText(title)).toBeVisible({ timeout: 10_000 });
     });
