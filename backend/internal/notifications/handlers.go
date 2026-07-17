@@ -63,9 +63,11 @@ func requireDecodedBody[T any](w http.ResponseWriter, r *http.Request) (T, bool)
 }
 
 type updateSettingsDTO struct {
-	HabitReminders   *bool `json:"habitReminders"`
-	FriendActivity   *bool `json:"friendActivity"`
-	ChallengeUpdates *bool `json:"challengeUpdates"`
+	HabitReminders   *bool            `json:"habitReminders"`
+	FriendActivity   *bool            `json:"friendActivity"`
+	ChallengeUpdates *bool            `json:"challengeUpdates"`
+	ReminderTime     *string          `json:"reminderTime"`
+	ReminderTimezone optionalTimezone `json:"reminderTimezone"`
 }
 
 type registerDeviceDTO struct {
@@ -130,6 +132,17 @@ func (h *Handlers) UnreadCount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, unreadCountResponse{UnreadCount: n})
 }
 
+// GetSettings handles GET /notifications/settings.
+func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	resp, err := h.service.GetSettings(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Internal server error.")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // UpdateSettings handles PUT /notifications/settings.
 func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
@@ -138,9 +151,18 @@ func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := h.service.UpdateSettings(r.Context(), userID, UpdateSettingsRequest{
-		HabitReminders: dto.HabitReminders, FriendActivity: dto.FriendActivity, ChallengeUpdates: dto.ChallengeUpdates,
+		HabitReminders:   dto.HabitReminders,
+		FriendActivity:   dto.FriendActivity,
+		ChallengeUpdates: dto.ChallengeUpdates,
+		ReminderTime:     dto.ReminderTime,
+		ReminderTimezone: dto.ReminderTimezone,
 	})
 	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "reminderTime") || strings.Contains(msg, "reminderTimezone") {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "Internal server error.")
 		return
 	}

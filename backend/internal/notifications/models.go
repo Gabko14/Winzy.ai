@@ -16,6 +16,7 @@ const (
 	TypeFriendRequestAccepted NotificationType = "FriendRequestAccepted"
 	TypeChallengeCreated      NotificationType = "ChallengeCreated"
 	TypeChallengeCompleted    NotificationType = "ChallengeCompleted"
+	TypeHabitReminder         NotificationType = "HabitReminder"
 )
 
 const (
@@ -37,12 +38,16 @@ type Notification struct {
 }
 
 // Settings is per-user notification preference flags (defaults all true).
+// ReminderTime/ReminderTimezone drive the daily habit-reminder ticker only —
+// they are never used for completion or stats timezone math.
 type Settings struct {
 	ID               string
 	UserID           string
 	HabitReminders   bool
 	FriendActivity   bool
 	ChallengeUpdates bool
+	ReminderTime     time.Time // wall-clock HH:MM (date component ignored)
+	ReminderTimezone *string   // IANA name; nil = never learned, send nothing
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -63,6 +68,39 @@ type UpdateSettingsRequest struct {
 	HabitReminders   *bool
 	FriendActivity   *bool
 	ChallengeUpdates *bool
+	ReminderTime     *string
+	ReminderTimezone optionalTimezone
+}
+
+// optionalTimezone distinguishes omitted vs explicit null (clear) vs value.
+type optionalTimezone struct {
+	set   bool
+	value *string
+}
+
+func (o *optionalTimezone) UnmarshalJSON(data []byte) error {
+	o.set = true
+	if string(data) == "null" {
+		o.value = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	o.value = &s
+	return nil
+}
+
+// ReminderTimezoneValue marks reminderTimezone as present with tz.
+func ReminderTimezoneValue(tz string) optionalTimezone {
+	t := tz
+	return optionalTimezone{set: true, value: &t}
+}
+
+// ReminderTimezoneClear marks reminderTimezone as an explicit JSON null.
+func ReminderTimezoneClear() optionalTimezone {
+	return optionalTimezone{set: true, value: nil}
 }
 
 // RegisterDeviceRequest is the POST /notifications/devices body.
@@ -93,9 +131,39 @@ type listNotificationsResponse struct {
 }
 
 type settingsResponse struct {
-	HabitReminders   bool `json:"habitReminders"`
-	FriendActivity   bool `json:"friendActivity"`
-	ChallengeUpdates bool `json:"challengeUpdates"`
+	HabitReminders   bool    `json:"habitReminders"`
+	FriendActivity   bool    `json:"friendActivity"`
+	ChallengeUpdates bool    `json:"challengeUpdates"`
+	ReminderTime     string  `json:"reminderTime"`
+	ReminderTimezone *string `json:"reminderTimezone"`
+}
+
+func defaultReminderTime() time.Time {
+	return time.Date(0, 1, 1, 19, 0, 0, 0, time.UTC)
+}
+
+func formatReminderTime(t time.Time) string {
+	return t.Format("15:04")
+}
+
+func toSettingsResponse(s Settings) settingsResponse {
+	return settingsResponse{
+		HabitReminders:   s.HabitReminders,
+		FriendActivity:   s.FriendActivity,
+		ChallengeUpdates: s.ChallengeUpdates,
+		ReminderTime:     formatReminderTime(s.ReminderTime),
+		ReminderTimezone: s.ReminderTimezone,
+	}
+}
+
+func defaultSettingsResponse() settingsResponse {
+	return settingsResponse{
+		HabitReminders:   true,
+		FriendActivity:   true,
+		ChallengeUpdates: true,
+		ReminderTime:     "19:00",
+		ReminderTimezone: nil,
+	}
 }
 
 type unreadCountResponse struct {

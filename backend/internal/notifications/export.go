@@ -28,17 +28,9 @@ func (s *Service) exportSection(ctx context.Context, userID string) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	settingsResp := settingsResponse{
-		HabitReminders:   true,
-		FriendActivity:   true,
-		ChallengeUpdates: true,
-	}
+	settingsResp := defaultSettingsResponse()
 	if found {
-		settingsResp = settingsResponse{
-			HabitReminders:   settings.HabitReminders,
-			FriendActivity:   settings.FriendActivity,
-			ChallengeUpdates: settings.ChallengeUpdates,
-		}
+		settingsResp = toSettingsResponse(settings)
 	}
 
 	items, err := listNotificationsForExport(ctx, s.pool, userID)

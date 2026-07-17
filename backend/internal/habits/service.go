@@ -701,6 +701,31 @@ func (s *Service) ConsistencyForDateRange(ctx context.Context, habitID string, f
 	return ConsistencyForRange(habit, dates, fromDay, toDay, loc), true, nil
 }
 
+// HasUncompletedDueHabits reports whether userID has at least one active
+// habit due on localDate that is not yet completed that day — the reminder
+// scheduler's usefulness check (winzy.ai-wyw6.1). localDate is a civil date
+// (Y/M/D); timezone math belongs to the caller. Tx-free read.
+func (s *Service) HasUncompletedDueHabits(ctx context.Context, userID string, localDate time.Time) (bool, error) {
+	day := time.Date(localDate.Year(), localDate.Month(), localDate.Day(), 0, 0, 0, 0, time.UTC)
+	rows, err := completionsInRange(ctx, s.pool, userID, day, day)
+	if err != nil {
+		return false, err
+	}
+	target := civilFromTime(day)
+	for _, r := range rows {
+		if civilFromTime(r.Habit.CreatedAt).after(target) {
+			continue
+		}
+		if !isDueOnLocalDate(r.Habit.Frequency, r.Habit.CustomDays, target) {
+			continue
+		}
+		if !r.Completed {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // resolveTimezone parses tz as an IANA timezone identifier, matching
 // CompletionEndpoints.cs's TimeZoneInfo.FindSystemTimeZoneById error
 // handling (empty or unrecognized -> 400).

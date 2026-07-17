@@ -325,6 +325,28 @@ func isApplicableDay(freq Frequency, customDays []int, date civilDate) bool {
 	}
 }
 
+// isDueOnLocalDate reports whether a habit should be logged on date for the
+// reminder usefulness check (winzy.ai-wyw6.1): Daily every day; Weekly and
+// Custom when the local weekday is in customDays. Weekly uses the same
+// weekday membership as Custom here (product: "frequency/customDays vs
+// their local weekday") — distinct from consistency's week-level scoring.
+func isDueOnLocalDate(freq Frequency, customDays []int, date civilDate) bool {
+	switch freq {
+	case FrequencyDaily:
+		return true
+	case FrequencyCustom, FrequencyWeekly:
+		wd := int(date.weekday())
+		for _, d := range customDays {
+			if d == wd {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
 // GetFlameLevel maps a consistency percentage to a FlameLevel with the C#'s
 // asymmetric hysteresis ("grows quickly, shrinks slowly"), an exact port of
 // ConsistencyCalculator.GetFlameLevel. previous is nil at every current call

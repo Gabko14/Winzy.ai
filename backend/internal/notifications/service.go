@@ -23,6 +23,7 @@ type Service struct {
 	logger             *slog.Logger
 	social             *social.Service
 	delivery           *DeliveryService
+	reminders          *ReminderScheduler
 	vapidPublicKey     string
 	now                func() time.Time
 	skipVisibilityPoll bool // tests that insert via pool skip the commit-visibility poll
@@ -75,6 +76,7 @@ func NewService(
 		logger.Warn("VAPID keys not configured — web push delivery disabled (tokens kept)")
 	}
 	s.delivery = newDeliveryService(pool, sender, enabled, logger)
+	s.reminders = newReminderScheduler(pool, logger, s.now, s.scheduleDelivery)
 
 	events.Register(registry, s.handleHabitCompleted)
 	events.Register(registry, s.handleFriendRequestSent)
@@ -87,7 +89,30 @@ func NewService(
 }
 
 // SetClock overrides the clock (tests).
-func (s *Service) SetClock(now func() time.Time) { s.now = now }
+func (s *Service) SetClock(now func() time.Time) {
+	s.now = now
+	if s.reminders != nil {
+		s.reminders.SetClock(now)
+	}
+}
+
+// SetDueChecker wires the habit usefulness check for the reminder ticker.
+func (s *Service) SetDueChecker(due DueChecker) {
+	if s.reminders != nil {
+		s.reminders.SetDueChecker(due)
+	}
+}
+
+// StartReminderScheduler runs the minute ticker until ctx is cancelled.
+func (s *Service) StartReminderScheduler(ctx context.Context) {
+	if s.reminders == nil {
+		return
+	}
+	go s.reminders.Run(ctx)
+}
+
+// ReminderScheduler exposes the ticker for tests.
+func (s *Service) ReminderScheduler() *ReminderScheduler { return s.reminders }
 
 // SetPushSender replaces the push sender (tests with fake HTTP push server).
 func (s *Service) SetPushSender(sender PushSender) {
@@ -145,17 +170,28 @@ func (s *Service) UnreadCount(ctx context.Context, userID string) (int, error) {
 	return unreadCount(ctx, s.pool, userID)
 }
 
-// UpdateSettings upserts preference flags.
+// GetSettings returns preference flags, or defaults when no row exists.
+func (s *Service) GetSettings(ctx context.Context, userID string) (settingsResponse, error) {
+	srow, found, err := getSettings(ctx, s.pool, userID)
+	if err != nil {
+		return settingsResponse{}, err
+	}
+	if !found {
+		return defaultSettingsResponse(), nil
+	}
+	return toSettingsResponse(srow), nil
+}
+
+// UpdateSettings upserts preference flags and reminder schedule fields.
 func (s *Service) UpdateSettings(ctx context.Context, userID string, req UpdateSettingsRequest) (settingsResponse, error) {
+	if err := validateSettingsUpdate(req); err != nil {
+		return settingsResponse{}, err
+	}
 	srow, err := upsertSettings(ctx, s.pool, userID, req, s.now())
 	if err != nil {
 		return settingsResponse{}, err
 	}
-	return settingsResponse{
-		HabitReminders:   srow.HabitReminders,
-		FriendActivity:   srow.FriendActivity,
-		ChallengeUpdates: srow.ChallengeUpdates,
-	}, nil
+	return toSettingsResponse(srow), nil
 }
 
 // RegisterDevice upserts a device token by (userId, deviceId).

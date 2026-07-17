@@ -18,6 +18,7 @@ func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("PUT /notifications/{id}/read", h.MarkRead)
 	mux.HandleFunc("PUT /notifications/read-all", h.MarkAllRead)
 	mux.HandleFunc("GET /notifications/unread-count", h.UnreadCount)
+	mux.HandleFunc("GET /notifications/settings", h.GetSettings)
 	mux.HandleFunc("PUT /notifications/settings", h.UpdateSettings)
 	mux.HandleFunc("POST /notifications/devices", h.RegisterDevice)
 	mux.HandleFunc("DELETE /notifications/devices", h.UnregisterDevice)

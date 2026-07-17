@@ -142,10 +142,12 @@ func getSettings(ctx context.Context, db querier, userID string) (Settings, bool
 	var s Settings
 	err := db.QueryRow(ctx, `
 		SELECT id::text, created_at, updated_at, user_id::text,
-			habit_reminders, friend_activity, challenge_updates
+			habit_reminders, friend_activity, challenge_updates,
+			reminder_time, reminder_timezone
 		FROM notification_settings WHERE user_id = $1::uuid`, userID).Scan(
 		&s.ID, &s.CreatedAt, &s.UpdatedAt, &s.UserID,
 		&s.HabitReminders, &s.FriendActivity, &s.ChallengeUpdates,
+		&s.ReminderTime, &s.ReminderTimezone,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, false, nil
@@ -167,6 +169,7 @@ func upsertSettings(ctx context.Context, db querier, userID string, req UpdateSe
 			HabitReminders:   true,
 			FriendActivity:   true,
 			ChallengeUpdates: true,
+			ReminderTime:     defaultReminderTime(),
 		}
 	}
 	if req.HabitReminders != nil {
@@ -178,13 +181,34 @@ func upsertSettings(ctx context.Context, db querier, userID string, req UpdateSe
 	if req.ChallengeUpdates != nil {
 		s.ChallengeUpdates = *req.ChallengeUpdates
 	}
+	if req.ReminderTime != nil {
+		t, err := parseReminderTime(*req.ReminderTime)
+		if err != nil {
+			return Settings{}, err
+		}
+		s.ReminderTime = t
+	}
+	if req.ReminderTimezone.set {
+		if req.ReminderTimezone.value == nil {
+			s.ReminderTimezone = nil
+		} else {
+			tz := strings.TrimSpace(*req.ReminderTimezone.value)
+			if tz == "" {
+				s.ReminderTimezone = nil
+			} else {
+				s.ReminderTimezone = &tz
+			}
+		}
+	}
 
 	if found {
 		_, err = db.Exec(ctx, `
 			UPDATE notification_settings
-			SET habit_reminders = $2, friend_activity = $3, challenge_updates = $4, updated_at = $5
+			SET habit_reminders = $2, friend_activity = $3, challenge_updates = $4,
+				reminder_time = $5, reminder_timezone = $6, updated_at = $7
 			WHERE user_id = $1::uuid`,
-			userID, s.HabitReminders, s.FriendActivity, s.ChallengeUpdates, now)
+			userID, s.HabitReminders, s.FriendActivity, s.ChallengeUpdates,
+			s.ReminderTime, s.ReminderTimezone, now)
 		if err != nil {
 			return Settings{}, fmt.Errorf("notifications: updating settings: %w", err)
 		}
@@ -193,17 +217,53 @@ func upsertSettings(ctx context.Context, db querier, userID string, req UpdateSe
 	}
 
 	err = db.QueryRow(ctx, `
-		INSERT INTO notification_settings (user_id, habit_reminders, friend_activity, challenge_updates)
-		VALUES ($1::uuid, $2, $3, $4)
+		INSERT INTO notification_settings (
+			user_id, habit_reminders, friend_activity, challenge_updates,
+			reminder_time, reminder_timezone
+		)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6)
 		RETURNING id::text, created_at, updated_at, user_id::text,
-			habit_reminders, friend_activity, challenge_updates`,
+			habit_reminders, friend_activity, challenge_updates,
+			reminder_time, reminder_timezone`,
 		userID, s.HabitReminders, s.FriendActivity, s.ChallengeUpdates,
+		s.ReminderTime, s.ReminderTimezone,
 	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt, &s.UserID,
-		&s.HabitReminders, &s.FriendActivity, &s.ChallengeUpdates)
+		&s.HabitReminders, &s.FriendActivity, &s.ChallengeUpdates,
+		&s.ReminderTime, &s.ReminderTimezone)
 	if err != nil {
 		return Settings{}, fmt.Errorf("notifications: inserting settings: %w", err)
 	}
 	return s, nil
+}
+
+type reminderCandidate struct {
+	UserID           string
+	ReminderTime     time.Time
+	ReminderTimezone string
+}
+
+func listReminderCandidates(ctx context.Context, db querier) ([]reminderCandidate, error) {
+	rows, err := db.Query(ctx, `
+		SELECT user_id::text, reminder_time, reminder_timezone
+		FROM notification_settings
+		WHERE habit_reminders = true AND reminder_timezone IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("notifications: listing reminder candidates: %w", err)
+	}
+	defer rows.Close()
+
+	var out []reminderCandidate
+	for rows.Next() {
+		var c reminderCandidate
+		if err := rows.Scan(&c.UserID, &c.ReminderTime, &c.ReminderTimezone); err != nil {
+			return nil, fmt.Errorf("notifications: scanning reminder candidate: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("notifications: iterating reminder candidates: %w", err)
+	}
+	return out, nil
 }
 
 func settingsMapForUsers(ctx context.Context, db querier, userIDs []string) (map[string]Settings, error) {
