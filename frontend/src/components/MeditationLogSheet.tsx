@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { Button, spacing, radii, typography, lightTheme } from "../design-system";
 import { useTodayHabits } from "../hooks/useTodayHabits";
 import { suggestHabitId } from "../utils/meditationLogSuggest";
@@ -11,9 +18,11 @@ import {
 type Props = {
   onLogged?: () => void;
   onSkip?: () => void;
+  /** Styles the root container — nothing renders (not even this) when there are no habits. */
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
-export function MeditationLogSheet({ onLogged, onSkip }: Props) {
+export function MeditationLogSheet({ onLogged, onSkip, containerStyle }: Props) {
   const colors = lightTheme;
   const { items, loading, toggleCompletion, completing, today } = useTodayHabits();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,7 +79,7 @@ export function MeditationLogSheet({ onLogged, onSkip }: Props) {
   }
 
   return (
-    <View style={styles.sheet} testID="meditation-log-sheet">
+    <View style={[styles.sheet, containerStyle]} testID="meditation-log-sheet">
       <Text style={[styles.title, { color: colors.textPrimary }]}>Log to habit</Text>
       <Text style={[styles.hint, { color: colors.textSecondary }]}>
         Optional — only if you want this session on your flame.

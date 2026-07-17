@@ -3,16 +3,29 @@ import { Text as RNText } from "react-native";
 import { render, fireEvent, act } from "@testing-library/react-native";
 import { MeditationScreen, _resetMeditationStorage } from "../MeditationScreen";
 
+const mockPlay = jest.fn();
+const mockSeekTo = jest.fn();
+
 jest.mock("expo-audio", () => ({
   useAudioPlayer: () => ({
-    play: jest.fn(),
-    seekTo: jest.fn(),
+    play: mockPlay,
+    seekTo: mockSeekTo,
   }),
 }));
 
 jest.mock("expo-keep-awake", () => ({
   useKeepAwake: jest.fn(),
 }));
+
+jest.mock("expo-linear-gradient", () => {
+  const { View } = jest.requireActual<typeof import("react-native")>("react-native");
+  return { LinearGradient: View };
+});
+
+jest.mock("react-native-svg", () => {
+  const { View } = jest.requireActual<typeof import("react-native")>("react-native");
+  return { __esModule: true, default: View, Svg: View, Circle: View };
+});
 
 jest.mock("../../assets/sounds/meditation-chime.wav", () => 1, { virtual: true });
 
@@ -30,6 +43,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
   _resetMeditationStorage();
+  mockPlay.mockClear();
+  mockSeekTo.mockClear();
 });
 
 afterEach(() => {
@@ -67,7 +82,23 @@ describe("MeditationScreen", () => {
     expect(getByTestId("meditation-duration-value")).toHaveTextContent("120 min");
   });
 
-  it("pause and resume preserve remaining via absolute time", () => {
+  it("chimes at start and again at completion", () => {
+    const { getByTestId, getByLabelText } = render(<MeditationScreen onClose={jest.fn()} />);
+
+    fireEvent.press(getByTestId("meditation-preset-5"));
+    expect(mockPlay).not.toHaveBeenCalled();
+
+    fireEvent.press(getByLabelText("Begin meditation"));
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.advanceTimersByTime(5 * 60_000 + 1000);
+    });
+    expect(getByTestId("meditation-completion")).toBeTruthy();
+    expect(mockPlay).toHaveBeenCalledTimes(2);
+  });
+
+  it("tap ring to pause, resume preserves remaining via absolute time", () => {
     const { getByTestId, getByLabelText, getByText } = render(
       <MeditationScreen onClose={jest.fn()} />,
     );
@@ -87,6 +118,19 @@ describe("MeditationScreen", () => {
     fireEvent.press(getByLabelText("Resume session"));
     // ~4:00 remaining (ceil)
     expect(getByTestId("meditation-clock").props.children).toMatch(/^4:/);
+  });
+
+  it("tap ring while paused also resumes", () => {
+    const { getByTestId, getByLabelText, queryByText } = render(
+      <MeditationScreen onClose={jest.fn()} />,
+    );
+
+    fireEvent.press(getByLabelText("Begin meditation"));
+    fireEvent.press(getByTestId("meditation-ring"));
+    expect(queryByText("Paused")).toBeTruthy();
+
+    fireEvent.press(getByTestId("meditation-ring"));
+    expect(queryByText("Paused")).toBeNull();
   });
 
   it("reaches completion when endsAt passes (hidden-through-end)", () => {
@@ -113,6 +157,25 @@ describe("MeditationScreen", () => {
     fireEvent.press(getByTestId("meditation-close"));
     expect(onClose).not.toHaveBeenCalled();
     expect(getByText("End session?")).toBeTruthy();
+
+    fireEvent.press(getByLabelText("Keep going"));
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.press(getByTestId("meditation-close"));
+    fireEvent.press(getByLabelText("Confirm end session"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("paused controls offer end session with confirm", () => {
+    const onClose = jest.fn();
+    const { getByTestId, getByLabelText } = render(<MeditationScreen onClose={onClose} />);
+
+    fireEvent.press(getByLabelText("Begin meditation"));
+    fireEvent.press(getByTestId("meditation-ring"));
+
+    fireEvent.press(getByLabelText("End session early"));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(getByTestId("meditation-end-confirm")).toBeTruthy();
 
     fireEvent.press(getByLabelText("Confirm end session"));
     expect(onClose).toHaveBeenCalledTimes(1);
