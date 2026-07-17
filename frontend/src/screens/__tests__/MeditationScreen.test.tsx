@@ -1,6 +1,6 @@
 import React from "react";
 import { Text as RNText } from "react-native";
-import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import { render, fireEvent, act } from "@testing-library/react-native";
 import { MeditationScreen, _resetMeditationStorage } from "../MeditationScreen";
 
 jest.mock("expo-audio", () => ({
@@ -15,6 +15,16 @@ jest.mock("expo-keep-awake", () => ({
 }));
 
 jest.mock("../../assets/sounds/meditation-chime.wav", () => 1, { virtual: true });
+
+jest.mock("../../hooks/useTodayHabits", () => ({
+  useTodayHabits: () => ({
+    items: [],
+    loading: false,
+    toggleCompletion: jest.fn(),
+    completing: new Set(),
+    today: "2026-07-17",
+  }),
+}));
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -115,7 +125,7 @@ describe("MeditationScreen", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("renders optional completionExtra seam", async () => {
+  it("renders optional completionExtra seam", () => {
     const { getByTestId, getByLabelText, getByText } = render(
       <MeditationScreen
         onClose={jest.fn()}
@@ -129,9 +139,7 @@ describe("MeditationScreen", () => {
       jest.advanceTimersByTime(5 * 60_000 + 500);
     });
 
-    await waitFor(() => {
-      expect(getByTestId("meditation-completion")).toBeTruthy();
-    });
+    expect(getByTestId("meditation-completion")).toBeTruthy();
     expect(getByText("Log slot")).toBeTruthy();
   });
 

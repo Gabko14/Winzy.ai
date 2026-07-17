@@ -34,47 +34,22 @@ import {
   completedMinutesLabel,
   type MeditationSessionState,
 } from "../utils/meditationTimer";
+import {
+  DEFAULT_DURATION_MIN,
+  loadLastDurationMin,
+  saveLastDurationMin,
+  _resetMeditationStorage,
+} from "../utils/meditationPrefs";
+import { MeditationLogSheet } from "../components/MeditationLogSheet";
 import chimeSource from "../../assets/sounds/meditation-chime.wav";
 
-const LAST_DURATION_KEY = "winzy.meditation.lastDurationMin";
-const DEFAULT_DURATION_MIN = 10;
 const TICK_MS = 500;
 
-type Storage = {
-  getItem: (key: string) => Promise<string | null>;
-  setItem: (key: string, value: string) => Promise<void>;
-};
-
-const mem = new Map<string, string>();
-const memStorage: Storage = {
-  getItem: (key) => Promise.resolve(mem.get(key) ?? null),
-  setItem: (key, value) => {
-    mem.set(key, value);
-    return Promise.resolve();
-  },
-};
-
-function getStorage(): Storage {
-  if (Platform.OS === "web" && typeof localStorage !== "undefined") {
-    return {
-      getItem: (key) => Promise.resolve(localStorage.getItem(key)),
-      setItem: (key, value) => {
-        localStorage.setItem(key, value);
-        return Promise.resolve();
-      },
-    };
-  }
-  return memStorage;
-}
-
-/** @internal Test-only */
-export function _resetMeditationStorage(): void {
-  mem.clear();
-}
+export { _resetMeditationStorage };
 
 type Props = {
   onClose: () => void;
-  /** Seam for habit-logging bead — optional slot below completion copy. */
+  /** Optional slot below the log sheet (kept for extensibility). */
   completionExtra?: React.ReactNode;
 };
 
@@ -93,21 +68,19 @@ export function MeditationScreen({ onClose, completionExtra }: Props) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [bloom, setBloom] = useState(false);
+  const [logSkipped, setLogSkipped] = useState(false);
   const breath = useRef(new Animated.Value(1)).current;
   const player = useAudioPlayer(chimeSource);
 
   useEffect(() => {
     let cancelled = false;
-    getStorage()
-      .getItem(LAST_DURATION_KEY)
-      .then((raw) => {
-        if (cancelled || raw == null) return;
-        const n = Number(raw);
-        if (!Number.isFinite(n)) return;
-        const clamped = clampDurationMinutes(n);
-        setDurationMin(clamped);
-        setSession(createSetupState(clamped));
-      });
+    loadLastDurationMin().then((clamped) => {
+      if (cancelled) return;
+      setDurationMin(clamped);
+      setSession((prev) =>
+        prev.phase === "setup" ? createSetupState(clamped) : prev,
+      );
+    });
     return () => {
       cancelled = true;
     };
@@ -177,8 +150,7 @@ export function MeditationScreen({ onClose, completionExtra }: Props) {
   }, [session.phase, player]);
 
   const persistDuration = useCallback((minutes: number) => {
-    const clamped = clampDurationMinutes(minutes);
-    void getStorage().setItem(LAST_DURATION_KEY, String(clamped));
+    void saveLastDurationMin(minutes);
   }, []);
 
   const selectDuration = useCallback(
@@ -364,6 +336,9 @@ export function MeditationScreen({ onClose, completionExtra }: Props) {
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Nice work showing up for yourself.
           </Text>
+          {!logSkipped && (
+            <MeditationLogSheet onSkip={() => setLogSkipped(true)} />
+          )}
           {completionExtra}
           <Button
             title="Done"
