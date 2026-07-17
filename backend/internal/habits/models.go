@@ -318,21 +318,32 @@ type UpdateCompletionResponse struct {
 	CompletionKind string    `json:"completionKind"`
 }
 
-// CompletionsByDateResponse is GET /habits/completions?date=...'s response
-// shape.
-type CompletionsByDateResponse struct {
-	Date   string                   `json:"date"`
-	Habits []HabitCompletionForDate `json:"habits"`
+// CompletionsRangeResponse is GET /habits/completions?from=&to='s response
+// shape — one entry per active habit, with a day for every date in the
+// inclusive range (completed=false entries included so clients never
+// compute gaps). frequency + customDays are included so the client can
+// render not-due days without extra calls.
+type CompletionsRangeResponse struct {
+	From   string                    `json:"from"`
+	To     string                    `json:"to"`
+	Habits []HabitCompletionsInRange `json:"habits"`
 }
 
-type HabitCompletionForDate struct {
-	ID                 string  `json:"id"`
-	Name               string  `json:"name"`
-	Icon               *string `json:"icon"`
-	Color              *string `json:"color"`
-	MinimumDescription *string `json:"minimumDescription"`
-	Completed          bool    `json:"completed"`
-	CompletionKind     *string `json:"completionKind"`
+type HabitCompletionsInRange struct {
+	ID                 string               `json:"id"`
+	Name               string               `json:"name"`
+	Icon               *string              `json:"icon"`
+	Color              *string              `json:"color"`
+	Frequency          string               `json:"frequency"`
+	CustomDays         []int                `json:"customDays"`
+	MinimumDescription *string              `json:"minimumDescription"`
+	Days               []CompletionDayEntry `json:"days"`
+}
+
+type CompletionDayEntry struct {
+	Date           string  `json:"date"`
+	Completed      bool    `json:"completed"`
+	CompletionKind *string `json:"completionKind"`
 }
 
 const isoDateLayout = "2006-01-02"

@@ -294,17 +294,22 @@ func (h *Handlers) UpdateCompletion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CompletionsByDate handles GET /habits/completions?date=YYYY-MM-DD.
-func (h *Handlers) CompletionsByDate(w http.ResponseWriter, r *http.Request) {
+// CompletionsInRange handles GET /habits/completions?from=YYYY-MM-DD&to=YYYY-MM-DD.
+func (h *Handlers) CompletionsInRange(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())
 
-	date := r.URL.Query().Get("date")
-	if strings.TrimSpace(date) == "" {
-		writeError(w, http.StatusBadRequest, "date query parameter is required (YYYY-MM-DD)")
+	from := r.URL.Query().Get("from")
+	if strings.TrimSpace(from) == "" {
+		writeError(w, http.StatusBadRequest, "from query parameter is required (YYYY-MM-DD)")
+		return
+	}
+	to := r.URL.Query().Get("to")
+	if strings.TrimSpace(to) == "" {
+		writeError(w, http.StatusBadRequest, "to query parameter is required (YYYY-MM-DD)")
 		return
 	}
 
-	resp, err := h.service.CompletionsByDate(r.Context(), userID, date)
+	resp, err := h.service.CompletionsInRange(r.Context(), userID, from, to)
 	if err != nil {
 		writeHabitsError(w, err)
 		return

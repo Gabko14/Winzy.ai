@@ -483,34 +483,60 @@ func (s *Service) UpdateCompletion(ctx context.Context, userID, habitID, dateStr
 	return updated, true, nil
 }
 
-// CompletionsByDate returns every active habit for userID with its
-// completion status on dateStr, matching GetCompletionsByDate in
-// CompletionEndpoints.cs.
-func (s *Service) CompletionsByDate(ctx context.Context, userID, dateStr string) (CompletionsByDateResponse, error) {
-	localDate, ok := parseISODate(dateStr)
+const maxCompletionsRangeDays = 31
+
+// CompletionsInRange returns every active habit for userID with a day entry
+// for every date in the inclusive [fromStr, toStr] range. Validation
+// (malformed dates, from > to, range > 31 days) surfaces as flat fieldErrors.
+func (s *Service) CompletionsInRange(ctx context.Context, userID, fromStr, toStr string) (CompletionsRangeResponse, error) {
+	from, ok := parseISODate(fromStr)
 	if !ok {
-		return CompletionsByDateResponse{}, newFieldError(fmt.Sprintf("Invalid date format: %s", dateStr))
+		return CompletionsRangeResponse{}, newFieldError(fmt.Sprintf("Invalid from date format: %s", fromStr))
+	}
+	to, ok := parseISODate(toStr)
+	if !ok {
+		return CompletionsRangeResponse{}, newFieldError(fmt.Sprintf("Invalid to date format: %s", toStr))
+	}
+	if from.After(to) {
+		return CompletionsRangeResponse{}, newFieldError("from must not be after to")
+	}
+	days := int(to.Sub(from)/(24*time.Hour)) + 1
+	if days > maxCompletionsRangeDays {
+		return CompletionsRangeResponse{}, newFieldError(fmt.Sprintf("Date range must not exceed %d days", maxCompletionsRangeDays))
 	}
 
-	rows, err := completionsForDate(ctx, s.pool, userID, localDate)
+	rows, err := completionsInRange(ctx, s.pool, userID, from, to)
 	if err != nil {
-		return CompletionsByDateResponse{}, err
+		return CompletionsRangeResponse{}, err
 	}
 
-	habitsOut := make([]HabitCompletionForDate, len(rows))
-	for i, r := range rows {
-		habitsOut[i] = HabitCompletionForDate{
-			ID:                 r.Habit.ID,
-			Name:               r.Habit.Name,
-			Icon:               r.Habit.Icon,
-			Color:              r.Habit.Color,
-			MinimumDescription: r.Habit.MinimumDescription,
-			Completed:          r.Completed,
-			CompletionKind:     r.CompletionKind,
+	habitsOut := []HabitCompletionsInRange{}
+	for _, r := range rows {
+		if len(habitsOut) == 0 || habitsOut[len(habitsOut)-1].ID != r.Habit.ID {
+			habitsOut = append(habitsOut, HabitCompletionsInRange{
+				ID:                 r.Habit.ID,
+				Name:               r.Habit.Name,
+				Icon:               r.Habit.Icon,
+				Color:              r.Habit.Color,
+				Frequency:          string(r.Habit.Frequency),
+				CustomDays:         r.Habit.CustomDays,
+				MinimumDescription: r.Habit.MinimumDescription,
+				Days:               []CompletionDayEntry{},
+			})
 		}
+		i := len(habitsOut) - 1
+		habitsOut[i].Days = append(habitsOut[i].Days, CompletionDayEntry{
+			Date:           formatISODate(r.Date),
+			Completed:      r.Completed,
+			CompletionKind: r.CompletionKind,
+		})
 	}
 
-	return CompletionsByDateResponse{Date: formatISODate(localDate), Habits: habitsOut}, nil
+	return CompletionsRangeResponse{
+		From:   formatISODate(from),
+		To:     formatISODate(to),
+		Habits: habitsOut,
+	}, nil
 }
 
 // HabitStats builds GET /habits/{id}/stats's payload for an owner: it

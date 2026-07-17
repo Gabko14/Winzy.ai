@@ -42,7 +42,7 @@ type routeMux interface {
 func RegisterRoutes(mux routeMux, h *Handlers) {
 	mux.HandleFunc("POST /habits", h.CreateHabit)
 	mux.HandleFunc("GET /habits", h.ListHabits)
-	mux.HandleFunc("GET /habits/completions", h.CompletionsByDate)
+	mux.HandleFunc("GET /habits/completions", h.CompletionsInRange)
 	mux.HandleFunc("GET /habits/{a}/{b}", h.habitOrPublicGET)
 	mux.HandleFunc("GET /habits/public/{username}/flame.svg", h.FlameBadge)
 	mux.HandleFunc("GET /habits/{id}", h.GetHabit)

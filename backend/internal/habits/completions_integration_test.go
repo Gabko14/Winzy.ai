@@ -413,122 +413,269 @@ func TestUpdateCompletion_ErrorCase_InvalidKindReturns400(t *testing.T) {
 	}
 }
 
-// --- GET /habits/completions?date= ---
+// --- GET /habits/completions?from=&to= ---
 
-func TestCompletionsByDate_HappyPath_ReturnsCompletionStatusForAllHabits(t *testing.T) {
+func TestCompletionsInRange_HappyPath_MultiHabitMultiDayMatrix(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000014"))
-	h1 := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
+	h1 := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise", MinimumDescription: strPtr("10-min walk")})
 	h2 := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Read"})
-	today := time.Now().UTC().Format("2006-01-02")
+
+	d0 := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
+	d1 := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	d2 := time.Now().UTC().Format("2006-01-02")
+	minimum := habits.CompletionMinimum
 	doRequest(t, srv, testRequest{
 		method: http.MethodPost, path: "/habits/" + h1.ID + "/complete", headers: a,
-		body: habits.CompleteHabitRequest{Date: &today, Timezone: "UTC"},
+		body: habits.CompleteHabitRequest{Date: &d0, Timezone: "UTC", CompletionKind: &minimum},
+	})
+	doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits/" + h1.ID + "/complete", headers: a,
+		body: habits.CompleteHabitRequest{Date: &d2, Timezone: "UTC"},
+	})
+	doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits/" + h2.ID + "/complete", headers: a,
+		body: habits.CompleteHabitRequest{Date: &d1, Timezone: "UTC"},
 	})
 
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?date=" + today, headers: a})
+	resp := doRequest(t, srv, testRequest{
+		method: http.MethodGet, path: "/habits/completions?from=" + d0 + "&to=" + d2, headers: a,
+	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	body := decodeBody[habits.CompletionsByDateResponse](t, resp)
-	if body.Date != today || len(body.Habits) != 2 {
-		t.Fatalf("body = %+v, want date=%s with 2 habits", body, today)
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
+	if body.From != d0 || body.To != d2 || len(body.Habits) != 2 {
+		t.Fatalf("body = %+v, want from=%s to=%s with 2 habits", body, d0, d2)
 	}
-	byID := map[string]habits.HabitCompletionForDate{}
+	byID := map[string]habits.HabitCompletionsInRange{}
 	for _, h := range body.Habits {
 		byID[h.ID] = h
+		if len(h.Days) != 3 {
+			t.Fatalf("habit %s Days = %d, want 3 covering every date", h.ID, len(h.Days))
+		}
+		if h.Days[0].Date != d0 || h.Days[1].Date != d1 || h.Days[2].Date != d2 {
+			t.Errorf("habit %s day dates = %v,%v,%v want %s,%s,%s", h.ID, h.Days[0].Date, h.Days[1].Date, h.Days[2].Date, d0, d1, d2)
+		}
 	}
-	if !byID[h1.ID].Completed {
-		t.Error("h1 should be marked completed")
+	e1 := byID[h1.ID]
+	if e1.Frequency != "daily" {
+		t.Errorf("h1 Frequency = %q, want daily", e1.Frequency)
 	}
-	if byID[h2.ID].Completed {
-		t.Error("h2 should not be marked completed")
+	if e1.MinimumDescription == nil || *e1.MinimumDescription != "10-min walk" {
+		t.Errorf("h1 MinimumDescription = %v, want 10-min walk", e1.MinimumDescription)
+	}
+	if !e1.Days[0].Completed || e1.Days[0].CompletionKind == nil || *e1.Days[0].CompletionKind != "minimum" {
+		t.Errorf("h1 day0 = %+v, want completed minimum", e1.Days[0])
+	}
+	if e1.Days[1].Completed {
+		t.Errorf("h1 day1 should be incomplete, got %+v", e1.Days[1])
+	}
+	if !e1.Days[2].Completed || e1.Days[2].CompletionKind == nil || *e1.Days[2].CompletionKind != "full" {
+		t.Errorf("h1 day2 = %+v, want completed full", e1.Days[2])
+	}
+	e2 := byID[h2.ID]
+	if e2.Days[0].Completed || !e2.Days[1].Completed || e2.Days[2].Completed {
+		t.Errorf("h2 days completed = %v/%v/%v, want false/true/false", e2.Days[0].Completed, e2.Days[1].Completed, e2.Days[2].Completed)
 	}
 }
 
-func TestCompletionsByDate_ErrorCase_MissingDateReturns400(t *testing.T) {
+func TestCompletionsInRange_ErrorCase_MissingFromReturns400(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000015"))
 
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions", headers: a})
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?to=2026-03-18", headers: a})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.StatusCode)
 	}
+	body := decodeBody[map[string]string](t, resp)
+	if body["error"] == "" {
+		t.Error(`400 response should have a non-empty "error" field`)
+	}
 }
 
-func TestCompletionsByDate_ErrorCase_InvalidDateReturns400(t *testing.T) {
+func TestCompletionsInRange_ErrorCase_MissingToReturns400(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000016"))
 
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?date=not-a-date", headers: a})
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=2026-03-18", headers: a})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", resp.StatusCode)
 	}
 }
 
-func TestCompletionsByDate_EdgeCase_NoHabitsReturnsEmptyList(t *testing.T) {
+func TestCompletionsInRange_ErrorCase_MalformedFromReturns400(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
 	a := bearerFor(t, tokens, newUserID(t, "100000000017"))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=not-a-date&to=2026-03-18", headers: a})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestCompletionsInRange_ErrorCase_MalformedToReturns400(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "100000000018"))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=2026-03-18&to=not-a-date", headers: a})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestCompletionsInRange_ErrorCase_FromAfterToReturns400(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "100000000019"))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=2026-03-20&to=2026-03-18", headers: a})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestCompletionsInRange_ErrorCase_RangeLongerThan31DaysReturns400(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "10000000001a"))
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=2026-01-01&to=2026-02-01", headers: a})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestCompletionsInRange_ErrorCase_UnauthenticatedReturns401(t *testing.T) {
+	t.Parallel()
+	srv, _, _ := newTestServer(t)
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=2026-03-18&to=2026-03-18"})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 (no Authorization header)", resp.StatusCode)
+	}
+}
+
+func TestCompletionsInRange_EdgeCase_NoHabitsReturnsEmptyArray(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "10000000001b"))
 	today := time.Now().UTC().Format("2006-01-02")
 
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?date=" + today, headers: a})
-	body := decodeBody[habits.CompletionsByDateResponse](t, resp)
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=" + today + "&to=" + today, headers: a})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
 	if len(body.Habits) != 0 {
 		t.Errorf("Habits = %v, want empty", body.Habits)
 	}
 }
 
-func TestCompletionsByDate_EdgeCase_ExcludesArchivedAndOtherUsersHabits(t *testing.T) {
+func TestCompletionsInRange_EdgeCase_OneDayRange(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
-	a := bearerFor(t, tokens, newUserID(t, "100000000018"))
-	other := bearerFor(t, tokens, newUserID(t, "100000000019"))
+	a := bearerFor(t, tokens, newUserID(t, "10000000001c"))
+	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
+	today := time.Now().UTC().Format("2006-01-02")
+	doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits/" + created.ID + "/complete", headers: a,
+		body: habits.CompleteHabitRequest{Date: &today, Timezone: "UTC"},
+	})
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=" + today + "&to=" + today, headers: a})
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
+	if len(body.Habits) != 1 || len(body.Habits[0].Days) != 1 {
+		t.Fatalf("body = %+v, want 1 habit with 1 day", body)
+	}
+	if !body.Habits[0].Days[0].Completed {
+		t.Error("single day should be marked completed")
+	}
+}
+
+func TestCompletionsInRange_EdgeCase_ThirtyOneDayBoundaryAccepted(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "10000000001d"))
+	createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
+
+	from := "2026-01-01"
+	to := "2026-01-31" // exactly 31 days inclusive
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=" + from + "&to=" + to, headers: a})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for 31-day boundary", resp.StatusCode)
+	}
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
+	if len(body.Habits) != 1 || len(body.Habits[0].Days) != 31 {
+		t.Fatalf("Days = %d, want 31", len(body.Habits[0].Days))
+	}
+}
+
+func TestCompletionsInRange_EdgeCase_ArchivedHabitExcludedEntirely(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _ := newTestServer(t)
+	a := bearerFor(t, tokens, newUserID(t, "10000000001e"))
+	other := bearerFor(t, tokens, newUserID(t, "10000000001f"))
 	archived := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Archived"})
+	d0 := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	doRequest(t, srv, testRequest{
+		method: http.MethodPost, path: "/habits/" + archived.ID + "/complete", headers: a,
+		body: habits.CompleteHabitRequest{Date: &d0, Timezone: "UTC"},
+	})
 	doRequest(t, srv, testRequest{method: http.MethodDelete, path: "/habits/" + archived.ID, headers: a})
 	createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Active"})
 	createHabit(t, srv, other, habits.CreateHabitRequest{Name: "Other's Habit"})
 
 	today := time.Now().UTC().Format("2006-01-02")
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?date=" + today, headers: a})
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=" + d0 + "&to=" + today, headers: a})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	body := decodeBody[habits.CompletionsByDateResponse](t, resp)
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
 	if len(body.Habits) != 1 || body.Habits[0].Name != "Active" {
-		t.Errorf("Habits = %+v, want exactly [Active]", body.Habits)
+		t.Errorf("Habits = %+v, want exactly [Active] (archived excluded entirely even with in-range completions)", body.Habits)
 	}
 }
 
-func TestCompletionsByDate_HappyPath_ReturnsMinimumDescriptionAndKind(t *testing.T) {
+func TestCompletionsInRange_EdgeCase_CompletionsOutsideRangeExcluded(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
-	a := bearerFor(t, tokens, newUserID(t, "10000000001a"))
-	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Workout", MinimumDescription: strPtr("10-minute walk")})
-	today := time.Now().UTC().Format("2006-01-02")
-	minimum := habits.CompletionMinimum
-	doRequest(t, srv, testRequest{
-		method: http.MethodPost, path: "/habits/" + created.ID + "/complete", headers: a,
-		body: habits.CompleteHabitRequest{Date: &today, Timezone: "UTC", CompletionKind: &minimum},
-	})
+	a := bearerFor(t, tokens, newUserID(t, "100000000020"))
+	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
 
-	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?date=" + today, headers: a})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	before := time.Now().UTC().AddDate(0, 0, -5).Format("2006-01-02")
+	inRange := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")
+	after := time.Now().UTC().Format("2006-01-02")
+	for _, d := range []string{before, inRange, after} {
+		doRequest(t, srv, testRequest{
+			method: http.MethodPost, path: "/habits/" + created.ID + "/complete", headers: a,
+			body: habits.CompleteHabitRequest{Date: &d, Timezone: "UTC"},
+		})
 	}
-	body := decodeBody[habits.CompletionsByDateResponse](t, resp)
-	if len(body.Habits) != 1 {
-		t.Fatalf("Habits = %+v, want 1 entry", body.Habits)
+
+	from := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	to := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/completions?from=" + from + "&to=" + to, headers: a})
+	body := decodeBody[habits.CompletionsRangeResponse](t, resp)
+	if len(body.Habits) != 1 || len(body.Habits[0].Days) != 3 {
+		t.Fatalf("body = %+v, want 1 habit with 3 days", body)
 	}
-	h := body.Habits[0]
-	if h.MinimumDescription == nil || *h.MinimumDescription != "10-minute walk" {
-		t.Errorf("MinimumDescription = %v, want '10-minute walk'", h.MinimumDescription)
+	completedCount := 0
+	for _, day := range body.Habits[0].Days {
+		if day.Completed {
+			completedCount++
+			if day.Date != inRange {
+				t.Errorf("completed day = %s, want only %s (outside-range completions excluded)", day.Date, inRange)
+			}
+		}
 	}
-	if h.CompletionKind == nil || *h.CompletionKind != "minimum" {
-		t.Errorf("CompletionKind = %v, want minimum", h.CompletionKind)
+	if completedCount != 1 {
+		t.Errorf("completedCount = %d, want 1", completedCount)
 	}
 }
 
@@ -547,7 +694,7 @@ func TestCompletionsByDate_HappyPath_ReturnsMinimumDescriptionAndKind(t *testing
 func TestCompleteHabit_EdgeCase_DSTObservingZoneRoundTripsExactDate(t *testing.T) {
 	t.Parallel()
 	srv, tokens, _ := newTestServer(t)
-	a := bearerFor(t, tokens, newUserID(t, "10000000001b"))
+	a := bearerFor(t, tokens, newUserID(t, "100000000021"))
 	created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
 
 	// "Yesterday in UTC" is always on-or-before "today" in every
@@ -576,7 +723,7 @@ func TestCompleteHabit_EdgeCase_DateLineTimezonesAreAccepted(t *testing.T) {
 	} {
 		t.Run(tz, func(t *testing.T) {
 			srv, tokens, _ := newTestServer(t)
-			a := bearerFor(t, tokens, newUserID(t, "10000000001c"))
+			a := bearerFor(t, tokens, newUserID(t, "100000000022"))
 			created := createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Exercise"})
 
 			resp := doRequest(t, srv, testRequest{

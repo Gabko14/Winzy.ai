@@ -76,12 +76,14 @@ func createHabit(ctx context.Context, db querier, userID string, req CreateHabit
 }
 
 // listHabits returns userID's non-archived habits ordered by creation time,
-// matching HabitEndpoints.cs's ListHabits.
+// matching HabitEndpoints.cs's ListHabits. id is the deterministic tiebreak
+// when two habits share a created_at (bulk import / API burst) so list order
+// stays stable and locksteps with completionsInRange's ORDER BY.
 func listHabits(ctx context.Context, db querier, userID string) ([]Habit, error) {
 	rows, err := db.Query(ctx, `
 		SELECT `+habitColumns+` FROM habits
 		WHERE user_id = $1::uuid AND archived_at IS NULL
-		ORDER BY created_at`,
+		ORDER BY created_at, id`,
 		userID)
 	if err != nil {
 		return nil, fmt.Errorf("habits: listing habits: %w", err)
@@ -258,52 +260,58 @@ func updateCompletionKind(ctx context.Context, db querier, id string, kind Compl
 	return c, nil
 }
 
-// habitCompletionOnDate is one row of GetCompletionsByDate's per-habit
-// projection — an active habit joined (via a plain LEFT JOIN on
-// habit_id + local_date) with at most one completion on the queried date.
-type habitCompletionOnDate struct {
+// habitDayCompletion is one (habit × day) row from completionsInRange —
+// the habit metadata is repeated on every day of the range so the caller
+// can group without a second lookup.
+type habitDayCompletion struct {
 	Habit          Habit
+	Date           time.Time
 	Completed      bool
 	CompletionKind *string
 }
 
 // habitColumnsQualified is habitColumns with an explicit "h." table alias —
 // needed (unlike every other query in this file) because
-// completionsForDate joins habits against completions, and both tables
+// completionsInRange joins habits against completions, and both tables
 // have columns named id/created_at/updated_at/user_id; Postgres rejects an
 // unqualified reference to any of them as ambiguous.
 const habitColumnsQualified = `h.id::text, h.created_at, h.updated_at, h.user_id::text, h.name, h.icon, h.color, h.frequency, h.custom_days, h.minimum_description, h.archived_at`
 
-// completionsForDate returns every active habit for userID plus whether
-// (and with what kind) it was completed on localDate, matching
-// GetCompletionsByDate in CompletionEndpoints.cs.
-func completionsForDate(ctx context.Context, db querier, userID string, localDate time.Time) ([]habitCompletionOnDate, error) {
+// completionsInRange returns one row per (active habit × day in [from, to])
+// via a single generate_series CROSS JOIN LEFT JOIN completions query —
+// ordering matches listHabits (h.created_at, h.id) then day ascending. The
+// id tiebreak keeps habit day-rows contiguous so the service's consecutive-
+// ID grouping never splits one habit into duplicate partial entries when
+// two habits share a created_at.
+func completionsInRange(ctx context.Context, db querier, userID string, from, to time.Time) ([]habitDayCompletion, error) {
 	rows, err := db.Query(ctx, `
-		SELECT `+habitColumnsQualified+`, c.completion_kind
+		SELECT `+habitColumnsQualified+`, d.day::date, c.completion_kind
 		FROM habits h
-		LEFT JOIN completions c ON c.habit_id = h.id AND c.local_date = $2
+		CROSS JOIN generate_series($2::date, $3::date, '1 day'::interval) AS d(day)
+		LEFT JOIN completions c ON c.habit_id = h.id AND c.local_date = d.day
 		WHERE h.user_id = $1::uuid AND h.archived_at IS NULL
-		ORDER BY h.created_at`,
-		userID, localDate)
+		ORDER BY h.created_at, h.id, d.day`,
+		userID, from, to)
 	if err != nil {
-		return nil, fmt.Errorf("habits: listing completions for date: %w", err)
+		return nil, fmt.Errorf("habits: listing completions in range: %w", err)
 	}
 	defer rows.Close()
 
-	result := []habitCompletionOnDate{}
+	result := []habitDayCompletion{}
 	for rows.Next() {
 		var h Habit
 		var frequency string
 		var customDays []int
+		var day time.Time
 		var kind *string
 		if err := rows.Scan(&h.ID, &h.CreatedAt, &h.UpdatedAt, &h.UserID, &h.Name, &h.Icon, &h.Color,
-			&frequency, &customDays, &h.MinimumDescription, &h.ArchivedAt, &kind); err != nil {
-			return nil, fmt.Errorf("habits: scanning completion-for-date row: %w", err)
+			&frequency, &customDays, &h.MinimumDescription, &h.ArchivedAt, &day, &kind); err != nil {
+			return nil, fmt.Errorf("habits: scanning completion-in-range row: %w", err)
 		}
 		h.Frequency = frequencyFromDB(frequency)
 		h.CustomDays = customDays
 
-		entry := habitCompletionOnDate{Habit: h, Completed: kind != nil}
+		entry := habitDayCompletion{Habit: h, Date: day, Completed: kind != nil}
 		if kind != nil {
 			wire := completionKindFromDB(*kind).String()
 			entry.CompletionKind = &wire
@@ -311,7 +319,7 @@ func completionsForDate(ctx context.Context, db querier, userID string, localDat
 		result = append(result, entry)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("habits: iterating completions for date: %w", err)
+		return nil, fmt.Errorf("habits: iterating completions in range: %w", err)
 	}
 	return result, nil
 }
