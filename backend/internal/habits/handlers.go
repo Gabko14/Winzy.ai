@@ -145,6 +145,22 @@ func (h *Handlers) ListHabits(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, responses)
 }
 
+// OrderHabits handles PUT /habits/order.
+func (h *Handlers) OrderHabits(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+
+	req, ok := requireDecodedBody[OrderHabitsRequest](w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.service.OrderHabits(r.Context(), userID, req.HabitIDs); err != nil {
+		writeHabitsError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetHabit handles GET /habits/{id}.
 func (h *Handlers) GetHabit(w http.ResponseWriter, r *http.Request) {
 	userID := httpserver.UserIDFromContext(r.Context())

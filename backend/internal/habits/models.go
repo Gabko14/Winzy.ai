@@ -184,6 +184,7 @@ type Habit struct {
 	Frequency          Frequency
 	CustomDays         []int // nil unless Frequency requires it
 	MinimumDescription *string
+	Position           int
 	ArchivedAt         *time.Time
 }
 
@@ -237,6 +238,10 @@ type UpdateCompletionRequest struct {
 	CompletionKind CompletionKind `json:"completionKind"`
 }
 
+type OrderHabitsRequest struct {
+	HabitIDs []string `json:"habitIds"`
+}
+
 // --- Response DTOs ---
 
 type HabitResponse struct {
@@ -247,6 +252,7 @@ type HabitResponse struct {
 	Frequency          string     `json:"frequency"`
 	CustomDays         []int      `json:"customDays"`
 	MinimumDescription *string    `json:"minimumDescription"`
+	Position           int        `json:"position"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	ArchivedAt         *time.Time `json:"archivedAt"`
 }
@@ -260,6 +266,7 @@ func toHabitResponse(h Habit) HabitResponse {
 		Frequency:          string(h.Frequency),
 		CustomDays:         h.CustomDays,
 		MinimumDescription: h.MinimumDescription,
+		Position:           h.Position,
 		CreatedAt:          h.CreatedAt,
 		ArchivedAt:         h.ArchivedAt,
 	}

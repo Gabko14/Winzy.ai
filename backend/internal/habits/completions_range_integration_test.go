@@ -14,9 +14,9 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/export"
 )
 
-// Same-created_at habits must stay contiguous under ORDER BY created_at, id
-// so CompletionsInRange's consecutive-ID grouping never emits duplicate
-// habit entries with partial day arrays.
+// Same-created_at habits must stay contiguous under ORDER BY position,
+// created_at, id so CompletionsInRange's consecutive-ID grouping never
+// emits duplicate habit entries with partial day arrays.
 func TestCompletionsInRange_EdgeCase_IdenticalCreatedAtGroupsWithoutInterleave(t *testing.T) {
 	t.Parallel()
 	pool := dbtest.ConnectParallel(t)
@@ -55,22 +55,18 @@ func TestCompletionsInRange_EdgeCase_IdenticalCreatedAtGroupsWithoutInterleave(t
 			t.Errorf("habit %s (%s) Days = %d, want full 3-day array", h.ID, h.Name, len(h.Days))
 		}
 	}
-	// Stable order: created_at tie → id ascending.
-	first, second := h1, h2
-	if h2.ID < h1.ID {
-		first, second = h2, h1
-	}
-	if resp.Habits[0].ID != first.ID || resp.Habits[1].ID != second.ID {
-		t.Errorf("order = [%s, %s], want [%s, %s] (created_at tiebreak by id)",
-			resp.Habits[0].ID, resp.Habits[1].ID, first.ID, second.ID)
+	// Stable order: position ASC (create assigns 0 then 1), then created_at, id.
+	if resp.Habits[0].ID != h1.ID || resp.Habits[1].ID != h2.ID {
+		t.Errorf("order = [%s, %s], want [%s, %s] (position order)",
+			resp.Habits[0].ID, resp.Habits[1].ID, h1.ID, h2.ID)
 	}
 
 	listed, err := listHabits(ctx, pool, userID)
 	if err != nil {
 		t.Fatalf("listHabits: %v", err)
 	}
-	if len(listed) != 2 || listed[0].ID != first.ID || listed[1].ID != second.ID {
+	if len(listed) != 2 || listed[0].ID != h1.ID || listed[1].ID != h2.ID {
 		t.Errorf("listHabits order = %v, want lockstep with range [%s, %s]",
-			[]string{listed[0].ID, listed[1].ID}, first.ID, second.ID)
+			[]string{listed[0].ID, listed[1].ID}, h1.ID, h2.ID)
 	}
 }

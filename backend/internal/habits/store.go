@@ -34,14 +34,14 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode
 }
 
-const habitColumns = `id::text, created_at, updated_at, user_id::text, name, icon, color, frequency, custom_days, minimum_description, archived_at`
+const habitColumns = `id::text, created_at, updated_at, user_id::text, name, icon, color, frequency, custom_days, minimum_description, position, archived_at`
 
 func scanHabit(row pgx.Row) (Habit, error) {
 	var h Habit
 	var frequency string
 	var customDays []int
 	err := row.Scan(&h.ID, &h.CreatedAt, &h.UpdatedAt, &h.UserID, &h.Name, &h.Icon, &h.Color,
-		&frequency, &customDays, &h.MinimumDescription, &h.ArchivedAt)
+		&frequency, &customDays, &h.MinimumDescription, &h.Position, &h.ArchivedAt)
 	if err != nil {
 		return Habit{}, err
 	}
@@ -63,8 +63,9 @@ func customDaysParam(days []int) any {
 
 func createHabit(ctx context.Context, db querier, userID string, req CreateHabitRequest, frequency Frequency, customDays []int) (Habit, error) {
 	row := db.QueryRow(ctx, `
-		INSERT INTO habits (user_id, name, icon, color, frequency, custom_days, minimum_description)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+		INSERT INTO habits (user_id, name, icon, color, frequency, custom_days, minimum_description, position)
+		SELECT $1::uuid, $2, $3, $4, $5, $6, $7, COALESCE(MAX(position), -1) + 1
+		FROM habits WHERE user_id = $1::uuid
 		RETURNING `+habitColumns,
 		userID, req.Name, trimPtr(req.Icon), trimPtr(req.Color), frequency.dbValue(), customDaysParam(customDays), trimToNil(req.MinimumDescription))
 
@@ -75,15 +76,14 @@ func createHabit(ctx context.Context, db querier, userID string, req CreateHabit
 	return h, nil
 }
 
-// listHabits returns userID's non-archived habits ordered by creation time,
-// matching HabitEndpoints.cs's ListHabits. id is the deterministic tiebreak
-// when two habits share a created_at (bulk import / API burst) so list order
-// stays stable and locksteps with completionsInRange's ORDER BY.
+// listHabits returns userID's non-archived habits in canonical user order:
+// position ASC, created_at ASC, id ASC. The same ORDER BY (minus day) is
+// used by completionsInRange so list and range-completions stay in lockstep.
 func listHabits(ctx context.Context, db querier, userID string) ([]Habit, error) {
 	rows, err := db.Query(ctx, `
 		SELECT `+habitColumns+` FROM habits
 		WHERE user_id = $1::uuid AND archived_at IS NULL
-		ORDER BY created_at, id`,
+		ORDER BY position ASC, created_at ASC, id ASC`,
 		userID)
 	if err != nil {
 		return nil, fmt.Errorf("habits: listing habits: %w", err)
@@ -156,6 +156,8 @@ func updateHabit(ctx context.Context, db querier, h Habit) (Habit, error) {
 
 // archiveHabit sets archived_at (idempotent: re-archiving just refreshes
 // the timestamp), matching DeleteHabit's soft-delete in HabitEndpoints.cs.
+// Archived habits keep their stale position — harmless; if ever unarchived
+// they rejoin at their old slot (acceptable; see winzy.ai-mtje).
 func archiveHabit(ctx context.Context, db querier, id string) (Habit, error) {
 	row := db.QueryRow(ctx, `
 		UPDATE habits SET archived_at = now(), updated_at = now()
@@ -275,14 +277,14 @@ type habitDayCompletion struct {
 // completionsInRange joins habits against completions, and both tables
 // have columns named id/created_at/updated_at/user_id; Postgres rejects an
 // unqualified reference to any of them as ambiguous.
-const habitColumnsQualified = `h.id::text, h.created_at, h.updated_at, h.user_id::text, h.name, h.icon, h.color, h.frequency, h.custom_days, h.minimum_description, h.archived_at`
+const habitColumnsQualified = `h.id::text, h.created_at, h.updated_at, h.user_id::text, h.name, h.icon, h.color, h.frequency, h.custom_days, h.minimum_description, h.position, h.archived_at`
 
 // completionsInRange returns one row per (active habit × day in [from, to])
 // via a single generate_series CROSS JOIN LEFT JOIN completions query —
-// ordering matches listHabits (h.created_at, h.id) then day ascending. The
-// id tiebreak keeps habit day-rows contiguous so the service's consecutive-
-// ID grouping never splits one habit into duplicate partial entries when
-// two habits share a created_at.
+// ordering matches listHabits (h.position, h.created_at, h.id) then day
+// ascending. The id tiebreak keeps habit day-rows contiguous so the
+// service's consecutive-ID grouping never splits one habit into duplicate
+// partial entries when two habits share position + created_at.
 func completionsInRange(ctx context.Context, db querier, userID string, from, to time.Time) ([]habitDayCompletion, error) {
 	rows, err := db.Query(ctx, `
 		SELECT `+habitColumnsQualified+`, d.day::date, c.completion_kind
@@ -290,7 +292,7 @@ func completionsInRange(ctx context.Context, db querier, userID string, from, to
 		CROSS JOIN generate_series($2::date, $3::date, '1 day'::interval) AS d(day)
 		LEFT JOIN completions c ON c.habit_id = h.id AND c.local_date = d.day
 		WHERE h.user_id = $1::uuid AND h.archived_at IS NULL
-		ORDER BY h.created_at, h.id, d.day`,
+		ORDER BY h.position ASC, h.created_at ASC, h.id ASC, d.day`,
 		userID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("habits: listing completions in range: %w", err)
@@ -305,7 +307,7 @@ func completionsInRange(ctx context.Context, db querier, userID string, from, to
 		var day time.Time
 		var kind *string
 		if err := rows.Scan(&h.ID, &h.CreatedAt, &h.UpdatedAt, &h.UserID, &h.Name, &h.Icon, &h.Color,
-			&frequency, &customDays, &h.MinimumDescription, &h.ArchivedAt, &day, &kind); err != nil {
+			&frequency, &customDays, &h.MinimumDescription, &h.Position, &h.ArchivedAt, &day, &kind); err != nil {
 			return nil, fmt.Errorf("habits: scanning completion-in-range row: %w", err)
 		}
 		h.Frequency = frequencyFromDB(frequency)
@@ -414,15 +416,14 @@ func deleteUserData(ctx context.Context, db querier, userID string) error {
 }
 
 // listAllHabitsForUser returns every habit owned by userID regardless of
-// archive state, ordered by creation time — the data-export query
-// (InternalExport in InternalEndpoints.cs has no ArchivedAt filter, unlike
-// every other habits query in this file), so a user's export includes
-// habits they've since archived.
+// archive state, in the same canonical order as listHabits (position,
+// created_at, id) — export and other all-habits surfaces must match the
+// user-visible product order (winzy.ai-mtje).
 func listAllHabitsForUser(ctx context.Context, db querier, userID string) ([]Habit, error) {
 	rows, err := db.Query(ctx, `
 		SELECT `+habitColumns+` FROM habits
 		WHERE user_id = $1::uuid
-		ORDER BY created_at`,
+		ORDER BY position ASC, created_at ASC, id ASC`,
 		userID)
 	if err != nil {
 		return nil, fmt.Errorf("habits: listing all habits for export: %w", err)
@@ -479,4 +480,45 @@ func batchCompletionsForExport(ctx context.Context, db querier, habitIDs []strin
 		return nil, fmt.Errorf("habits: iterating completions for export: %w", err)
 	}
 	return result, nil
+}
+
+func listActiveHabitIDs(ctx context.Context, db querier, userID string) ([]string, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id::text FROM habits
+		WHERE user_id = $1::uuid AND archived_at IS NULL
+		ORDER BY position ASC, created_at ASC, id ASC`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("habits: listing active habit ids: %w", err)
+	}
+	defer rows.Close()
+
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("habits: scanning active habit id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("habits: iterating active habit ids: %w", err)
+	}
+	return ids, nil
+}
+
+func setHabitPositions(ctx context.Context, db querier, userID string, habitIDs []string) error {
+	for i, id := range habitIDs {
+		tag, err := db.Exec(ctx, `
+			UPDATE habits SET position = $3, updated_at = now()
+			WHERE id = $1::uuid AND user_id = $2::uuid AND archived_at IS NULL`,
+			id, userID, i)
+		if err != nil {
+			return fmt.Errorf("habits: setting position: %w", err)
+		}
+		if tag.RowsAffected() != 1 {
+			return newFieldError("habitIds must be the exact set of your active habits")
+		}
+	}
+	return nil
 }

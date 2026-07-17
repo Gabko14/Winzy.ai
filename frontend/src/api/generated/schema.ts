@@ -116,6 +116,41 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/auth/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload profile avatar (raw image body) */
+        put: operations["uploadAvatar"];
+        post?: never;
+        /** Remove profile avatar (idempotent) */
+        delete: operations["deleteAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/users/{userID}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public avatar bytes */
+        get: operations["getUserAvatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/account": {
         parameters: {
             query?: never;
@@ -174,6 +209,22 @@ export type paths = {
         get: operations["listHabits"];
         put?: never;
         post: operations["createHabit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["orderHabits"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -847,6 +898,12 @@ export type components = {
             /** Format: date-time */
             createdAt: string;
         };
+        AvatarUploadResponse: {
+            /** @description Public serving path (/auth/users/{id}/avatar) */
+            avatarUrl: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         AuthResponse: {
             accessToken: string;
             refreshToken: string | null;
@@ -908,10 +965,14 @@ export type components = {
             frequency: components["schemas"]["FrequencyType"];
             customDays: number[] | null;
             minimumDescription: string | null;
+            position: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             archivedAt: string | null;
+        };
+        OrderHabitsRequest: {
+            habitIds: string[];
         };
         CreateHabitRequest: {
             name: string;
@@ -1617,6 +1678,93 @@ export interface operations {
             400: components["responses"]["AuthValidationError"];
         };
     };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+                "image/webp": string;
+            };
+        };
+        responses: {
+            /** @description Avatar stored; avatarUrl is the public serving path */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvatarUploadResponse"];
+                };
+            };
+            400: components["responses"]["AuthValidationError"];
+        };
+    };
+    deleteAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getUserAvatar: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                userID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Avatar image bytes */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No avatar for this user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     deleteAccount: {
         parameters: {
             query?: never;
@@ -1722,6 +1870,36 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    orderHabits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderHabitsRequest"];
+            };
+        };
+        responses: {
+            /** @description Reordered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     completionsInRange: {

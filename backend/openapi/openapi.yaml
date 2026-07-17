@@ -175,6 +175,89 @@ paths:
         "400":
           $ref: "#/components/responses/AuthValidationError"
 
+  /auth/avatar:
+    put:
+      tags: [auth]
+      operationId: uploadAvatar
+      summary: Upload profile avatar (raw image body)
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Avatar stored; avatarUrl is the public serving path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarUploadResponse"
+        "400":
+          $ref: "#/components/responses/AuthValidationError"
+    delete:
+      tags: [auth]
+      operationId: deleteAvatar
+      summary: Remove profile avatar (idempotent)
+      responses:
+        "204":
+          description: Avatar removed
+
+  /auth/users/{userID}/avatar:
+    get:
+      tags: [auth]
+      operationId: getUserAvatar
+      summary: Public avatar bytes
+      security: []
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Avatar image bytes
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: Not modified
+        "404":
+          description: No avatar for this user
+
   /auth/account:
     delete:
       tags: [auth]
@@ -251,6 +334,24 @@ paths:
                 $ref: "#/components/schemas/Habit"
         "400":
           $ref: "#/components/responses/Error"
+
+  /habits/order:
+    put:
+      tags: [habits]
+      operationId: orderHabits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderHabitsRequest"
+      responses:
+        "204":
+          description: Reordered
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          description: Unauthenticated
 
   /habits/completions:
     get:
@@ -1295,6 +1396,17 @@ components:
           type: string
           format: date-time
 
+    AvatarUploadResponse:
+      type: object
+      required: [avatarUrl, updatedAt]
+      properties:
+        avatarUrl:
+          type: string
+          description: Public serving path (/auth/users/{id}/avatar)
+        updatedAt:
+          type: string
+          format: date-time
+
     AuthResponse:
       type: object
       required: [accessToken, refreshToken, user]
@@ -1409,7 +1521,7 @@ components:
     Habit:
       type: object
       required:
-        [id, name, icon, color, frequency, customDays, minimumDescription, createdAt, archivedAt]
+        [id, name, icon, color, frequency, customDays, minimumDescription, position, createdAt, archivedAt]
       properties:
         id:
           type: string
@@ -1428,12 +1540,24 @@ components:
             type: integer
         minimumDescription:
           type: ["string", "null"]
+        position:
+          type: integer
         createdAt:
           type: string
           format: date-time
         archivedAt:
           type: ["string", "null"]
           format: date-time
+
+    OrderHabitsRequest:
+      type: object
+      required: [habitIds]
+      properties:
+        habitIds:
+          type: array
+          items:
+            type: string
+            format: uuid
 
     CreateHabitRequest:
       type: object

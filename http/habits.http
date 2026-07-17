@@ -47,6 +47,15 @@ Content-Type: application/json
 GET {{baseUrl}}/habits
 Authorization: Bearer {{accessToken}}
 
+### 4b. Reorder habits (exact set of active habit IDs)
+PUT {{baseUrl}}/habits/order
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "habitIds": ["{{habitId}}"]
+}
+
 ### 5. Get single habit
 # Paste a habit ID from the create or list response
 GET {{baseUrl}}/habits/{{habitId}}

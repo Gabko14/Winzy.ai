@@ -201,6 +201,55 @@ func (s *Service) ListHabits(ctx context.Context, userID string) ([]Habit, error
 	return listHabits(ctx, s.pool, userID)
 }
 
+// OrderHabits applies positions 0..n-1 to habitIDs in one transaction.
+// habitIDs must be exactly the caller's active (non-archived) habit set —
+// any omission, extra, duplicate, or foreign/unknown id is a flat 400
+// (habits churn slowly; unlike todos there is no 409 stale tier).
+func (s *Service) OrderHabits(ctx context.Context, userID string, habitIDs []string) error {
+	if habitIDs == nil {
+		habitIDs = []string{}
+	}
+	seen := make(map[string]bool, len(habitIDs))
+	for _, id := range habitIDs {
+		if !isValidUUID(id) || seen[id] {
+			return newFieldError("habitIds must be the exact set of your active habits")
+		}
+		seen[id] = true
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("habits: beginning order transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	activeIDs, err := listActiveHabitIDs(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	activeSet := make(map[string]bool, len(activeIDs))
+	for _, id := range activeIDs {
+		activeSet[id] = true
+	}
+
+	for _, id := range habitIDs {
+		if !activeSet[id] {
+			return newFieldError("habitIds must be the exact set of your active habits")
+		}
+	}
+	if len(habitIDs) != len(activeIDs) {
+		return newFieldError("habitIds must be the exact set of your active habits")
+	}
+
+	if err := setHabitPositions(ctx, tx, userID, habitIDs); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("habits: committing order transaction: %w", err)
+	}
+	return nil
+}
+
 // GetHabit returns ErrNotFound for a missing, archived, or
 // other-user-owned habit — the query itself is scoped by user_id, so a
 // habit belonging to someone else is indistinguishable from a habit that
