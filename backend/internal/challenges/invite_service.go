@@ -109,9 +109,11 @@ func (s *Service) ViewInvite(ctx context.Context, token string) (publicInviteRes
 	}
 
 	var creatorDisplayName *string
-	names := s.fetchDisplayNames(ctx, []string{inv.CreatorID})
-	if name, ok := names[inv.CreatorID]; ok {
-		creatorDisplayName = name
+	var creatorAvatarURL *string
+	profiles := s.fetchProfiles(ctx, []string{inv.CreatorID})
+	if p, ok := profiles[inv.CreatorID]; ok {
+		creatorDisplayName = p.DisplayName
+		creatorAvatarURL = p.AvatarURL
 	}
 
 	s.logger.InfoContext(ctx, "challenge invite viewed",
@@ -119,6 +121,7 @@ func (s *Service) ViewInvite(ctx context.Context, token string) (publicInviteRes
 
 	return publicInviteResponse{
 		CreatorDisplayName: creatorDisplayName,
+		CreatorAvatarURL:   creatorAvatarURL,
 		HabitName:          inv.HabitName,
 		HabitIcon:          inv.HabitIcon,
 		MilestoneType:      inv.MilestoneType.wireName(),

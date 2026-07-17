@@ -42,6 +42,7 @@ type FeedEntryResponse struct {
 	ActorID          string          `json:"actorId"`
 	ActorUsername    *string         `json:"actorUsername"`
 	ActorDisplayName *string         `json:"actorDisplayName"`
+	ActorAvatarURL   *string         `json:"actorAvatarUrl"`
 	EventType        string          `json:"eventType"`
 	Data             json.RawMessage `json:"data"`
 	CreatedAt        time.Time       `json:"createdAt"`

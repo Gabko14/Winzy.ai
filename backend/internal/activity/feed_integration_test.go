@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/social"
 )
 
@@ -150,6 +151,37 @@ func TestFeed_HappyPath_NameJoinShape(t *testing.T) {
 	}
 	if item["actorId"] != user.User.ID {
 		t.Errorf("actorId = %v, want %s", item["actorId"], user.User.ID)
+	}
+	if item["actorAvatarUrl"] != nil {
+		t.Errorf("actorAvatarUrl = %v, want null (no avatar)", item["actorAvatarUrl"])
+	}
+}
+
+func TestFeed_HappyPath_ActorAvatarURLWhenSet(t *testing.T) {
+	t.Parallel()
+	stack := newTestStack(t)
+	user := registerUser(t, stack.authService, "avatarfeed@example.com", "avatarfeed")
+	avatar := "https://cdn.example.com/feed-actor.png"
+	if _, err := stack.authService.UpdateProfile(context.Background(), user.User.ID, auth.UpdateProfileRequest{
+		AvatarURL: &avatar,
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	status, body := doRequest(t, stack.srv, testRequest{
+		method: http.MethodGet, path: "/activity/feed",
+		headers: bearerFor(t, stack.tokens, user.User.ID),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+	items := feedItems(body)
+	if len(items) < 1 {
+		t.Fatal("expected at least user.registered")
+	}
+	item := items[0]
+	if item["actorAvatarUrl"] != avatar {
+		t.Fatalf("actorAvatarUrl = %v, want %s", item["actorAvatarUrl"], avatar)
 	}
 }
 

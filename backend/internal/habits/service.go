@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/db"
 	"github.com/Gabko14/winzy/backend/internal/events"
 	"github.com/Gabko14/winzy/backend/internal/export"
@@ -58,6 +59,11 @@ type Service struct {
 	// than through NewService).
 	usernameResolver UsernameResolver
 
+	// profileBatcher backs public flame avatarUrl enrichment — wired
+	// automatically when SetUsernameResolver receives an auth.Service
+	// (which satisfies ProfileBatcher).
+	profileBatcher ProfileBatcher
+
 	// visibilityFilter backs the public flame surfaces' per-habit visibility
 	// filtering (promise_public.go) — nil until SetVisibilityFilter is
 	// called, wired after construction for the same reason usernameResolver
@@ -93,13 +99,22 @@ func (s *Service) SetClock(now func() time.Time) {
 // in-process replacement for the old GET /auth/internal/resolve/{username}
 // HTTP call. It is set once at startup (cmd/api/main.go, after both
 // auth.Service and habits.Service exist — auth.Service satisfies
-// UsernameResolver structurally, no import of internal/auth needed here)
-// rather than threaded through NewService, so the many call sites that
-// construct a Service purely to exercise habits/completions/promise logic
-// (this module's own cascade and archive integration tests included) don't
-// also need to wire an auth.Service they have no other use for.
+// UsernameResolver structurally) rather than threaded through NewService,
+// so the many call sites that construct a Service purely to exercise
+// habits/completions/promise logic don't also need to wire an auth.Service
+// they have no other use for. When r also satisfies ProfileBatcher
+// (*auth.Service does), avatarUrl enrichment for the public flame is wired too.
 func (s *Service) SetUsernameResolver(r UsernameResolver) {
 	s.usernameResolver = r
+	if pb, ok := r.(ProfileBatcher); ok {
+		s.profileBatcher = pb
+	}
+}
+
+// ProfileBatcher is the optional auth.BatchProfiles capability used to
+// attach avatarUrl on GET /habits/public/{username}.
+type ProfileBatcher interface {
+	BatchProfiles(ctx context.Context, userIDs []string) ([]auth.ProfileSummary, error)
 }
 
 // SetVisibilityFilter wires the public flame endpoints' (GET

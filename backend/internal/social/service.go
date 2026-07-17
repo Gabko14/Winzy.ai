@@ -468,6 +468,7 @@ func (s *Service) ListFriendRequests(ctx context.Context, userID string) (listRe
 			username := p.Username
 			item.FromUsername = &username
 			item.FromDisplayName = p.DisplayName
+			item.FromAvatarURL = p.AvatarURL
 		}
 		incoming[i] = item
 	}
@@ -479,6 +480,7 @@ func (s *Service) ListFriendRequests(ctx context.Context, userID string) (listRe
 			username := p.Username
 			item.ToUsername = &username
 			item.ToDisplayName = p.DisplayName
+			item.ToAvatarURL = p.AvatarURL
 		}
 		outgoing[i] = item
 	}

@@ -4,7 +4,7 @@ import { Avatar, Card, Badge, Button } from "../../design-system";
 import { spacing, typography, lightTheme, shadows } from "../../design-system";
 import type { OutgoingRequest } from "../../api/social";
 import { getInitials } from "../../utils/getInitials";
-import { resolveAvatarUrl, userAvatarPath } from "../../utils/avatarUrl";
+import { resolveAvatarUrl } from "../../utils/avatarUrl";
 
 function outgoingDisplayName(request: OutgoingRequest): string {
   if (request.toDisplayName) return request.toDisplayName;
@@ -31,7 +31,7 @@ export function OutgoingRequestsList({
             <Avatar
               initials={getInitials(request.toDisplayName, request.toUsername, request.toUserId)}
               size="sm"
-              imageUrl={resolveAvatarUrl(userAvatarPath(request.toUserId))}
+              imageUrl={resolveAvatarUrl(request.avatarUrl)}
             />
             <View style={styles.requestInfo}>
               <Text style={[styles.requestName, { color: lightTheme.textPrimary }]} numberOfLines={1}>

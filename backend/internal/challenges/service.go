@@ -249,6 +249,16 @@ func (s *Service) Cancel(ctx context.Context, userID, id string) error {
 
 func (s *Service) fetchDisplayNames(ctx context.Context, userIDs []string) map[string]*string {
 	out := map[string]*string{}
+	for id, p := range s.fetchProfiles(ctx, userIDs) {
+		if p.DisplayName != nil {
+			out[id] = p.DisplayName
+		}
+	}
+	return out
+}
+
+func (s *Service) fetchProfiles(ctx context.Context, userIDs []string) map[string]auth.ProfileSummary {
+	out := map[string]auth.ProfileSummary{}
 	if len(userIDs) == 0 {
 		return out
 	}
@@ -258,9 +268,7 @@ func (s *Service) fetchDisplayNames(ctx context.Context, userIDs []string) map[s
 		return out
 	}
 	for _, p := range profiles {
-		if p.DisplayName != nil {
-			out[p.UserID] = p.DisplayName
-		}
+		out[p.UserID] = p
 	}
 	return out
 }

@@ -3,10 +3,12 @@
 package social_test
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"testing"
 
+	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/habits"
 )
 
@@ -572,6 +574,40 @@ func TestListFriendRequests_HappyPath_EnrichesWithProfileData(t *testing.T) {
 	incoming := friendBody["incoming"].([]any)[0].(map[string]any)
 	if incoming["fromUsername"] != "sender" {
 		t.Errorf("fromUsername = %v, want sender", incoming["fromUsername"])
+	}
+	if incoming["avatarUrl"] != nil {
+		t.Errorf("avatarUrl = %v, want null (no avatar)", incoming["avatarUrl"])
+	}
+}
+
+func TestListFriendRequests_HappyPath_CarriesAvatarURL(t *testing.T) {
+	t.Parallel()
+	stack := newTestStack(t)
+	sender := registerUserViaService(t, stack.authService, "avs@example.com", "avs")
+	receiver := registerUserViaService(t, stack.authService, "avr@example.com", "avr")
+	avatar := "https://cdn.example.com/sender.png"
+	if _, err := stack.authService.UpdateProfile(context.Background(), sender.User.ID, auth.UpdateProfileRequest{
+		AvatarURL: &avatar,
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	a := bearerFor(t, stack.tokens, sender.User.ID)
+	doRequest(t, stack.srv, testRequest{method: http.MethodPost, path: "/social/friends/request", headers: a, body: map[string]string{"friendId": receiver.User.ID}})
+
+	b := bearerFor(t, stack.tokens, receiver.User.ID)
+	friendResp := doRequest(t, stack.srv, testRequest{method: http.MethodGet, path: "/social/friends/requests", headers: b})
+	friendBody := decodeBody[map[string]any](t, friendResp)
+	incoming := friendBody["incoming"].([]any)[0].(map[string]any)
+	if incoming["avatarUrl"] != avatar {
+		t.Fatalf("incoming avatarUrl = %v, want %s", incoming["avatarUrl"], avatar)
+	}
+
+	outResp := doRequest(t, stack.srv, testRequest{method: http.MethodGet, path: "/social/friends/requests", headers: a})
+	outBody := decodeBody[map[string]any](t, outResp)
+	outgoing := outBody["outgoing"].([]any)[0].(map[string]any)
+	if outgoing["avatarUrl"] != nil {
+		t.Fatalf("outgoing avatarUrl = %v, want null (receiver has none)", outgoing["avatarUrl"])
 	}
 }
 

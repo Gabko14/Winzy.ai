@@ -11,6 +11,9 @@ const { fetchFeed } = jest.requireMock("../../api/feed");
 const makeFeedEntry = (id: string) => ({
   id,
   actorId: `actor-${id}`,
+  actorUsername: `user-${id}`,
+  actorDisplayName: `User ${id}`,
+  actorAvatarUrl: null as string | null,
   eventType: "habit.completed" as const,
   data: { habitName: "Exercise" },
   createdAt: "2026-03-15T10:00:00Z",

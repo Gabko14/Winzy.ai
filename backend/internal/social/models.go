@@ -345,6 +345,7 @@ type incomingRequestItem struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	FromUsername    *string   `json:"fromUsername"`
 	FromDisplayName *string   `json:"fromDisplayName"`
+	FromAvatarURL   *string   `json:"avatarUrl"`
 }
 
 type outgoingRequestItem struct {
@@ -354,6 +355,7 @@ type outgoingRequestItem struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	ToUsername    *string   `json:"toUsername"`
 	ToDisplayName *string   `json:"toDisplayName"`
+	ToAvatarURL   *string   `json:"avatarUrl"`
 }
 
 type listRequestsResponse struct {

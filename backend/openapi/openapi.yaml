@@ -2002,6 +2002,9 @@ components:
       properties:
         username:
           type: string
+        avatarUrl:
+          type: ["string", "null"]
+          description: Public serving path for the profile owner's avatar when set
         habits:
           type: array
           items:
@@ -2090,6 +2093,8 @@ components:
           type: ["string", "null"]
         fromDisplayName:
           type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
 
     OutgoingRequest:
       type: object
@@ -2110,6 +2115,8 @@ components:
         toUsername:
           type: ["string", "null"]
         toDisplayName:
+          type: ["string", "null"]
+        avatarUrl:
           type: ["string", "null"]
 
     FriendRequestsResponse:
@@ -2579,6 +2586,9 @@ components:
       properties:
         creatorDisplayName:
           type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+          description: Public serving path for the creator's avatar when set
         habitName:
           type: string
         habitIcon:
@@ -2727,7 +2737,7 @@ components:
 
     FeedEntry:
       type: object
-      required: [id, actorId, actorUsername, actorDisplayName, eventType, data, createdAt]
+      required: [id, actorId, actorUsername, actorDisplayName, actorAvatarUrl, eventType, data, createdAt]
       properties:
         id:
           type: string
@@ -2738,6 +2748,8 @@ components:
         actorUsername:
           type: ["string", "null"]
         actorDisplayName:
+          type: ["string", "null"]
+        actorAvatarUrl:
           type: ["string", "null"]
         eventType:
           $ref: "#/components/schemas/FeedEventType"

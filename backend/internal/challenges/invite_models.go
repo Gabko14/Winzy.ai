@@ -96,6 +96,7 @@ type inviteListResponse struct {
 
 type publicInviteResponse struct {
 	CreatorDisplayName *string `json:"creatorDisplayName"`
+	CreatorAvatarURL   *string `json:"avatarUrl"`
 	HabitName          string  `json:"habitName"`
 	HabitIcon          *string `json:"habitIcon"`
 	MilestoneType      string  `json:"milestoneType"`

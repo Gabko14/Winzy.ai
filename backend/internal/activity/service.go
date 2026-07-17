@@ -205,10 +205,12 @@ func (s *Service) enrichWithProfiles(ctx context.Context, entries []FeedEntry) [
 	for i, e := range entries {
 		var username *string
 		var displayName *string
+		var avatarURL *string
 		if p, ok := profiles[e.ActorID]; ok {
 			u := p.Username
 			username = &u
 			displayName = p.DisplayName
+			avatarURL = p.AvatarURL
 		}
 		data := e.Data
 		if data == nil {
@@ -217,7 +219,8 @@ func (s *Service) enrichWithProfiles(ctx context.Context, entries []FeedEntry) [
 		out[i] = FeedEntryResponse{
 			ID: e.ID, ActorID: e.ActorID,
 			ActorUsername: username, ActorDisplayName: displayName,
-			EventType: e.EventType, Data: data, CreatedAt: e.CreatedAt,
+			ActorAvatarURL: avatarURL,
+			EventType:      e.EventType, Data: data, CreatedAt: e.CreatedAt,
 		}
 	}
 	return out

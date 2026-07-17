@@ -20,7 +20,7 @@ import { useFeed } from "../hooks/useFeed";
 import { useFriends } from "../hooks/useFriends";
 import type { FeedEntry, FeedEventType } from "../api/feed";
 import { getInitials } from "../utils/getInitials";
-import { resolveAvatarUrl, userAvatarPath } from "../utils/avatarUrl";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 
 // --- Event type display config ---
 
@@ -273,7 +273,7 @@ function FeedEntryRow({ entry, onAvatarPress, onChallengePress }: FeedEntryRowPr
         <Avatar
           initials={initials}
           size="md"
-          imageUrl={resolveAvatarUrl(userAvatarPath(entry.actorId))}
+          imageUrl={resolveAvatarUrl(entry.actorAvatarUrl)}
         />
       </Pressable>
 

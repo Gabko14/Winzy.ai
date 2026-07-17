@@ -1197,6 +1197,8 @@ export type components = {
         };
         PublicFlameProfile: {
             username: string;
+            /** @description Public serving path for the profile owner's avatar when set */
+            avatarUrl?: string | null;
             habits: {
                 /** Format: uuid */
                 id: string;
@@ -1240,6 +1242,7 @@ export type components = {
             createdAt: string;
             fromUsername?: string | null;
             fromDisplayName?: string | null;
+            avatarUrl?: string | null;
         };
         OutgoingRequest: {
             /** Format: uuid */
@@ -1252,6 +1255,7 @@ export type components = {
             createdAt: string;
             toUsername?: string | null;
             toDisplayName?: string | null;
+            avatarUrl?: string | null;
         };
         FriendRequestsResponse: {
             incoming: components["schemas"]["IncomingRequest"][];
@@ -1448,6 +1452,8 @@ export type components = {
         };
         PublicChallengeInvite: {
             creatorDisplayName: string | null;
+            /** @description Public serving path for the creator's avatar when set */
+            avatarUrl?: string | null;
             habitName: string;
             habitIcon: string | null;
             milestoneType: components["schemas"]["MilestoneType"];
@@ -1527,6 +1533,7 @@ export type components = {
             actorId: string;
             actorUsername: string | null;
             actorDisplayName: string | null;
+            actorAvatarUrl: string | null;
             eventType: components["schemas"]["FeedEventType"];
             data: {
                 [key: string]: unknown;

@@ -48,6 +48,7 @@ function makeEntry(overrides: Partial<FeedEntry> = {}): FeedEntry {
     actorId: "actor-001",
     actorUsername: "alice",
     actorDisplayName: "Alice Smith",
+    actorAvatarUrl: null,
     eventType: "habit.completed" as FeedEventType,
     data: { userId: "actor-001", habitId: "habit-001", date: "2026-03-14", consistency: 0.85 },
     createdAt: new Date(Date.now() - 3600_000).toISOString(),

@@ -7,6 +7,7 @@ import {
   ErrorState,
   EmptyState,
   InlineError,
+  Avatar,
   spacing,
   typography,
   lightTheme,
@@ -21,6 +22,8 @@ import {
 import { setPendingChallengeInviteToken } from "../utils/challengeInviteToken";
 import { updateChallengeInviteOgTags } from "../pwa/register-sw";
 import { isApiError } from "../api/types";
+import { getInitials } from "../utils/getInitials";
+import { resolveAvatarUrl } from "../utils/avatarUrl";
 
 type Props = {
   token: string;
@@ -130,6 +133,12 @@ export function ChallengeInviteScreen({
     >
       <View style={[styles.hero, { backgroundColor: colors.surface }]}>
         <Text style={[styles.eyebrow, { color: colors.textTertiary }]}>CHALLENGE INVITE</Text>
+        <Avatar
+          initials={getInitials(data.creatorDisplayName, creator)}
+          size="lg"
+          imageUrl={resolveAvatarUrl(data.avatarUrl)}
+          testID="invite-creator-avatar"
+        />
         <Text style={[styles.creator, { color: colors.textPrimary }]} testID="invite-creator">
           {creator} challenges you
         </Text>

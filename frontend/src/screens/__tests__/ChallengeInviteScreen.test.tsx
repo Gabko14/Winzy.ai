@@ -21,6 +21,7 @@ jest.mock("../../pwa/register-sw", () => ({
 
 const pendingInvite = {
   creatorDisplayName: "Alex",
+  avatarUrl: "/auth/users/creator-1/avatar",
   habitName: "Morning run",
   habitIcon: "🏃",
   milestoneType: "consistencyTarget" as const,
@@ -51,6 +52,7 @@ describe("ChallengeInviteScreen", () => {
 
     await waitFor(() => expect(getByTestId("challenge-invite-screen")).toBeTruthy());
     expect(getByText("Alex challenges you")).toBeTruthy();
+    expect(getByTestId("invite-creator-avatar")).toBeTruthy();
     expect(getByTestId("invite-habit")).toHaveTextContent(/Morning run/);
     expect(getByTestId("invite-goal")).toHaveTextContent("60% consistency over 30 days");
     expect(getByTestId("invite-reward")).toHaveTextContent("Grab coffee");

@@ -58,9 +58,10 @@ type PublicHabitEntry struct {
 // PublicFlameProfileResponse is GET /habits/public/{username}'s response
 // shape, matching GetPublicFlameProfile in PublicEndpoints.cs.
 type PublicFlameProfileResponse struct {
-	Username string             `json:"username"`
-	Habits   []PublicHabitEntry `json:"habits"`
-	Degraded bool               `json:"degraded"`
+	Username  string             `json:"username"`
+	AvatarURL *string            `json:"avatarUrl"`
+	Habits    []PublicHabitEntry `json:"habits"`
+	Degraded  bool               `json:"degraded"`
 }
 
 // resolveUsernameForPublic is the shared username->userID step both public
@@ -159,7 +160,19 @@ func (s *Service) PublicFlameProfile(ctx context.Context, username string) (Publ
 		}
 	}
 
-	return PublicFlameProfileResponse{Username: username, Habits: entries, Degraded: false}, nil
+	var avatarURL *string
+	if s.profileBatcher != nil {
+		profiles, err := s.profileBatcher.BatchProfiles(ctx, []string{userID})
+		if err != nil {
+			s.logger.WarnContext(ctx, "public flame profile batch failed", "user_id", userID, "error", err)
+		} else if len(profiles) > 0 {
+			avatarURL = profiles[0].AvatarURL
+		}
+	}
+
+	return PublicFlameProfileResponse{
+		Username: username, AvatarURL: avatarURL, Habits: entries, Degraded: false,
+	}, nil
 }
 
 // FlameBadge computes the aggregate consistency across every non-archived

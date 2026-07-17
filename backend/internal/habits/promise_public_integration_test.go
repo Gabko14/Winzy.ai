@@ -10,11 +10,13 @@
 package habits_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/Gabko14/winzy/backend/internal/auth"
 	"github.com/Gabko14/winzy/backend/internal/habits"
 )
 
@@ -39,6 +41,9 @@ func TestPublicFlameProfile_HappyPath_IncludesPromiseWhenPublic(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	body := decodeBody[habits.PublicFlameProfileResponse](t, resp)
+	if body.AvatarURL != nil {
+		t.Fatalf("AvatarURL = %v, want nil (no avatar)", body.AvatarURL)
+	}
 	if len(body.Habits) != 1 {
 		t.Fatalf("Habits = %+v, want exactly 1", body.Habits)
 	}
@@ -47,6 +52,30 @@ func TestPublicFlameProfile_HappyPath_IncludesPromiseWhenPublic(t *testing.T) {
 	}
 	if !strings.Contains(body.Habits[0].Promise.Statement, "70%") {
 		t.Errorf("Promise.Statement = %q, want it to contain 70%%", body.Habits[0].Promise.Statement)
+	}
+}
+
+func TestPublicFlameProfile_HappyPath_CarriesAvatarURL(t *testing.T) {
+	t.Parallel()
+	srv, tokens, _, authService, _ := newTestServerWithAuth(t)
+	username := "pubavatar1"
+	reg := registerUserViaService(t, authService, "pubavatar1@example.com", username)
+	avatar := "https://cdn.example.com/flame.png"
+	if _, err := authService.UpdateProfile(context.Background(), reg.User.ID, auth.UpdateProfileRequest{
+		AvatarURL: &avatar,
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	a := bearerFor(t, tokens, reg.User.ID)
+	createHabit(t, srv, a, habits.CreateHabitRequest{Name: "Run"})
+
+	resp := doRequest(t, srv, testRequest{method: http.MethodGet, path: "/habits/public/" + username})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body := decodeBody[habits.PublicFlameProfileResponse](t, resp)
+	if body.AvatarURL == nil || *body.AvatarURL != avatar {
+		t.Fatalf("AvatarURL = %v, want %s", body.AvatarURL, avatar)
 	}
 }
 

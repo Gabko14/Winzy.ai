@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Gabko14/winzy/backend/internal/auth"
 )
 
 func validInviteBody() map[string]any {
@@ -75,8 +77,50 @@ func TestCreateInvite_HappyPath_CreateListPublicRoundtrip(t *testing.T) {
 	if view["creatorDisplayName"] != display {
 		t.Fatalf("creatorDisplayName=%v want %s", view["creatorDisplayName"], display)
 	}
+	if view["avatarUrl"] != nil {
+		t.Fatalf("avatarUrl=%v want null (no avatar uploaded)", view["avatarUrl"])
+	}
 	if view["milestoneType"] != "consistencyTarget" {
 		t.Fatalf("milestoneType=%v", view["milestoneType"])
+	}
+}
+
+func TestViewInvite_HappyPath_CarriesCreatorAvatarURL(t *testing.T) {
+	t.Parallel()
+	stack := newTestStack(t)
+	display := "Avatar Creator"
+	creator, err := stack.authService.Register(context.Background(),
+		"inv-avatar@example.com", "invavatar", "Password123!", &display)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	avatar := "https://cdn.example.com/creator.png"
+	if _, err := stack.authService.UpdateProfile(context.Background(), creator.User.ID, auth.UpdateProfileRequest{
+		AvatarURL: &avatar,
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	authHdr := bearerFor(t, stack.tokens, creator.User.ID)
+
+	status, created := doRequest(t, stack.srv, testRequest{
+		method: "POST", path: "/challenges/invites", headers: authHdr, body: validInviteBody(),
+	})
+	if status != 201 {
+		t.Fatalf("create status=%d body=%v", status, created)
+	}
+	token, _ := created["token"].(string)
+
+	status, view := doRequest(t, stack.srv, testRequest{
+		method: "GET", path: "/challenges/invites/" + token,
+	})
+	if status != 200 {
+		t.Fatalf("view status=%d body=%v", status, view)
+	}
+	if view["avatarUrl"] != avatar {
+		t.Fatalf("avatarUrl=%v want %s", view["avatarUrl"], avatar)
+	}
+	if view["creatorDisplayName"] != display {
+		t.Fatalf("creatorDisplayName=%v want %s", view["creatorDisplayName"], display)
 	}
 }
 
