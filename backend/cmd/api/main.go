@@ -97,7 +97,7 @@ func run() error {
 	habitsService.SetVisibilityFilter(socialService)
 	socialHandlers := social.NewHandlers(socialService)
 
-	challengesService := challenges.NewService(pool, registry, exportRegistry, authService, socialService, habitsService, logger)
+	challengesService := challenges.NewService(pool, registry, exportRegistry, authService, socialService, habitsService, logger, cfg.CORSOrigin)
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
 	notificationsService := notifications.NewService(pool, registry, exportRegistry, socialService, notifications.VAPIDConfig{
@@ -132,16 +132,17 @@ func run() error {
 	// Public-route allowlist: auth's own slice, GET /health (every service's
 	// health check must be reachable without a token — Railway, docker
 	// healthcheck, and uptime monitoring all hit it directly), habits'
-	// public flame surfaces, social's Witness Link viewer, and
-	// notifications' VAPID public key (browsers need it before login to
-	// subscribe). "GET /habits/public/*" and "GET /social/witness/*" are
-	// prefix entries (see auth.Middleware's isPublicRoute doc comment)
-	// covering routes whose final path segment (a username or a witness
-	// token) isn't enumerable as an exact route.
+	// public flame surfaces, social's Witness Link viewer, challenge invite
+	// landing (token in path), and notifications' VAPID public key (browsers
+	// need it before login to subscribe). "GET /habits/public/*",
+	// "GET /social/witness/*", and "GET /challenges/invites/*" are prefix
+	// entries (see auth.Middleware's isPublicRoute doc comment) covering
+	// routes whose final path segment isn't enumerable as an exact route.
 	publicRoutes := auth.DefaultPublicRoutes()
 	publicRoutes["GET /health"] = true
 	publicRoutes["GET /habits/public/*"] = true
 	publicRoutes["GET /social/witness/*"] = true
+	publicRoutes["GET /challenges/invites/*"] = true
 	publicRoutes["GET /notifications/vapid-public-key"] = true
 	// Public avatar bytes for /@username flame pages (winzy.ai-mfns.1).
 	// Segment wildcard so GET /auth/users/search stays authenticated.
@@ -169,11 +170,10 @@ func run() error {
 		logger.Info("same-origin web serving enabled", "web_dist", cfg.WebDist)
 	}
 
-	// "/social/witness/" is redacted from request logs — its trailing path
-	// segment is the witness token itself, a bearer credential that must
-	// never reach stdout/Railway logs (see httpserver.RequestLogging's doc
-	// comment).
-	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, handler, logger, "/social/witness/")
+	// "/social/witness/" and "/challenges/invites/" are redacted from request
+	// logs — trailing path segments are bearer tokens that must never reach
+	// stdout/Railway logs (see httpserver.RequestLogging's doc comment).
+	srv := httpserver.New(cfg.Port, cfg.CORSOrigin, handler, logger, "/social/witness/", "/challenges/invites/")
 	// Reminder ticker starts after every module is wired; stops when the
 	// process shutdown context is cancelled (httpserver.Serve).
 	notificationsService.StartReminderScheduler(ctx)

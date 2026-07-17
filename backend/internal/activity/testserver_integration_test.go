@@ -63,7 +63,7 @@ func newTestStack(t *testing.T) testStack {
 	habitsService.SetVisibilityFilter(socialService)
 	socialHandlers := social.NewHandlers(socialService)
 
-	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger)
+	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger, "http://localhost:8081")
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
 	activityService := activity.NewService(pool, registry, exportReg, authService, socialService, logger)
@@ -76,8 +76,9 @@ func newTestStack(t *testing.T) testStack {
 	activity.RegisterRoutes(mux, activityHandlers)
 
 	publicRoutes := map[string]bool{
-		"GET /habits/public/*":  true,
-		"GET /social/witness/*": true,
+		"GET /habits/public/*":      true,
+		"GET /social/witness/*":     true,
+		"GET /challenges/invites/*": true,
 	}
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 	bodyLimited := httpserver.BodyLimit()(protected)

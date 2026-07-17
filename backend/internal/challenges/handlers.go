@@ -155,6 +155,71 @@ func (h *Handlers) CancelChallenge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// CreateInvite handles POST /challenges/invites.
+func (h *Handlers) CreateInvite(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	dto, ok := requireDecodedBody[createInviteDTO](w, r)
+	if !ok {
+		return
+	}
+
+	mt := MilestoneType(dto.MilestoneType)
+	req := CreateInviteRequest{
+		HabitName: dto.HabitName, HabitIcon: dto.HabitIcon,
+		Frequency: dto.Frequency, CustomDays: dto.CustomDays,
+		MilestoneType: mt, TargetValue: dto.TargetValue, PeriodDays: dto.PeriodDays,
+		RewardDescription: dto.RewardDescription,
+	}
+
+	inv, err := h.service.CreateInvite(r.Context(), userID, req)
+	if err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, createInviteResponse{
+		ID: inv.ID, Token: inv.Token, URL: inviteURL(h.service.publicBaseURL, inv.Token),
+	})
+}
+
+// ListInvites handles GET /challenges/invites.
+func (h *Handlers) ListInvites(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	invites, err := h.service.ListInvites(r.Context(), userID)
+	if err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	now := h.service.now()
+	items := make([]inviteListItemResponse, len(invites))
+	for i, inv := range invites {
+		items[i] = toInviteListItem(inv, h.service.publicBaseURL, now)
+	}
+	writeJSON(w, http.StatusOK, inviteListResponse{Items: items})
+}
+
+// RevokeInvite handles DELETE /challenges/invites/{id}.
+func (h *Handlers) RevokeInvite(w http.ResponseWriter, r *http.Request) {
+	userID := httpserver.UserIDFromContext(r.Context())
+	id := r.PathValue("id")
+
+	if err := h.service.RevokeInvite(r.Context(), userID, id); err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ViewInvite handles the PUBLIC GET /challenges/invites/{token}.
+func (h *Handlers) ViewInvite(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	resp, err := h.service.ViewInvite(r.Context(), token)
+	if err != nil {
+		writeChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func intQueryParam(r *http.Request, name string, fallback int) int {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {

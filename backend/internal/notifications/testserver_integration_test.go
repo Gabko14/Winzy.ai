@@ -60,7 +60,7 @@ func newTestStack(t *testing.T) testStack {
 	habitsService.SetVisibilityFilter(socialService)
 	socialHandlers := social.NewHandlers(socialService)
 
-	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger)
+	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger, "http://localhost:8081")
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
 	notificationsService := notifications.NewService(pool, registry, exportReg, socialService, notifications.VAPIDConfig{}, logger)
@@ -76,6 +76,7 @@ func newTestStack(t *testing.T) testStack {
 	publicRoutes := map[string]bool{
 		"GET /habits/public/*":                true,
 		"GET /social/witness/*":               true,
+		"GET /challenges/invites/*":           true,
 		"GET /notifications/vapid-public-key": true,
 	}
 	protected := auth.Middleware(tokens, publicRoutes)(mux)

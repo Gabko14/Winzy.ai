@@ -22,12 +22,14 @@ import (
 	"github.com/Gabko14/winzy/backend/internal/httpserver"
 	"github.com/Gabko14/winzy/backend/internal/ratelimit"
 	"github.com/Gabko14/winzy/backend/internal/social"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const testJWTSecret = "integration-test-secret-that-is-at-least-32-chars!!"
 
 type testStack struct {
 	srv               *httptest.Server
+	pool              *pgxpool.Pool
 	tokens            *auth.TokenService
 	registry          *events.Registry
 	exportReg         *export.Registry
@@ -58,7 +60,7 @@ func newTestStack(t *testing.T) testStack {
 	habitsService.SetVisibilityFilter(socialService)
 	socialHandlers := social.NewHandlers(socialService)
 
-	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger)
+	challengesService := challenges.NewService(pool, registry, exportReg, authService, socialService, habitsService, logger, "http://localhost:8081")
 	challengesHandlers := challenges.NewHandlers(challengesService)
 
 	mux := http.NewServeMux()
@@ -67,8 +69,9 @@ func newTestStack(t *testing.T) testStack {
 	challenges.RegisterRoutes(mux, challengesHandlers)
 
 	publicRoutes := map[string]bool{
-		"GET /habits/public/*":  true,
-		"GET /social/witness/*": true,
+		"GET /habits/public/*":      true,
+		"GET /social/witness/*":     true,
+		"GET /challenges/invites/*": true,
 	}
 	protected := auth.Middleware(tokens, publicRoutes)(mux)
 	bodyLimited := httpserver.BodyLimit()(protected)
@@ -81,7 +84,7 @@ func newTestStack(t *testing.T) testStack {
 	t.Cleanup(srv.Close)
 
 	return testStack{
-		srv: srv, tokens: tokens, registry: registry, exportReg: exportReg,
+		srv: srv, pool: pool, tokens: tokens, registry: registry, exportReg: exportReg,
 		authService: authService, habitsService: habitsService,
 		socialService: socialService, challengesService: challengesService,
 	}

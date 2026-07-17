@@ -20,17 +20,19 @@ import (
 
 // Service is the challenges module's business logic.
 type Service struct {
-	pool     *pgxpool.Pool
-	registry *events.Registry
-	logger   *slog.Logger
-	auth     *auth.Service
-	social   *social.Service
-	habits   *habits.Service
-	now      func() time.Time
+	pool          *pgxpool.Pool
+	registry      *events.Registry
+	logger        *slog.Logger
+	auth          *auth.Service
+	social        *social.Service
+	habits        *habits.Service
+	publicBaseURL string
+	now           func() time.Time
 }
 
 // NewService wires a Service, registers HabitCompleted/UserDeleted handlers,
 // and registers the "challenge" export section (C# singular literal).
+// publicBaseURL is the origin used to build share URLs (/ci/{token}).
 func NewService(
 	pool *pgxpool.Pool,
 	registry *events.Registry,
@@ -39,11 +41,13 @@ func NewService(
 	socialSvc *social.Service,
 	habitsSvc *habits.Service,
 	logger *slog.Logger,
+	publicBaseURL string,
 ) *Service {
 	s := &Service{
 		pool: pool, registry: registry, logger: logger,
 		auth: authSvc, social: socialSvc, habits: habitsSvc,
-		now: func() time.Time { return time.Now().UTC() },
+		publicBaseURL: publicBaseURL,
+		now:           func() time.Time { return time.Now().UTC() },
 	}
 	events.Register(registry, s.handleHabitCompleted)
 	events.Register(registry, s.handleUserDeleted)
@@ -443,5 +447,12 @@ func (s *Service) handleUserDeleted(ctx context.Context, event events.UserDelete
 	}
 	s.logger.InfoContext(ctx, "deleted challenges for user",
 		"user_id", event.UserID, "count", deleted)
+
+	invitesDeleted, err := deleteUserInvites(ctx, q, event.UserID)
+	if err != nil {
+		return fmt.Errorf("challenges: cascading user.deleted invites: %w", err)
+	}
+	s.logger.InfoContext(ctx, "deleted challenge invites for user",
+		"user_id", event.UserID, "count", invitesDeleted)
 	return nil
 }

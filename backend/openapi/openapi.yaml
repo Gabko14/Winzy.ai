@@ -1039,6 +1039,71 @@ paths:
         "404":
           description: Not found
 
+  /challenges/invites:
+    get:
+      tags: [challenges]
+      operationId: listChallengeInvites
+      responses:
+        "200":
+          description: Creator's pending invites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengeInvitesResponse"
+    post:
+      tags: [challenges]
+      operationId: createChallengeInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChallengeInviteRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateChallengeInviteResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /challenges/invites/{id}:
+    delete:
+      tags: [challenges]
+      operationId: revokeChallengeInvite
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          description: Not found
+
+  /challenges/invites/{token}:
+    get:
+      tags: [challenges]
+      operationId: viewChallengeInvite
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public invite landing payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicChallengeInvite"
+        "404":
+          description: Not found
+
   /notifications:
     get:
       tags: [notifications]
@@ -2371,6 +2436,139 @@ components:
         customEndDate:
           type: string
           format: date-time
+
+    ChallengeInviteStatus:
+      type: string
+      enum: [pending, claimed, revoked, expired]
+
+    CreateChallengeInviteRequest:
+      type: object
+      required: [habitName, frequency, milestoneType, targetValue, periodDays, rewardDescription]
+      properties:
+        habitName:
+          type: string
+        habitIcon:
+          type: string
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomDayInput"
+        milestoneType:
+          $ref: "#/components/schemas/MilestoneType"
+        targetValue:
+          type: number
+        periodDays:
+          type: integer
+        rewardDescription:
+          type: string
+
+    CreateChallengeInviteResponse:
+      type: object
+      required: [id, token, url]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        url:
+          type: string
+
+    ChallengeInvite:
+      type: object
+      required:
+        [
+          id,
+          token,
+          url,
+          habitName,
+          habitIcon,
+          frequency,
+          customDays,
+          milestoneType,
+          targetValue,
+          periodDays,
+          rewardDescription,
+          status,
+          expiresAt,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        url:
+          type: string
+        habitName:
+          type: string
+        habitIcon:
+          type: ["string", "null"]
+        frequency:
+          $ref: "#/components/schemas/FrequencyType"
+        customDays:
+          type: array
+          items:
+            type: integer
+        milestoneType:
+          $ref: "#/components/schemas/MilestoneType"
+        targetValue:
+          type: number
+        periodDays:
+          type: integer
+        rewardDescription:
+          type: string
+        status:
+          $ref: "#/components/schemas/ChallengeInviteStatus"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ChallengeInvitesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengeInvite"
+
+    PublicChallengeInvite:
+      type: object
+      required:
+        [
+          creatorDisplayName,
+          habitName,
+          habitIcon,
+          milestoneType,
+          targetValue,
+          periodDays,
+          rewardDescription,
+          status,
+        ]
+      properties:
+        creatorDisplayName:
+          type: ["string", "null"]
+        habitName:
+          type: string
+        habitIcon:
+          type: ["string", "null"]
+        milestoneType:
+          $ref: "#/components/schemas/MilestoneType"
+        targetValue:
+          type: number
+        periodDays:
+          type: integer
+        rewardDescription:
+          type: string
+        status:
+          $ref: "#/components/schemas/ChallengeInviteStatus"
 
     NotificationType:
       type: string

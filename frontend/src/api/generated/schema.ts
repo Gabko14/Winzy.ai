@@ -690,6 +690,54 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/challenges/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listChallengeInvites"];
+        put?: never;
+        post: operations["createChallengeInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/challenges/invites/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revokeChallengeInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/challenges/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["viewChallengeInvite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notifications": {
         parameters: {
             query?: never;
@@ -1341,6 +1389,56 @@ export type components = {
             customStartDate?: string;
             /** Format: date-time */
             customEndDate?: string;
+        };
+        /** @enum {string} */
+        ChallengeInviteStatus: "pending" | "claimed" | "revoked" | "expired";
+        CreateChallengeInviteRequest: {
+            habitName: string;
+            habitIcon?: string;
+            frequency: components["schemas"]["FrequencyType"];
+            customDays?: components["schemas"]["CustomDayInput"][];
+            milestoneType: components["schemas"]["MilestoneType"];
+            targetValue: number;
+            periodDays: number;
+            rewardDescription: string;
+        };
+        CreateChallengeInviteResponse: {
+            /** Format: uuid */
+            id: string;
+            token: string;
+            url: string;
+        };
+        ChallengeInvite: {
+            /** Format: uuid */
+            id: string;
+            token: string;
+            url: string;
+            habitName: string;
+            habitIcon: string | null;
+            frequency: components["schemas"]["FrequencyType"];
+            customDays: number[];
+            milestoneType: components["schemas"]["MilestoneType"];
+            targetValue: number;
+            periodDays: number;
+            rewardDescription: string;
+            status: components["schemas"]["ChallengeInviteStatus"];
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ChallengeInvitesResponse: {
+            items: components["schemas"]["ChallengeInvite"][];
+        };
+        PublicChallengeInvite: {
+            creatorDisplayName: string | null;
+            habitName: string;
+            habitIcon: string | null;
+            milestoneType: components["schemas"]["MilestoneType"];
+            targetValue: number;
+            periodDays: number;
+            rewardDescription: string;
+            status: components["schemas"]["ChallengeInviteStatus"];
         };
         /** @enum {string} */
         NotificationType: "habitcompleted" | "friendrequestsent" | "friendrequestaccepted" | "challengecreated" | "challengecompleted";
@@ -2997,6 +3095,108 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listChallengeInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Creator's pending invites */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChallengeInvitesResponse"];
+                };
+            };
+        };
+    };
+    createChallengeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChallengeInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateChallengeInviteResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    revokeChallengeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    viewChallengeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public invite landing payload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicChallengeInvite"];
+                };
+            };
             /** @description Not found */
             404: {
                 headers: {
